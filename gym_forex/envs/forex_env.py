@@ -40,8 +40,11 @@ class ForexEnv(discrete.DiscreteEnv):
         # OrderVolume relative to Equity
         self.order_volume = 0.2
         # Min / Max Spread
-        self.min_spread = 10
-        self.max_spread = 100
+        self.min_spread = 10  # TODO: verificar en alpari
+        self.max_spread = 100 # TODO: verificar en alpari
+        # TODO: Buscar como se calcula el spread en alpari con cuenta micro, mini y normal por symbol
+        #  if spread_from_csv is 1, the last column of the CSV is used as spread in pips
+        self.spread_from_csv = 0
         # Leverage (Default 100)
         self.leverage=leverage
         # num_symbols
@@ -52,7 +55,8 @@ class ForexEnv(discrete.DiscreteEnv):
         # TODO: UnitTest: verificar si está volviendo número de registros(vectores) conocido, probar con mis CSV de SVM.
         # http://docs.python-guide.org/en/latest/writing/tests/
         num_ticks = len(self.my_data)
-
+        # initialize tick counter
+        self.tick_count=0
     """
     _step parameters:
     
@@ -77,6 +81,8 @@ class ForexEnv(discrete.DiscreteEnv):
     """
 
     def _step(self, action):
+        # increment tick counter
+        self.tick_count=self.tick_count+1
         # Calculates profit
         # TODO: REDONDEAR a menor fracción de lote disponible en alpari.
         if self.order_status == 1:
