@@ -1,1 +1,1 @@
-from gym_forex.envs.forex_env import ForexEnv
+from forex_env import ForexEnv
