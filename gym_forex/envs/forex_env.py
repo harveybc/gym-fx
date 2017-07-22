@@ -76,7 +76,7 @@ class ForexEnv(gym.Env):
         self.num_ticks = len(self.my_data)
         # initialize number of columns from the CSV
         self.num_columns = len(self.my_data[0])
-        # Generate pre-processing inputs- TODO(0=no,1=FFT_maxamp,2=Poincare for 1/f(FFT_max_amp),3=FFT_2ndamp,4=Poincare for 3),etc...
+        # Generate pre-processing inputs - TODO(0=no,1=FFT_maxamp,2=Poincare for 1/f(FFT_max_amp),3=FFT_2ndamp,4=Poincare for 3),etc...
         self.preprocessing=0
         # Select the column from which pre-processing observations will be generated
         self.preprocessing_column=0
@@ -265,12 +265,15 @@ class ForexEnv(gym.Env):
         # Push values from timeseries into state
         # 0 = HighBid, 1 = Low, 2 = Close, 3 = NextOpen, 4 = v, 5 = MoY, 6 = DoM, 7 = DoW, 8 = HoD, 9 = MoH, ..<num_columns>
         for i in range(0, self.num_columns-1):
-            #TODO: Normalizar el valor de my_data a introducir  en obs_matrix usando norm_array
-            self.obs_matrix[i].append(self.my_data[self.tick_count, i])
+            # normalizes between -1,1
+            obs_normalized=(2*(self.my_data[self.tick_count, i]-self.min[i])/(self.max[i]-self.min[i]))-1
+            self.obs_matrix[i].append(obs_normalized)
         # matrix for the state(order status, equity variation, reward and statistics (from reward table))
-        # TODO: Normalizar cada componente del estado.
-        self.state[0].append(self.order_status)
-        self.state[1].append(self.equity - self.equity_ant)
+        obs_normalized = (2 * self.order_status / 2) - 1
+        self.state[0].append(obs_normalized)
+        # return of equity normalized? TODO: Proper normalization. with estimation of max and min eq return?
+        self.state[1].append((self.equity - self.equity_ant)/self.equity_ant)
+        # normalized profit
         self.state[2].append((self.equity-self.initial_capital)/self.initial_capital)
         # merge obs_matrix and state in ob
         ob=numpy.concatenate([self.obs_matrix,self.state])
