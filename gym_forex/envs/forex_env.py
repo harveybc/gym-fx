@@ -163,7 +163,7 @@ class ForexEnv(gym.Env):
 
     """
 
-    def _step(self, action):
+    def step(self, action):
         # read time_variables from CSV. Format: 0 = HighBid, 1 = Low, 2 = Close, 3 = NextOpen, 4 = v, 5 = MoY, 6 = DoM, 7 = DoW, 8 = HoD, 9 = MoH, ..<num_columns>
         High = self.my_data[self.tick_count, 0]
         Low = self.my_data[self.tick_count, 1]
@@ -375,7 +375,7 @@ class ForexEnv(gym.Env):
     _reset: coloca todas las variables en valores iniciales
     """
 
-    def _reset(self):
+    def reset(self):
         self.tick_count = 0
         self.equity = self.initial_capital
         self.balance = self.equity
@@ -402,7 +402,7 @@ class ForexEnv(gym.Env):
         print 'Eq=', self.equity
     """
 
-    def _render(self, mode='human', close=False):
+    def render(self, mode='human', close=False):
         if mode == 'human':
             return self.equity
         else:
