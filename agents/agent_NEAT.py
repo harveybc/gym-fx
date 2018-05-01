@@ -3,7 +3,7 @@ from __future__ import print_function
 
 import gym
 import gym.wrappers
-
+import gym_forex
 import matplotlib.pyplot as plt
 
 import multiprocessing
@@ -18,7 +18,7 @@ import visualize
 
 NUM_CORES = 1
 
-env = gym.make('LunarLander-v2')
+env = gym.make('Forex-v0')
 
 print("action space: {0!r}".format(env.action_space))
 print("observation space: {0!r}".format(env.observation_space))
