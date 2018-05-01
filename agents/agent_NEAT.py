@@ -53,6 +53,12 @@ class LanderGenome(neat.DefaultGenome):
         return "Reward discount: {0}\n{1}".format(self.discount,
                                                   super().__str__())
 
+def nn_format(obs):
+    output=[]
+    for arr in obs:
+        for val in arr:
+            output.append(val)
+    return output
 
 def compute_fitness(genome, net, episodes, min_reward, max_reward):
     m = int(round(np.log(0.01) / np.log(genome.discount)))
@@ -68,7 +74,7 @@ def compute_fitness(genome, net, episodes, min_reward, max_reward):
         for row, dr in zip(data, dr):
             observation = row[:8]
             action = int(row[8])
-            output = net.activate(observation)
+            output = net.activate(nn_format(observation))
             reward_error.append(float((output[action] - dr) ** 2))
 
     return reward_error
@@ -86,13 +92,6 @@ class PooledErrorCompute(object):
         self.episode_score = []
         self.episode_length = []
 
-    def nn_format(self, obs):
-        output=[]
-        for arr in obs:
-            for val in arr:
-                output.append(val)
-        return output
-
     def simulate(self, nets):
         scores = []
         for genome, net in nets:
@@ -104,13 +103,13 @@ class PooledErrorCompute(object):
                 if step < 200 and random.random() < 0.2:
                     action = env.action_space.sample()
                 else:
-                    output = net.activate(self.nn_format(observation))
+                    output = net.activate(nn_format(observation))
                     #print("output: {0!r}".format(output))
                     action = np.argmax(output)
                 #print("observation: {0!r}".format(self.nn_format(observation)))
                 #print("action: {0!r}".format(action))
                 observation, reward, done, info = env.step(action)
-                data.append(np.hstack((self.nn_format(observation), action, reward)))
+                data.append(np.hstack((nn_format(observation), action, reward)))
                 if done:
                     break
 
