@@ -2,5 +2,5 @@ from gym.envs.registration import register
 
 register(
     id='ForexEnv-v0',
-    entry_point='gym-forex:gym_forex:ForexEnv',
+    entry_point='gym_forex:ForexEnv',
 )
