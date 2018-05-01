@@ -86,7 +86,7 @@ class PooledErrorCompute(object):
         self.episode_score = []
         self.episode_length = []
 
-    def nn_format(obs):
+    def nn_format(self, obs):
         output=[]
         for arr in obs:
             for val in arr:
