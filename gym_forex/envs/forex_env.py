@@ -163,7 +163,7 @@ class ForexEnv(gym.Env):
 
     """
 
-    def step(action):
+    def step(self, action):
         # read time_variables from CSV. Format: 0 = HighBid, 1 = Low, 2 = Close, 3 = NextOpen, 4 = v, 5 = MoY, 6 = DoM, 7 = DoW, 8 = HoD, 9 = MoH, ..<num_columns>
         High = self.my_data[self.tick_count, 0]
         Low = self.my_data[self.tick_count, 1]
