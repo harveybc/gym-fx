@@ -36,7 +36,7 @@ class ForexEnv(gym.Env):
         leverage = 100
         # Number of past ticks per feature to be used as observations (1440min=1day, 10080=1Week, 43200=1month, )
         # TODO: Colocar como parámetro
-        self.obs_ticks = 48 # best 48@ 700k
+        self.obs_ticks = 2 # best 48@ 700k
         num_symbols = 1
         # TODO: Dejar como params
         self.debug = 0  # Show debug msgs
