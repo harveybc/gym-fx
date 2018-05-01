@@ -99,6 +99,9 @@ class PooledErrorCompute(object):
                 else:
                     output = net.activate(observation)
                     action = np.argmax(output)
+                print("observation: {0!r}".format(observation))
+                print("output: {0!r}".format(output))
+                print("action: {0!r}".format(action))
 
                 observation, reward, done, info = env.step(action)
                 data.append(np.hstack((observation, action, reward)))
