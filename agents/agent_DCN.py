@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
+#  For importing new environment in ubuntu run, export PYTHONPATH=${PYTHONPATH}:/home/[your username]/gym-forex/
 import random
 import gym
+import forex_env
 import numpy as np
 from collections import deque
 from keras.optimizers import Adam
@@ -9,12 +11,12 @@ from keras.models import Sequential
 from keras.layers import Conv2D,Conv1D, MaxPooling2D, MaxPooling1D
 from keras.layers import Activation, Dropout, Flatten, Dense
 from keras.optimizers import SGD
-from pastalog import Log
+#from pastalog import Log
 
 # Allows to run multiple simultaneous GPU precesses
 import tensorflow as tf
 config = tf.ConfigProto()
-config.gpu_options.allow_growth = True
+#config.gpu_options.allow_growth = True
 
 sess = tf.Session(config=config)
 K.set_session(sess)
@@ -113,7 +115,7 @@ class DQNAgent:
 
 
 if __name__ == "__main__":
-    env = gym.make('Forex-v0')
+    env = gym.make('ForexEnv-v0')
     state_size = env.observation_space.shape[0]
     action_size = env.action_space.n
     agent = DQNAgent(state_size, action_size)
