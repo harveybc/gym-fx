@@ -210,7 +210,7 @@ def run():
                     step += 1
                     # Use the total reward estimates from all five networks to
                     # determine the best action given the current state.
-                    votes = np.zeros((3,))
+                    votes = np.zeros((4,))
                     for n in best_networks:
                         output = n.activate(observation)
                         votes[np.argmax(output)] += 1
