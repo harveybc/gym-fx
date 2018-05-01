@@ -24,6 +24,8 @@ class ForexEnv(gym.Env):
     symbol_num: The number of symbos in the timeseries.
     """
     metadata = {'render.modes': ['human']}
+    def dataset_arg(dataset):
+        return  dataset
 
     def __init__(self):
         metadata = {'render.modes': ['human', 'ansi']}
@@ -40,7 +42,8 @@ class ForexEnv(gym.Env):
         num_symbols = 1
         # TODO: Dejar como params
         self.debug = 0  # Show debug msgs
-        csv_f = 'C:\\Users\\HarveyD\\Anaconda3\\Lib\\site-packages\\gym\\envs\\forex\\ts_4y.CSV'
+        #csv_f = 'C:\\Users\\HarveyD\\Anaconda3\\Lib\\site-packages\\gym\\envs\\forex\\ts_4y.CSV'
+        csv_f = self.dataset_arg(**kwargs)
         self.initial_capital = capital
         self.equity = capital
         self.balance = capital
