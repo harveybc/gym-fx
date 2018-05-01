@@ -86,6 +86,13 @@ class PooledErrorCompute(object):
         self.episode_score = []
         self.episode_length = []
 
+    def nn_format(obs):
+        output=[]
+        for arr in obs:
+            for val in arr
+                output.append(val)
+        return output
+
     def simulate(self, nets):
         scores = []
         for genome, net in nets:
@@ -97,9 +104,9 @@ class PooledErrorCompute(object):
                 if step < 200 and random.random() < 0.2:
                     action = env.action_space.sample()
                 else:
-                    output = net.activate(observation)
+                    output = net.activate(self.nn_format(observation))
                     action = np.argmax(output)
-                print("observation: {0!r}".format(observation))
+                print("observation: {0!r}".format(self.nn_format(observation)))
                 print("output: {0!r}".format(output))
                 print("action: {0!r}".format(action))
 
