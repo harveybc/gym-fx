@@ -89,7 +89,7 @@ class PooledErrorCompute(object):
     def nn_format(obs):
         output=[]
         for arr in obs:
-            for val in arr
+            for val in arr:
                 output.append(val)
         return output
 
