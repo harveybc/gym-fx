@@ -112,7 +112,7 @@ class PooledErrorCompute(object):
                 print("action: {0!r}".format(action))
 
                 observation, reward, done, info = env.step(action)
-                data.append(np.hstack((observation, action, reward)))
+                data.append(np.hstack((self.nn_format(observation), action, reward)))
 
                 if done:
                     break
