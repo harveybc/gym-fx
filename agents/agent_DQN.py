@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 import random
 import gym
+from gym.envs.registration import register
 import numpy as np
 from collections import deque
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.optimizers import Adam
 from keras import backend as K
-from pastalog import Log
 
 EPISODES = 2000
 
@@ -16,12 +16,12 @@ class DQNAgent:
     def __init__(self, state_size, action_size):
         self.state_size = state_size
         self.action_size = action_size
-        self.memory = deque(maxlen=128000) #originalmente 2k
-        self.gamma = 0.95    # discount rate
+        self.memory = deque(maxlen=128000)  # originalmente 2k
+        self.gamma = 0.95  # discount rate
         self.epsilon = 1.0  # exporlation rate, orig=1.0
-        self.epsilon_min = 0.001 # originalmente 0.01 (max 0.001 6m142@4y)
-        self.epsilon_decay = 0.7 # originalmente 0.99 (max con 0.7 en 4y)
-        self.learning_rate = 0.0001 #originalmente 0.001 (max 0.0001 6m142@4y)
+        self.epsilon_min = 0.001  # originalmente 0.01 (max 0.001 6m142@4y)
+        self.epsilon_decay = 0.7  # originalmente 0.99 (max con 0.7 en 4y)
+        self.learning_rate = 0.0001  # originalmente 0.001 (max 0.0001 6m142@4y)
         self.model = self._build_model()
         self.target_model = self._build_model()
         self.update_target_model()
@@ -29,7 +29,7 @@ class DQNAgent:
     def _huber_loss(self, target, prediction):
         # sqrt(1+error^2)-1
         error = prediction - target
-        return K.mean(K.sqrt(1+K.square(error))-1, axis=-1)
+        return K.mean(K.sqrt(1 + K.square(error)) - 1, axis=-1)
 
     def _build_model(self):
         # Neural Net for Deep-Q learning Model
@@ -84,47 +84,46 @@ if __name__ == "__main__":
     agent = DQNAgent(state_size, action_size)
     # agent.load("./save/cartpole-ddqn.h5")
     done = False
-    batch_size = 128 # originalmente 32 con max 148k@545
+    batch_size = 128  # originalmente 32 con max 148k@545
     # muestra si hay soporte de GPU
-    #from tensorflow.python.client import device_lib
+    # from tensorflow.python.client import device_lib
 
-    #print(device_lib.list_local_devices())
-    #start loging with pastalog
-    log_a = Log('http://localhost:8120', 'DQN_5123264_lr0001m128kbs128ed07_eq')
+    # print(device_lib.list_local_devices())
+
     for e in range(EPISODES):
         state = env.reset()
         state = np.reshape(state, [19, state_size])
-        time=0
-        points=0.0
+        time = 0
+        points = 0.0
         done = False
         while not done:
             # env.render()
-            #load data in the observation buffer(action=0 for the first 1440 observations)
-            if time>state_size:
+            # load data in the observation buffer(action=0 for the first 1440 observations)
+            if time > state_size:
                 action = agent.act(state)
             else:
-                action=0
-                #TODO  :  REWARD COMO FUNCION DE NUM ORDENES AL DIA (4? Gauss?)
+                action = 0
+                # TODO  :  REWARD COMO FUNCION DE NUM ORDENES AL DIA (4? Gauss?)
             next_state, reward, done, balance, tick_count, _ = env.step(action)
             reward = reward if not done else 0
             next_state = np.reshape(next_state, [19, state_size])
-            if time>state_size:
+            if time > state_size:
                 agent.remember(state, action, reward, next_state, done)
             state = next_state
-            time=time+1
+            time = time + 1
             points += reward
-            #print("e:{}/{},t:{},p:{},e:{:.2}-".format(e, EPISODES, time, points,agent.epsilon))
+            # print("e:{}/{},t:{},p:{},e:{:.2}-".format(e, EPISODES, time, points,agent.epsilon))
             if done:
                 agent.update_target_model()
-                print("episode Done: {}/{} ,reward: {} e: {:.2},".format(e, EPISODES, points,agent.epsilon))
-                #logs the reward
-                log_a.post('Reward', value=points, step=e)
+                print("episode Done: {}/{} ,reward: {} e: {:.2},".format(e, EPISODES, points, agent.epsilon))
                 # logs the reward
-                log_a.post('Balance', value=balance, step=e)
+                # log_a.post('Reward', value=points, step=e)
+                # logs the reward
+                # log_a.post('Balance', value=balance, step=e)
                 # logs the tick Count
-                log_a.post('TickCount', value=tick_count,step=e)
+                # log_a.post('TickCount', value=tick_count,step=e)
                 break
         if len(agent.memory) > batch_size:
             agent.replay(batch_size)
-        # if e % 10 == 0:
-        #     agent.save("./save/cartpole-ddqn.h5")
+            # if e % 10 == 0:
+            #     agent.save("./save/cartpole-ddqn.h5")
