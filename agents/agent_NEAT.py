@@ -72,8 +72,8 @@ def compute_fitness(genome, net, episodes, min_reward, max_reward):
         dr = np.clip(dr, -1.0, 1.0)
 
         for row, dr in zip(data, dr):
-            observation = row[:8]
-            action = int(row[8])
+            observation = row[:38]
+            action = int(row[3])
             print("observation: {0!r}".format(observation))
             #print("f_observation: {0!r}".format(nn_format(observation)))
             output = net.activate(observation)
