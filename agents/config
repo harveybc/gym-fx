@@ -9,7 +9,7 @@ fitness_threshold     = 1000.0
 reset_on_extinction   = 0
 
 [LanderGenome]
-num_inputs              = 19
+num_inputs              = 912
 num_hidden              = 0
 num_outputs             = 3
 initial_connection      = partial 0.5
