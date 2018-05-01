@@ -2,7 +2,7 @@
 #  For importing new environment in ubuntu run, export PYTHONPATH=${PYTHONPATH}:/home/[your username]/gym-forex/
 import random
 import gym
-import forex_env
+import gym_forex
 import numpy as np
 from collections import deque
 from keras.optimizers import Adam
@@ -67,7 +67,7 @@ class DQNAgent:
         model.add(Dense(self.action_size))
         model.add(Activation('softmax'))
         # multi-GPU support
-        model = to_multi_gpu(model)
+        #model = to_multi_gpu(model)
         # use SGD optimizer
         opt = SGD(lr=self.learning_rate)
         model.compile(loss="categorical_crossentropy", optimizer=opt,
@@ -125,7 +125,7 @@ if __name__ == "__main__":
     # muestra si hay soporte de GPU
     #from tensorflow.python.client import device_lib
     #print(device_lib.list_local_devices())
-    log_a = Log('http://localhost:8120', '1h4yvs48DCN_536_m128kbs128lr00001ed9tp1ksl2k') #OJO, capital inicial=300
+    #log_a = Log('http://localhost:8120', '1h4yvs48DCN_536_m128kbs128lr00001ed9tp1ksl2k') #OJO, capital inicial=300
     for e in range(EPISODES):
         state = env.reset()
         state = np.reshape(state, [agent.num_vectors,state_size])
@@ -155,11 +155,11 @@ if __name__ == "__main__":
                 agent.update_target_model()
                 print("episode Done: {}/{} ,reward: {} e: {:.2},".format(e, EPISODES, points,agent.epsilon))
                 #logs the reward
-                log_a.post('Reward', value=points, step=e)
+                #log_a.post('Reward', value=points, step=e)
                 # logs the reward
-                log_a.post('Balance', value=balance, step=e)
+                #log_a.post('Balance', value=balance, step=e)
                 # logs the tick Count
-                log_a.post('TickCount', value=tick_count,step=e)
+                #log_a.post('TickCount', value=tick_count,step=e)
                 break
         if len(agent.memory) > batch_size:
             agent.replay(batch_size)
