@@ -1,4 +1,4 @@
-# neat-python configuration for the LunarLander-v2 environment on OpenAI Gym
+# neat-python configuration for the Forex-v0 environment on OpenAI Gym
 
 [NEAT]
 pop_size              = 150
@@ -9,7 +9,7 @@ fitness_threshold     = 1000.0
 reset_on_extinction   = 0
 
 [LanderGenome]
-num_inputs              = 8
+num_inputs              = 19
 num_hidden              = 0
 num_outputs             = 4
 initial_connection      = partial 0.5
