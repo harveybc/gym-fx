@@ -221,7 +221,7 @@ def run():
                     # determine the best action given the current state.
                     votes = np.zeros((4,))
                     for n in best_networks:
-                        output = n.activate(observation)
+                        output = n.activate(nn_format(observation))
                         votes[np.argmax(output)] += 1
 
                     best_action = np.argmax(votes)
