@@ -105,9 +105,10 @@ class PooledErrorCompute(object):
                     action = env.action_space.sample()
                 else:
                     output = net.activate(self.nn_format(observation))
+                    print("output: {0!r}".format(output))
                     action = np.argmax(output)
                 print("observation: {0!r}".format(self.nn_format(observation)))
-                print("output: {0!r}".format(output))
+
                 print("action: {0!r}".format(action))
 
                 observation, reward, done, info = env.step(action)
