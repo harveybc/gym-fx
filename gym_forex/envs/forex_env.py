@@ -369,7 +369,8 @@ class ForexEnv(gym.Env):
             # self.__init__()
             # TODO: IMPRIMIR ESTADiSTICAS DE METATRADER
         # end of step function.
-        return ob, reward, episode_over, self.balance, self.tick_count, {}
+        info={"balance":self.balance,"tick_count":self.tick_count}
+        return ob, reward, episode_over, info
 
     """
     _reset: coloca todas las variables en valores iniciales

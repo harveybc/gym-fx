@@ -141,7 +141,7 @@ if __name__ == "__main__":
             else:
                 action=0
                 #TODO  :  REWARD COMO FUNCION DE NUM ORDENES AL DIA (4? Gauss?)
-            next_state, reward, done, balance, tick_count, _ = env.step(action)
+            next_state, reward, done, info = env.step(action)
             reward = reward if not done else 0
             next_state = np.reshape(next_state, [agent.num_vectors,state_size])
             next_state = np.expand_dims(next_state, axis=0)
