@@ -74,6 +74,8 @@ def compute_fitness(genome, net, episodes, min_reward, max_reward):
         for row, dr in zip(data, dr):
             observation = row[:8]
             action = int(row[8])
+            print("observation: {0!r}".format(observation))
+            print("f_observation: {0!r}".format(nn_format(observation)))
             output = net.activate(nn_format(observation))
             reward_error.append(float((output[action] - dr) ** 2))
 
