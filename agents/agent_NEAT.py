@@ -179,7 +179,7 @@ def run():
     #pop.add_reporter(neat.StdOutReporter(True))
     # Checkpoint every 25 generations or 900 seconds.
     rep = neat.Checkpointer(25, 900)
-    pop.add_reporter(rep)
+    #pop.add_reporter(rep)
 
     # Run until the winner from a generation is able to solve the environment
     # or the user interrupts the process.
