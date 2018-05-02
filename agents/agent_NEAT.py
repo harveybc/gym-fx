@@ -204,7 +204,7 @@ def run():
             print('\ncurrent_block_performance =', cont['result'][0]['current_block_performance'])
             print('\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
             # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness
-            best_fitness = [c.fitness for c in stats.most_fit_genomes]
+            best_fitness = gen_best.fitness
             print('\nbest_fitness =', best_fitness)
             if cont['result'][0]['current_block_performance'] > best_fitness:
                 # hace request GetParameter(id)
