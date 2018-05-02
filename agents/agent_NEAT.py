@@ -191,8 +191,8 @@ def run():
                 # Hace request de getLastParam(process_hash,use_current) a syn
             cont_s = urllib.request.urlopen("http://192.168.0.241:3338/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph").read()
             cont = json.loads(cont_s)
-            print('\ncont_s =', cont_s)
-            print('\ncont =', cont)
+            print('\ncurrent_block_performance =', cont['result'][0]['current_block_performance'])
+            print('\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
             # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness
                 # descarga el checkpoint del link de la respuesta si cont.parameter_link
                 #try:
