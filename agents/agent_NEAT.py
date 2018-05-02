@@ -219,8 +219,9 @@ def run():
             # Si el perf reportado es menor pero no igual al de pop1
             if cont['result'][0]['current_block_performance'] < best_fitness:
                 # Guarda checkpoint del mejor genoma y lo copia a ubicación para servir vía syn.
+
                 # Hace request de CreateParam a syn
-                form_data = {"process_hash":"ph","app_hash":"ah","parameter_link":"","parameter_text":"","parameter_blob":"","validation_hash":"","hash":"h","performance":"-1490","redir":"1","username":"harveybc","pass_hash":"$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q"}
+                form_data = {"process_hash":"ph","app_hash":"ah","parameter_link":"","parameter_text":"","parameter_blob":"","validation_hash":"","hash":"h","performance":best_fitness,"redir":"1","username":"harveybc","pass_hash":"$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q"}
                 res = requests.post(
                     "http://192.168.0.241:3338/parameters?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph", data=form_data)
                 res_json = res.json()
