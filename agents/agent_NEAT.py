@@ -176,7 +176,7 @@ def run():
     pop = neat.Population(config)
     stats = neat.StatisticsReporter()
     pop.add_reporter(stats)
-    pop.add_reporter(neat.StdOutReporter(True))
+    #pop.add_reporter(neat.StdOutReporter(True))
     # Checkpoint every 25 generations or 900 seconds.
     rep = neat.Checkpointer(25, 900)
     pop.add_reporter(rep)
