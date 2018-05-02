@@ -176,15 +176,16 @@ def run():
     pop = neat.Population(config)
     stats = neat.StatisticsReporter()
     pop.add_reporter(stats)
-    #pop.add_reporter(neat.StdOutReporter(True))
+    pop.add_reporter(neat.StdOutReporter(True))
     # Checkpoint every 25 generations or 900 seconds.
     rep = neat.Checkpointer(25, 900)
-    #pop.add_reporter(rep)
+    pop.add_reporter(rep)
 
     # Run until the winner from a generation is able to solve the environment
     # or the user interrupts the process.
     ec = PooledErrorCompute()
     while 1:
+        temp=0
         try:
             gen_best = pop.run(ec.evaluate_genomes, 5)
             #print(gen_best)
@@ -219,9 +220,10 @@ def run():
             # Si el perf reportado es menor pero no igual al de pop1
             if cont['result'][0]['current_block_performance'] < best_fitness:
                 # Guarda checkpoint del mejor genoma y lo copia a ubicación para servir vía syn.
-
+                rep.save_checkpoint(config,pop,neat.DefaultSpeciesSet,rep.current_generation)
+                filename = '{0}{1}'.format(rep.filename_prefix,rep.current_generation)
                 # Hace request de CreateParam a syn
-                form_data = {"process_hash":"ph","app_hash":"ah","parameter_link":"","parameter_text":"","parameter_blob":"","validation_hash":"","hash":"h","performance":best_fitness,"redir":"1","username":"harveybc","pass_hash":"$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q"}
+                form_data = {"process_hash":"ph","app_hash":"ah","parameter_link":"http://192.168.0.241/genoms/"+filename,"parameter_text":"","parameter_blob":"","validation_hash":"","hash":"h","performance":best_fitness,"redir":"1","username":"harveybc","pass_hash":"$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q"}
                 res = requests.post(
                     "http://192.168.0.241:3338/parameters?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph", data=form_data)
                 res_json = res.json()
