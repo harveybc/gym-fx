@@ -192,7 +192,7 @@ def run():
             cont_s = urllib.request.urlopen("http://example.com/foo/bar").read()
             cont = json.loads(cont_s)
             print('\ncont_s =', cont_s)
-             print('\ncont =', cont)
+            print('\ncont =', cont)
             # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness
                 # descarga el checkpoint del link de la respuesta si cont.parameter_link
                 #try:
