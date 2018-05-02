@@ -189,7 +189,7 @@ def run():
             # TODO: FUNCION DE SINCRONIZACION CON SINGULARITY
             # Lee en pop2 el último checkpoint desde syn
                 # Hace request de getLastParam(process_hash,use_current) a syn
-            cont_s = urllib.request.urlopen("http://example.com/foo/bar").read()
+            cont_s = urllib.request.urlopen("http://192.168.0.241:3338/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph").read()
             cont = json.loads(cont_s)
             print('\ncont_s =', cont_s)
             print('\ncont =', cont)
