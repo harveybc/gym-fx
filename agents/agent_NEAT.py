@@ -1,11 +1,11 @@
-
+# Modified version of the Lander example included with neat-python for forex_env
 from __future__ import print_function
-
+# Imports
 import gym
 import gym.wrappers
 import gym_forex
+import json
 import matplotlib.pyplot as plt
-
 import multiprocessing
 import neat
 import numpy as np
@@ -13,19 +13,19 @@ import os
 import pickle
 import random
 import time
-
+import urllib.request
 import visualize
-
+# Multi-core machine support
 NUM_CORES = 1
-
+# Make with the Name of the environment defined in gym_forex/__init__.py
 env = gym.make('Forex-v0')
-
+# Shows the action and observation space from the forex_env, its observation space is
+# bidimentional, so it has to be converted to an array with nn_format() for direct ANN feed. (Not if evaluating with external DQN)
 print("action space: {0!r}".format(env.action_space))
 print("observation space: {0!r}".format(env.observation_space))
-
 env = gym.wrappers.Monitor(env, 'results', force=True)
 
-
+# LanderGenome class
 class LanderGenome(neat.DefaultGenome):
     def __init__(self, key):
         super().__init__(key)
@@ -53,6 +53,7 @@ class LanderGenome(neat.DefaultGenome):
         return "Reward discount: {0}\n{1}".format(self.discount,
                                                   super().__str__())
 
+# converts a bidimentional matrix to an one-dimention array
 def nn_format(obs):
     output=[]
     for arr in obs:
@@ -188,10 +189,17 @@ def run():
             # TODO: FUNCION DE SINCRONIZACION CON SINGULARITY
             # Lee en pop2 el último checkpoint desde syn
                 # Hace request de getLastParam(process_hash,use_current) a syn
-                
-                # descarga el checkpoint del link de la respuesta
-                # carga checkpoint descargado en nueva población pop2
+                cont_s = urllib.request.urlopen("http://example.com/foo/bar").read()
+                cont = json.loads(cont_s)
+                print('\ncont_s =', cont_s)
+                print('\ncont =', cont)
             # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness
+                # descarga el checkpoint del link de la respuesta si cont.parameter_link
+                try:
+                    cont['result'][0]['parameter_link']
+                except NameError:
+                    pass  # val does not exist at all
+                # carga checkpoint descargado en nueva población pop2
                 # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2
             # Si No
                 # Hace request de CreateParam a syn
