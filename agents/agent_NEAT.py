@@ -177,13 +177,26 @@ def run():
     pop.add_reporter(stats)
     pop.add_reporter(neat.StdOutReporter(True))
     # Checkpoint every 25 generations or 900 seconds.
-    pop.add_reporter(neat.Checkpointer(25, 900))
+    rep = neat.Checkpointer(25, 900)
+    pop.add_reporter(rep)
 
     # Run until the winner from a generation is able to solve the environment
     # or the user interrupts the process.
     ec = PooledErrorCompute()
     while 1:
         try:
+            # TODO: FUNCION DE SINCRONIZACION CON SINGULARITY
+            # Lee en pop2 el último checkpoint desde syn
+                # Hace request de getLastParam(process_hash,use_current) a syn
+                
+                # descarga el checkpoint del link de la respuesta
+                # carga checkpoint descargado en nueva población pop2
+            # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness
+                # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2
+            # Si No
+                # Hace request de CreateParam a syn
+
+
             gen_best = pop.run(ec.evaluate_genomes, 5)
 
             #print(gen_best)
