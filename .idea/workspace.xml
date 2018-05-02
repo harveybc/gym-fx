@@ -38,8 +38,8 @@
       <file leaf-file-name="agent_NEAT.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="612">
-              <caret line="225" column="108" lean-forward="false" selection-start-line="225" selection-start-column="108" selection-end-line="225" selection-end-column="108" />
+            <state relative-caret-position="529">
+              <caret line="226" column="128" lean-forward="false" selection-start-line="226" selection-start-column="128" selection-end-line="226" selection-end-column="128" />
               <folding>
                 <element signature="e#81#118#0" expanded="true" />
               </folding>
@@ -196,7 +196,6 @@
   </component>
   <component name="ToolWindowManager">
     <frame x="30" y="37" width="1718" height="951" extended-state="0" />
-    <editor active="true" />
     <layout>
       <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.1280846" sideWeight="0.5" order="1" side_tool="false" content_ui="combo" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="10" side_tool="false" content_ui="tabs" />
@@ -461,8 +460,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="612">
-          <caret line="225" column="108" lean-forward="false" selection-start-line="225" selection-start-column="108" selection-end-line="225" selection-end-column="108" />
+        <state relative-caret-position="529">
+          <caret line="226" column="128" lean-forward="false" selection-start-line="226" selection-start-column="128" selection-end-line="226" selection-end-column="128" />
           <folding>
             <element signature="e#81#118#0" expanded="true" />
           </folding>

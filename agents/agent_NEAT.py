@@ -176,6 +176,10 @@ def run():
     pop = neat.Population(config)
     stats = neat.StatisticsReporter()
     pop.add_reporter(stats)
+    pop2 = neat.Population(config)
+    stats2 = neat.StatisticsReporter()
+    pop.add_reporter(stats)
+    pop2.add_reporter(stats2)
     pop.add_reporter(neat.StdOutReporter(True))
     # Checkpoint every 25 generations or 900 seconds.
     rep = neat.Checkpointer(25, 900)
@@ -209,14 +213,18 @@ def run():
             print('\nbest_fitness =', best_fitness)
             if cont['result'][0]['current_block_performance'] > best_fitness:
                 # hace request GetParameter(id)
+                res_p = requests.get(
+                    "http://192.168.0.241:3338/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
+                cont_param = res_p.json()
                 # descarga el checkpoint del link de la respuesta si cont.parameter_link
-                print('\nDescargar ', cont['result'][0]['last_optimum_id'])
-            # try:
-            #    cont['result'][0]['parameter_link']
-            # except NameError:
-            #    pass  # val does not exist at all
-            # carga checkpoint descargado en nueva población pop2
-            # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2
+                checkpoint_data = requests.get(cont_param['result'][0]['parameter_link']).content
+                with open('remote_checkpoint', 'wb') as handler:
+                    handler.write(checkpoint_data)
+                # carga checkpoint descargado en nueva población pop2
+                pop2 = rep.restore_checkpoint('remote_checkpoint')
+                # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2
+
+                # TODO: Consultar posición o id de genomacampeon de cada especie y el peor de cada especie, hacer el intercambio
             # Si el perf reportado es menor pero no igual al de pop1
             if cont['result'][0]['current_block_performance'] < best_fitness:
                 # Guarda checkpoint del mejor genoma y lo copia a ubicación para servir vía syn.
@@ -224,6 +232,7 @@ def run():
                 filename = '{0}{1}'.format(rep.filename_prefix,rep.current_generation)
                 # Hace request de CreateParam a syn
                 form_data = {"process_hash":"ph","app_hash":"ah","parameter_link":"http://192.168.0.241:3338/genoms/"+filename,"parameter_text":"","parameter_blob":"","validation_hash":"","hash":"h","performance":best_fitness,"redir":"1","username":"harveybc","pass_hash":"$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q"}
+                # TODO: COLOCAR DIRECCION CONFIGURABLE
                 res = requests.post(
                     "http://192.168.0.241:3338/parameters?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph", data=form_data)
                 res_json = res.json()
