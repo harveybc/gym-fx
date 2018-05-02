@@ -223,7 +223,7 @@ def run():
                 rep.save_checkpoint(config,pop,neat.DefaultSpeciesSet,rep.current_generation)
                 filename = '{0}{1}'.format(rep.filename_prefix,rep.current_generation)
                 # Hace request de CreateParam a syn
-                form_data = {"process_hash":"ph","app_hash":"ah","parameter_link":"http://192.168.0.241/genoms/"+filename,"parameter_text":"","parameter_blob":"","validation_hash":"","hash":"h","performance":best_fitness,"redir":"1","username":"harveybc","pass_hash":"$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q"}
+                form_data = {"process_hash":"ph","app_hash":"ah","parameter_link":"http://192.168.0.241:3338/genoms/"+filename,"parameter_text":"","parameter_blob":"","validation_hash":"","hash":"h","performance":best_fitness,"redir":"1","username":"harveybc","pass_hash":"$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q"}
                 res = requests.post(
                     "http://192.168.0.241:3338/parameters?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph", data=form_data)
                 res_json = res.json()
