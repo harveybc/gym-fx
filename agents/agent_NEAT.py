@@ -13,7 +13,7 @@ import os
 import pickle
 import random
 import time
-import urllib.request
+import requests
 import visualize
 # Multi-core machine support
 NUM_CORES = 1
@@ -186,38 +186,44 @@ def run():
     ec = PooledErrorCompute()
     while 1:
         try:
-            # TODO: FUNCION DE SINCRONIZACION CON SINGULARITY
-            # Lee en pop2 el último checkpoint desde syn
-                # Hace request de getLastParam(process_hash,use_current) a syn
-            cont_s = urllib.request.urlopen("http://192.168.0.241:3338/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph").read()
-            cont = json.loads(cont_s)
-            print('\ncurrent_block_performance =', cont['result'][0]['current_block_performance'])
-            print('\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
-            # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness
-                # descarga el checkpoint del link de la respuesta si cont.parameter_link
-                #try:
-                #    cont['result'][0]['parameter_link']
-                #except NameError:
-                #    pass  # val does not exist at all
-                # carga checkpoint descargado en nueva población pop2
-                # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2
-            # Si No
-                # Hace request de CreateParam a syn
-
-
             gen_best = pop.run(ec.evaluate_genomes, 5)
-
             #print(gen_best)
-
             visualize.plot_stats(stats, ylog=False, view=False, filename="fitness.svg")
-
             plt.plot(ec.episode_score, 'g-', label='score')
             plt.plot(ec.episode_length, 'b-', label='length')
             plt.grid()
             plt.legend(loc='best')
             plt.savefig("scores.svg")
             plt.close()
-
+            # TODO: FUNCION DE SINCRONIZACION CON SINGULARITY
+            # Lee en pop2 el último checkpoint desde syn
+            # Hace request de getLastParam(process_hash,use_current) a syn
+            res = requests.get(
+                "http://192.168.0.241:3338/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
+            cont = res.json()
+            print('\ncurrent_block_performance =', cont['result'][0]['current_block_performance'])
+            print('\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
+            # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness
+            best_fitness = [c.fitness for c in stats.most_fit_genomes]
+            print('\nbest_fitness =', best_fitness)
+            if cont['result'][0]['current_block_performance'] > best_fitness:
+                # hace request GetParameter(id)
+                # descarga el checkpoint del link de la respuesta si cont.parameter_link
+                print('\nDescargar ', cont['result'][0]['last_optimum_id'])
+            # try:
+            #    cont['result'][0]['parameter_link']
+            # except NameError:
+            #    pass  # val does not exist at all
+            # carga checkpoint descargado en nueva población pop2
+            # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2
+            # Si el perf reportado es menor pero no igual al de pop1
+            if cont['result'][0]['current_block_performance'] < best_fitness:
+                # Guarda checkpoint del mejor genoma y lo copia a ubicación para servir vía syn.
+                # Hace request de CreateParam a syn
+                form_data = {"process_hash":"ph","app_hash":"ah","parameter_link":"","parameter_text":"","parameter_blob":"","validation_hash":"","hash":"h","performance":"-1490","redir":"1","username":"harveybc","pass_hash":"$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q"}
+                res = requests.post(
+                    "http://192.168.0.241:3338/parameters?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph", data=form_data)
+                res_json = res.json()
             mfs = sum(stats.get_fitness_mean()[-5:]) / 5.0
             print("Average mean fitness over last 5 generations: {0}".format(mfs))
 
@@ -261,6 +267,7 @@ def run():
                 if avg_score < 200:
                     solved = False
                     break
+
 
             if solved:
                 print("Solved.")
