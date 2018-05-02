@@ -189,16 +189,16 @@ def run():
             # TODO: FUNCION DE SINCRONIZACION CON SINGULARITY
             # Lee en pop2 el último checkpoint desde syn
                 # Hace request de getLastParam(process_hash,use_current) a syn
-                cont_s = urllib.request.urlopen("http://example.com/foo/bar").read()
-                cont = json.loads(cont_s)
-                print('\ncont_s =', cont_s)
-                print('\ncont =', cont)
+            cont_s = urllib.request.urlopen("http://example.com/foo/bar").read()
+            cont = json.loads(cont_s)
+            print('\ncont_s =', cont_s)
+             print('\ncont =', cont)
             # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness
                 # descarga el checkpoint del link de la respuesta si cont.parameter_link
-                try:
-                    cont['result'][0]['parameter_link']
-                except NameError:
-                    pass  # val does not exist at all
+                #try:
+                #    cont['result'][0]['parameter_link']
+                #except NameError:
+                #    pass  # val does not exist at all
                 # carga checkpoint descargado en nueva población pop2
                 # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2
             # Si No
