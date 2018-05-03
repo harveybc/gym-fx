@@ -209,6 +209,7 @@ def run():
             cont = res.json()
             print('\ncurrent_block_performance =', cont['result'][0]['current_block_performance'])
             print('\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
+            last_optimum_id = cont['result'][0]['last_optimum_id']
             # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness
             best_fitness = gen_best.fitness
             # imprimir pop
@@ -219,7 +220,7 @@ def run():
             if cont['result'][0]['current_block_performance'] > best_fitness:
                 # hace request GetParameter(id)
                 res_p = requests.get(
-                    "http://192.168.0.241:3338/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
+                    "http://192.168.0.241:3338/parameters/"+last_optimum_id+"?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
                 cont_param = res_p.json()
                 # descarga el checkpoint del link de la respuesta si cont.parameter_link
                 print('\ncont_param =', cont_param)
