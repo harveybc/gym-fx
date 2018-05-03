@@ -203,7 +203,7 @@ def run():
             plt.close()
             # TODO: FUNCION DE SINCRONIZACION CON SINGULARITY
             # Lee en pop2 el último checkpoint desde syn
-            # Hace request de getLastParam(process_hash,use_current) a syn
+            # Hace request de getLastParam(process_hash,use_current) a syn TODO: HACER PROCESS CONFIGURABLE Y POR HASH no por id
             res = requests.get(
                 "http://192.168.0.241:3338/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
             cont = res.json()
@@ -220,7 +220,7 @@ def run():
             if cont['result'][0]['current_block_performance'] > best_fitness:
                 # hace request GetParameter(id)
                 res_p = requests.get(
-                    "http://192.168.0.241:3338/parameters/"+last_optimum_id+"?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
+                    "http://192.168.0.241:3338/parameters/"+str(last_optimum_id)+"?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
                 cont_param = res_p.json()
                 # descarga el checkpoint del link de la respuesta si cont.parameter_link
                 print('\ncont_param =', cont_param)
