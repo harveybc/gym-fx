@@ -213,7 +213,7 @@ def run():
             # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness
             best_fitness = gen_best.fitness
             # imprimir pop
-            print('\npop=', pop.population)
+            print('\npop.population=', pop.population)
             # imprimir pop
             print('\npop.bestgen=', pop.best_genome)
             print('\nbest_fitness =', best_fitness)
@@ -231,17 +231,23 @@ def run():
                     # carga checkpoint descargado en nueva población pop2
                     pop2 = rep.restore_checkpoint('remote_checkpoint')
                     # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2 como http://neo.lcc.uma.es/Articles/WRH98.pdf
-                    # PERO para test se selecciona el que tenga menos distancia al pop2.champion en los pop1
+                    # busca el champion de la población remota
+                    best = None
+                    for g in itervalues(pop2.population):
+                        if best is None or g.fitness > best.fitness:
+                            best = g
+                    print('\nbest.key =', best.key)
+                    # se selecciona el que tenga menos distancia al pop2.champion en los pop1
                     closer = None
                     min_dist= None
                     for g in itervalues(pop.population):
-                        print('\nparameter_text =', pop2.population)
-                        dist=g.distance(pop2.population[cont_param['result'][0]['parameter_text']], config)
+                        dist=g.distance(best, config)
                         if closer is None or min_dist is None or dist<min_dist:
                             closer = g
                             min_dist=dist
                     # reemplazar el champ de pop2 en pop1
-                    pop.population[closer.key]=pop2.best_genome
+                     pop.population.update({closer.key : best})
+
             # Si el perf reportado es menor pero no igual al de pop1
             if cont['result'][0]['current_block_performance'] < best_fitness:
                 # Guarda checkpoint del mejor genoma y lo copia a ubicación para servir vía syn.
