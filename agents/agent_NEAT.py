@@ -211,6 +211,10 @@ def run():
             print('\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
             # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness
             best_fitness = gen_best.fitness
+            # imprimir pop
+            print('\npop=', pop)
+            # imprimir pop
+            print('\npop.bestgen=', pop.best_genome)
             print('\nbest_fitness =', best_fitness)
             if cont['result'][0]['current_block_performance'] > best_fitness:
                 # hace request GetParameter(id)
@@ -230,8 +234,7 @@ def run():
                     if worst is None or g.fitness < worst.fitness:
                         worst = g
                 # reemplazar el champ de pop2 en pop1
-                #imprimir pop
-                print('\npop=',pop)
+
                 # TODO: Consultar posición o id de genomacampeon de cada especie y el peor de cada especie, hacer el intercambio
             # Si el perf reportado es menor pero no igual al de pop1
             if cont['result'][0]['current_block_performance'] < best_fitness:
