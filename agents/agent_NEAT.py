@@ -233,7 +233,7 @@ def run():
                     # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2 como http://neo.lcc.uma.es/Articles/WRH98.pdf
                     # busca el champion de la población remota
                     best = None
-                    print('\npop2.population=', pop2.population)
+                    print('\npop2=', pop2)
                     for g in itervalues(pop2.population):
                         if best is None or g.fitness > best.fitness:
                             best = g
