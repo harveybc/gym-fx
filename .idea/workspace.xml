@@ -38,7 +38,7 @@
       <file leaf-file-name="agent_NEAT.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="371">
+            <state relative-caret-position="431">
               <caret line="234" column="33" lean-forward="true" selection-start-line="234" selection-start-column="33" selection-end-line="234" selection-end-column="33" />
               <folding>
                 <element signature="e#81#118#0" expanded="true" />
@@ -92,6 +92,7 @@
       <find>generation</find>
       <find>species</find>
       <find>neat-check</find>
+      <find>config</find>
     </findStrings>
   </component>
   <component name="Git.Settings">
@@ -449,7 +450,7 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="371">
+        <state relative-caret-position="431">
           <caret line="234" column="33" lean-forward="true" selection-start-line="234" selection-start-column="33" selection-end-line="234" selection-end-column="33" />
           <folding>
             <element signature="e#81#118#0" expanded="true" />

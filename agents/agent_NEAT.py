@@ -235,7 +235,7 @@ def run():
                     closer = None
                     min_dist= None
                     for g in itervalues(pop.population):
-                        dist=g.distance(pop2.best_genome)
+                        dist=g.distance(pop2.best_genome, config)
                         if closer is None or min_dist is None or dist<min_dist:
                             closer = g
                             min_dist=dist
