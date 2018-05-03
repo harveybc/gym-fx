@@ -229,13 +229,13 @@ def run():
                     with open('remote_checkpoint', 'wb') as handler:
                         handler.write(checkpoint_data)
                     pop2=pop
-                    print('\npop2_before restore =', pop2)
+                    print('\npop2_before restore =', pop2.population)
                     # carga checkpoint descargado en nueva población pop2
                     pop2 = rep.restore_checkpoint('remote_checkpoint')
                     # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2 como http://neo.lcc.uma.es/Articles/WRH98.pdf
                     # busca el champion de la población remota
                     best = None
-                    print('\npop2=', pop2)
+                    print('\npop2=', pop2.population)
                     best = pop2.run(ec.evaluate_genomes, 5)
                     print('\nbest.key =', best.key)
                     # se selecciona el que tenga menos distancia al pop2.champion en los pop1
