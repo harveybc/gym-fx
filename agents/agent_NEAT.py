@@ -222,6 +222,7 @@ def run():
                     "http://192.168.0.241:3338/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
                 cont_param = res_p.json()
                 # descarga el checkpoint del link de la respuesta si cont.parameter_link
+                print('\ncont_param =', cont_param)
                 checkpoint_data = requests.get(cont_param['result'][0]['parameter_link']).content
                 with open('remote_checkpoint', 'wb') as handler:
                     handler.write(checkpoint_data)
