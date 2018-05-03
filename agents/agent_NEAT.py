@@ -246,7 +246,7 @@ def run():
                             closer = g
                             min_dist=dist
                     # reemplazar el champ de pop2 en pop1
-                    pop.population.update({closer.key : best})
+                    pop.population[closer.key]=best
 
             # Si el perf reportado es menor pero no igual al de pop1
             if cont['result'][0]['current_block_performance'] < best_fitness:
