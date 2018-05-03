@@ -228,13 +228,16 @@ def run():
                 # carga checkpoint descargado en nueva población pop2
                 pop2 = rep.restore_checkpoint('remote_checkpoint')
                 # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2 como http://neo.lcc.uma.es/Articles/WRH98.pdf
-                # seleccionar el que tenga menos fitness entre los pop1
-                worst = None
+                # PERO para test se selecciona el que tenga menos distancia al pop2.champion en los pop1
+                closer = None
+                min_dist= None
                 for g in itervalues(pop.population):
-                    if worst is None or g.fitness < worst.fitness:
-                        worst = g
+                    dist=g.distance(pop2.best_genome)
+                    if closer is None or min_dist is None or dist<min_dist:
+                        closer = g
+                        min_dist=dist
                 # reemplazar el champ de pop2 en pop1
-
+                pop.population[g['Key']]=pop2.best_genome
                 # TODO: Consultar posición o id de genomacampeon de cada especie y el peor de cada especie, hacer el intercambio
             # Si el perf reportado es menor pero no igual al de pop1
             if cont['result'][0]['current_block_performance'] < best_fitness:
