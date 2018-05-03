@@ -235,6 +235,7 @@ def run():
                     best = None
                     print('\npop2=', pop2)
                     best = pop.run(ec.evaluate_genomes, 5)
+                    print('\npop2=', pop2)
                     print('\nbest.key =', best.key)
                     # se selecciona el que tenga menos distancia al pop2.champion en los pop1
                     closer = None
