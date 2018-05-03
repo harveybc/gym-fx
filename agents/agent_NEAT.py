@@ -234,9 +234,7 @@ def run():
                     # busca el champion de la población remota
                     best = None
                     print('\npop2=', pop2)
-                    for g in itervalues(pop2.population):
-                        if best is None or g.fitness > best.fitness:
-                            best = g
+                    best = pop.run(ec.evaluate_genomes, 5)
                     print('\nbest.key =', best.key)
                     # se selecciona el que tenga menos distancia al pop2.champion en los pop1
                     closer = None
