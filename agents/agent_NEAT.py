@@ -212,7 +212,7 @@ def run():
             # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness
             best_fitness = gen_best.fitness
             # imprimir pop
-            print('\npop=', pop)
+            print('\npop=', pop.population)
             # imprimir pop
             print('\npop.bestgen=', pop.best_genome)
             print('\nbest_fitness =', best_fitness)
