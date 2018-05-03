@@ -235,7 +235,7 @@ def run():
                     closer = None
                     min_dist= None
                     for g in itervalues(pop.population):
-                        print('\nparameter_text =', pop2.population[cont_param['result'][0]['parameter_text']])
+                        print('\nparameter_text =', pop2.population)
                         dist=g.distance(pop2.population[cont_param['result'][0]['parameter_text']], config)
                         if closer is None or min_dist is None or dist<min_dist:
                             closer = g
