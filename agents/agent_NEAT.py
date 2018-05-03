@@ -241,14 +241,14 @@ def run():
                             closer = g
                             min_dist=dist
                     # reemplazar el champ de pop2 en pop1
-                    pop.population[g['Key']]=pop2.best_genome
+                    pop.population[closer.Key]=pop2.best_genome
             # Si el perf reportado es menor pero no igual al de pop1
             if cont['result'][0]['current_block_performance'] < best_fitness:
                 # Guarda checkpoint del mejor genoma y lo copia a ubicación para servir vía syn.
                 rep.save_checkpoint(config,pop,neat.DefaultSpeciesSet,rep.current_generation)
                 filename = '{0}{1}'.format(rep.filename_prefix,rep.current_generation)
                 # Hace request de CreateParam a syn
-                form_data = {"process_hash":"ph","app_hash":"ah","parameter_link":"http://192.168.0.241:3338/genoms/"+filename,"parameter_text":pop.best_genome['Key'],"parameter_blob":"","validation_hash":"","hash":"h","performance":best_fitness,"redir":"1","username":"harveybc","pass_hash":"$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q"}
+                form_data = {"process_hash":"ph","app_hash":"ah","parameter_link":"http://192.168.0.241:3338/genoms/"+filename,"parameter_text":pop.best_genome.Key,"parameter_blob":"","validation_hash":"","hash":"h","performance":best_fitness,"redir":"1","username":"harveybc","pass_hash":"$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q"}
                 # TODO: COLOCAR DIRECCION CONFIGURABLE
                 res = requests.post(
                     "http://192.168.0.241:3338/parameters?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph", data=form_data)
