@@ -15,6 +15,7 @@ import random
 import time
 import requests
 import visualize
+from neat.six_util import iteritems, itervalues
 # Multi-core machine support
 NUM_CORES = 1
 # Make with the Name of the environment defined in gym_forex/__init__.py
@@ -222,8 +223,15 @@ def run():
                     handler.write(checkpoint_data)
                 # carga checkpoint descargado en nueva población pop2
                 pop2 = rep.restore_checkpoint('remote_checkpoint')
-                # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2
-
+                # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2 como http://neo.lcc.uma.es/Articles/WRH98.pdf
+                # seleccionar el que tenga menos fitness entre los pop1
+                worst = None
+                for g in itervalues(pop.population):
+                    if worst is None or g.fitness < worst.fitness:
+                        worst = g
+                # reemplazar el champ de pop2 en pop1
+                #imprimir pop
+                print('\npop=',pop)
                 # TODO: Consultar posición o id de genomacampeon de cada especie y el peor de cada especie, hacer el intercambio
             # Si el perf reportado es menor pero no igual al de pop1
             if cont['result'][0]['current_block_performance'] < best_fitness:
