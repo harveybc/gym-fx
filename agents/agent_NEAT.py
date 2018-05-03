@@ -228,6 +228,7 @@ def run():
                     checkpoint_data = requests.get(cont_param['result'][0]['parameter_link']).content
                     with open('remote_checkpoint', 'wb') as handler:
                         handler.write(checkpoint_data)
+                    print('\npop2_before restore =', pop2)
                     # carga checkpoint descargado en nueva población pop2
                     pop2 = rep.restore_checkpoint('remote_checkpoint')
                     # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2 como http://neo.lcc.uma.es/Articles/WRH98.pdf
