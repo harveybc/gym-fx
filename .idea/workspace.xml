@@ -38,8 +38,8 @@
       <file leaf-file-name="agent_NEAT.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="323">
-              <caret line="238" column="57" lean-forward="false" selection-start-line="238" selection-start-column="45" selection-end-line="238" selection-end-column="57" />
+            <state relative-caret-position="561">
+              <caret line="246" column="59" lean-forward="false" selection-start-line="246" selection-start-column="59" selection-end-line="246" selection-end-column="59" />
               <folding>
                 <element signature="e#81#118#0" expanded="true" />
               </folding>
@@ -117,7 +117,7 @@
     <option name="x" value="25" />
     <option name="y" value="55" />
     <option name="width" value="1016" />
-    <option name="height" value="899" />
+    <option name="height" value="867" />
   </component>
   <component name="ProjectLevelVcsManager">
     <ConfirmationsSetting value="1" id="Add" />
@@ -196,7 +196,7 @@
     <servers />
   </component>
   <component name="ToolWindowManager">
-    <frame x="25" y="55" width="1016" height="899" extended-state="0" />
+    <frame x="25" y="55" width="1016" height="867" extended-state="0" />
     <editor active="true" />
     <layout>
       <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.157" sideWeight="0.5" order="1" side_tool="false" content_ui="combo" />
@@ -451,8 +451,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="323">
-          <caret line="238" column="57" lean-forward="false" selection-start-line="238" selection-start-column="45" selection-end-line="238" selection-end-column="57" />
+        <state relative-caret-position="561">
+          <caret line="246" column="59" lean-forward="false" selection-start-line="246" selection-start-column="59" selection-end-line="246" selection-end-column="59" />
           <folding>
             <element signature="e#81#118#0" expanded="true" />
           </folding>
