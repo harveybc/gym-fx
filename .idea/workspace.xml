@@ -2,7 +2,6 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="acda6e68-7e0a-401e-9578-a7679b1ac0bf" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agents/agent_NEAT.py" afterPath="$PROJECT_DIR$/agents/agent_NEAT.py" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agents/config" afterPath="$PROJECT_DIR$/agents/config" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -39,8 +38,8 @@
       <file leaf-file-name="agent_NEAT.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="136">
-              <caret line="305" column="28" lean-forward="true" selection-start-line="305" selection-start-column="28" selection-end-line="305" selection-end-column="28" />
+            <state relative-caret-position="153">
+              <caret line="303" column="14" lean-forward="false" selection-start-line="303" selection-start-column="14" selection-end-line="303" selection-end-column="14" />
               <folding>
                 <element signature="e#81#118#0" expanded="true" />
               </folding>
@@ -113,8 +112,8 @@
         <option value="$PROJECT_DIR$/gym_forex/__init__.py" />
         <option value="$PROJECT_DIR$/gym_forex/envs/forex_env.py" />
         <option value="$PROJECT_DIR$/agents/visualize.py" />
-        <option value="$PROJECT_DIR$/agents/config" />
         <option value="$PROJECT_DIR$/agents/agent_NEAT.py" />
+        <option value="$PROJECT_DIR$/agents/config" />
       </list>
     </option>
   </component>
@@ -448,8 +447,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="136">
-          <caret line="305" column="28" lean-forward="true" selection-start-line="305" selection-start-column="28" selection-end-line="305" selection-end-column="28" />
+        <state relative-caret-position="153">
+          <caret line="303" column="14" lean-forward="false" selection-start-line="303" selection-start-column="14" selection-end-line="303" selection-end-column="14" />
           <folding>
             <element signature="e#81#118#0" expanded="true" />
           </folding>
