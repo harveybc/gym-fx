@@ -192,6 +192,79 @@ def run():
     while 1:
         temp=0
         try:
+            if rep.current_generation > 1:
+                # TODO: FUNCION DE SINCRONIZACION CON SINGULARITY
+                # Lee en pop2 el último checkpoint desde syn
+                # Hace request de getLastParam(process_hash,use_current) a syn TODO: HACER PROCESS CONFIGURABLE Y POR HASH no por id
+                res = requests.get(
+                    "http://192.168.0.241:3338/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
+                cont = res.json()
+                print('\ncurrent_block_performance =', cont['result'][0]['current_block_performance'])
+                print('\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
+                last_optimum_id = cont['result'][0]['last_optimum_id']
+                # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness
+                best_fitness = gen_best.fitness
+                # imprimir pop
+                print('\npop.population=', pop.population)
+                # imprimir pop
+                print('\npop.bestgen=', gen_best)
+                print('\nbest_fitness =', best_fitness)
+                if cont['result'][0]['current_block_performance'] > best_fitness:
+                    # hace request GetParameter(id)
+                    res_p = requests.get(
+                        "http://192.168.0.241:3338/parameters/" + str(
+                            last_optimum_id) + "?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
+                    cont_param = res_p.json()
+                    # descarga el checkpoint del link de la respuesta si cont.parameter_link
+                    print('\ncont_param =', cont_param)
+                    if cont_param['result'][0]['parameter_link'] is not None:
+                        genom_data = requests.get(cont_param['result'][0]['parameter_link']).content
+                        with open('remote_genom', 'wb') as handler:
+                            handler.write(genom_data)
+                            handler.close()
+                        # carga genom descargado en nueva población pop2
+                        with open('remote_genom', 'rb') as f:
+                            remote_genom = pickle.load(f)
+                        # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2 como http://neo.lcc.uma.es/Articles/WRH98.pdf
+                        # se selecciona el que tenga menos distancia al pop2.champion en los pop1
+                        closer = None
+                        min_dist = None
+                        print("\ngen_best=", gen_best)
+                        print("\nremote_genom=", remote_genom)
+                        for g in itervalues(pop.population):
+                            dist = g.distance(remote_genom, config.genome_config)
+                            if closer is None or min_dist is None or dist < min_dist:
+                                closer = g
+                                min_dist = dist
+                        # reemplazar el champ de pop2 en pop1
+                        tmp_genom = remote_genom
+                        # overwrites original genome key with the replacing one
+                        tmp_genom.key = closer.key
+                        pop.population[closer.key] = tmp_genom
+                        pop.species = pop.species.speciate(config, pop.population, rep.current_generation)
+                # Si el perf reportado es menor pero no igual al de pop1
+                if cont['result'][0]['current_block_performance'] < best_fitness:
+                    # Guarda checkpoint del mejor genoma y lo copia a ubicación para servir vía syn.
+                    # rep.save_checkpoint(config,pop,neat.DefaultSpeciesSet,rep.current_generation)
+                    filename = '{0}{1}'.format("best-genome-", rep.current_generation)
+                    with open(filename, 'wb') as f:
+                        pickle.dump(gen_best, f)
+
+                    # Hace request de CreateParam a syn
+                    print('\npop.best_genome =', pop.best_genome)
+
+                    form_data = {"process_hash": "ph", "app_hash": "ah",
+                                 "parameter_link": "http://192.168.0.241:3338/genoms/" + filename,
+                                 "parameter_text": pop.best_genome.key, "parameter_blob": "", "validation_hash": "",
+                                 "hash": "h", "performance": best_fitness, "redir": "1", "username": "harveybc",
+                                 "pass_hash": "$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q"}
+                    # TODO: COLOCAR DIRECCION CONFIGURABLE
+                    res = requests.post(
+                        "http://192.168.0.241:3338/parameters?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph",
+                        data=form_data)
+                    res_json = res.json()
+                # TODO FIN: FUNCION DE SINCRONIZACION CON SINGULARITY
+
             gen_best = pop.run(ec.evaluate_genomes, 5)
             #print(gen_best)
             visualize.plot_stats(stats, ylog=False, view=False, filename="fitness.svg")
@@ -201,70 +274,7 @@ def run():
             plt.legend(loc='best')
             plt.savefig("scores.svg")
             plt.close()
-            # TODO: FUNCION DE SINCRONIZACION CON SINGULARITY
-            # Lee en pop2 el último checkpoint desde syn
-            # Hace request de getLastParam(process_hash,use_current) a syn TODO: HACER PROCESS CONFIGURABLE Y POR HASH no por id
-            res = requests.get(
-                "http://192.168.0.241:3338/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
-            cont = res.json()
-            print('\ncurrent_block_performance =', cont['result'][0]['current_block_performance'])
-            print('\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
-            last_optimum_id = cont['result'][0]['last_optimum_id']
-            # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness
-            best_fitness = gen_best.fitness
-            # imprimir pop
-            print('\npop.population=', pop.population)
-            # imprimir pop
-            print('\npop.bestgen=', gen_best)
-            print('\nbest_fitness =', best_fitness)
-            if cont['result'][0]['current_block_performance'] > best_fitness:
-                # hace request GetParameter(id)
-                res_p = requests.get(
-                    "http://192.168.0.241:3338/parameters/"+str(last_optimum_id)+"?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
-                cont_param = res_p.json()
-                # descarga el checkpoint del link de la respuesta si cont.parameter_link
-                print('\ncont_param =', cont_param)
-                if cont_param['result'][0]['parameter_link'] is not None:
-                    genom_data = requests.get(cont_param['result'][0]['parameter_link']).content
-                    with open('remote_genom', 'wb') as handler:
-                        handler.write(genom_data)
-                        handler.close()
-                    # carga genom descargado en nueva población pop2
-                    with open('remote_genom', 'rb') as f:
-                        remote_genom = pickle.load(f)
-                    # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2 como http://neo.lcc.uma.es/Articles/WRH98.pdf
-                    # se selecciona el que tenga menos distancia al pop2.champion en los pop1
-                    closer = None
-                    min_dist= None
-                    print("\ngen_best=",gen_best)
-                    print("\nremote_genom=", remote_genom)
-                    for g in itervalues(pop.population):
-                        dist=g.distance(remote_genom, config.genome_config)
-                        if closer is None or min_dist is None or dist<min_dist:
-                            closer = g
-                            min_dist=dist
-                    # reemplazar el champ de pop2 en pop1
-                    tmp_genom=remote_genom
-                    # overwrites original genome key with the replacing one
-                    tmp_genom.key=closer.key
-                    pop.population[closer.key]=tmp_genom
-                    pop.species=pop.species.speciate(config, pop.population, rep.current_generation)
-            # Si el perf reportado es menor pero no igual al de pop1
-            if cont['result'][0]['current_block_performance'] < best_fitness:
-                # Guarda checkpoint del mejor genoma y lo copia a ubicación para servir vía syn.
-                #rep.save_checkpoint(config,pop,neat.DefaultSpeciesSet,rep.current_generation)
-                filename = '{0}{1}'.format("best-genome-",rep.current_generation)
-                with open(filename, 'wb') as f:
-                    pickle.dump(gen_best, f)
 
-                # Hace request de CreateParam a syn
-                print('\npop.best_genome =', pop.best_genome)
-
-                form_data = {"process_hash":"ph","app_hash":"ah","parameter_link":"http://192.168.0.241:3338/genoms/"+filename,"parameter_text":pop.best_genome.key,"parameter_blob":"","validation_hash":"","hash":"h","performance":best_fitness,"redir":"1","username":"harveybc","pass_hash":"$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q"}
-                # TODO: COLOCAR DIRECCION CONFIGURABLE
-                res = requests.post(
-                    "http://192.168.0.241:3338/parameters?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph", data=form_data)
-                res_json = res.json()
             mfs = sum(stats.get_fitness_mean()[-5:]) / 5.0
             print("Average mean fitness over last 5 generations: {0}".format(mfs))
 
