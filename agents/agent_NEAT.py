@@ -245,9 +245,12 @@ def run():
                             min_dist=dist
                     # reemplazar el champ de pop2 en pop1
                     tmp_genom=remote_genom
+                    # overwrites original genome key with the replacing one
                     tmp_genom.key=closer.key
                     pop.population[closer.key]=tmp_genom
-
+                    # Debudgging print
+                    print("\npop.species=", pop.species)
+                    pop.species.speciate(config, pop, rep.current_generation)
             # Si el perf reportado es menor pero no igual al de pop1
             if cont['result'][0]['current_block_performance'] < best_fitness:
                 # Guarda checkpoint del mejor genoma y lo copia a ubicación para servir vía syn.

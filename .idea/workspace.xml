@@ -38,8 +38,8 @@
       <file leaf-file-name="agent_NEAT.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="371">
-              <caret line="248" column="56" lean-forward="false" selection-start-line="248" selection-start-column="56" selection-end-line="248" selection-end-column="56" />
+            <state relative-caret-position="383">
+              <caret line="255" column="41" lean-forward="true" selection-start-line="255" selection-start-column="41" selection-end-line="255" selection-end-column="41" />
               <folding>
                 <element signature="e#81#118#0" expanded="true" />
               </folding>
@@ -115,9 +115,10 @@
     </option>
   </component>
   <component name="ProjectFrameBounds">
-    <option name="x" value="25" />
+    <option name="x" value="-8" />
+    <option name="y" value="37" />
     <option name="width" value="1016" />
-    <option name="height" value="1047" />
+    <option name="height" value="876" />
   </component>
   <component name="ProjectLevelVcsManager">
     <ConfirmationsSetting value="1" id="Add" />
@@ -196,7 +197,7 @@
     <servers />
   </component>
   <component name="ToolWindowManager">
-    <frame x="25" y="0" width="1016" height="1047" extended-state="0" />
+    <frame x="-8" y="37" width="1016" height="876" extended-state="0" />
     <editor active="true" />
     <layout>
       <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.157" sideWeight="0.5" order="1" side_tool="false" content_ui="combo" />
@@ -451,8 +452,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="371">
-          <caret line="248" column="56" lean-forward="false" selection-start-line="248" selection-start-column="56" selection-end-line="248" selection-end-column="56" />
+        <state relative-caret-position="383">
+          <caret line="255" column="41" lean-forward="true" selection-start-line="255" selection-start-column="41" selection-end-line="255" selection-end-column="41" />
           <folding>
             <element signature="e#81#118#0" expanded="true" />
           </folding>
