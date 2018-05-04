@@ -1,11 +1,11 @@
 # neat-python configuration for the Forex-v0 environment on OpenAI Gym
 
 [NEAT]
-pop_size              = 15
+pop_size              = 100
 # Note: the fitness threshold will never be reached because
 # we are controlling the termination ourselves based on simulation performance.
 fitness_criterion     = max
-fitness_threshold     = 1000.0
+fitness_threshold     = 10000.0
 reset_on_extinction   = 0
 
 [LanderGenome]
