@@ -303,7 +303,7 @@ def run():
 
             solved = True
             best_scores = []
-            for k in range(100):
+            for k in range(10):
                 observation = env.reset()
                 score = 0
                 step = 0
