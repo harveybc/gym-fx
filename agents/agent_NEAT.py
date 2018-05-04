@@ -215,7 +215,7 @@ def run():
             # imprimir pop
             print('\npop.population=', pop.population)
             # imprimir pop
-            print('\npop.bestgen=', pop.best_genome)
+            print('\npop.bestgen=', gen_best)
             print('\nbest_fitness =', best_fitness)
             if cont['result'][0]['current_block_performance'] > best_fitness:
                 # hace request GetParameter(id)
@@ -225,24 +225,21 @@ def run():
                 # descarga el checkpoint del link de la respuesta si cont.parameter_link
                 print('\ncont_param =', cont_param)
                 if cont_param['result'][0]['parameter_link'] is not None:
-                    checkpoint_data = requests.get(cont_param['result'][0]['parameter_link']).content
-                    with open('remote_checkpoint', 'wb') as handler:
-                        handler.write(checkpoint_data)
-                    pop2=pop
-                    print('\npop2_before restore =', pop2.population)
-                    # carga checkpoint descargado en nueva población pop2
-                    pop2 = rep.restore_checkpoint('remote_checkpoint')
+                    genom_data = requests.get(cont_param['result'][0]['parameter_link']).content
+                    with open('remote_genom', 'wb') as handler:
+                        handler.write(genom_data)
+                        # carga genom descargado en nueva población pop2
+                    with open('remote_genom', 'rb') as f:
+                        remote_genom = pickle.load(f)
                     # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2 como http://neo.lcc.uma.es/Articles/WRH98.pdf
-                    # busca el champion de la población remota
-                    best = None
-                    print('\npop2=', pop2.population)
-                    best = pop2.run(ec.evaluate_genomes, 5)
-                    print('\nbest.key =', best.key)
                     # se selecciona el que tenga menos distancia al pop2.champion en los pop1
                     closer = None
                     min_dist= None
+                    print("\ngen_best=",gen_best)
+                    print("\nremote_genom=", remote_genom)
+
                     for g in itervalues(pop.population):
-                        dist=g.distance(best, config)
+                        dist=g.distance(remote_genom, config)
                         if closer is None or min_dist is None or dist<min_dist:
                             closer = g
                             min_dist=dist
@@ -252,8 +249,11 @@ def run():
             # Si el perf reportado es menor pero no igual al de pop1
             if cont['result'][0]['current_block_performance'] < best_fitness:
                 # Guarda checkpoint del mejor genoma y lo copia a ubicación para servir vía syn.
-                rep.save_checkpoint(config,pop,neat.DefaultSpeciesSet,rep.current_generation)
-                filename = '{0}{1}'.format(rep.filename_prefix,rep.current_generation)
+                #rep.save_checkpoint(config,pop,neat.DefaultSpeciesSet,rep.current_generation)
+                filename = '{0}{1}'.format("best-genome-",rep.current_generation)
+                with open(filename, 'wb') as f:
+                    pickle.dump(gen_best, f)
+
                 # Hace request de CreateParam a syn
                 print('\npop.best_genome =', pop.best_genome)
 
