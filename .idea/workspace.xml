@@ -16,8 +16,8 @@
       <file leaf-file-name="forex_env.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/gym_forex/envs/forex_env.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="6103">
-              <caret line="366" column="45" lean-forward="false" selection-start-line="366" selection-start-column="45" selection-end-line="366" selection-end-column="45" />
+            <state relative-caret-position="-5715">
+              <caret line="27" column="30" lean-forward="false" selection-start-line="27" selection-start-column="23" selection-end-line="27" selection-end-column="30" />
               <folding>
                 <element signature="e#0#18#0" expanded="true" />
               </folding>
@@ -38,8 +38,8 @@
       <file leaf-file-name="agent_NEAT.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="515">
-              <caret line="235" column="39" lean-forward="true" selection-start-line="235" selection-start-column="39" selection-end-line="235" selection-end-column="39" />
+            <state relative-caret-position="306">
+              <caret line="250" column="44" lean-forward="false" selection-start-line="250" selection-start-column="44" selection-end-line="250" selection-end-column="44" />
               <folding>
                 <element signature="e#81#118#0" expanded="true" />
               </folding>
@@ -93,8 +93,9 @@
       <find>species</find>
       <find>neat-check</find>
       <find>compat</find>
-      <find>config</find>
       <find>temp</find>
+      <find>env</find>
+      <find>config</find>
     </findStrings>
   </component>
   <component name="Git.Settings">
@@ -425,21 +426,21 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/gym_forex/envs/forex_env.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="6103">
-          <caret line="366" column="45" lean-forward="false" selection-start-line="366" selection-start-column="45" selection-end-line="366" selection-end-column="45" />
-          <folding>
-            <element signature="e#0#18#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/agents/config">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="153">
           <caret line="9" column="0" lean-forward="true" selection-start-line="9" selection-start-column="0" selection-end-line="9" selection-end-column="0" />
           <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/gym_forex/envs/forex_env.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-5715">
+          <caret line="27" column="30" lean-forward="false" selection-start-line="27" selection-start-column="23" selection-end-line="27" selection-end-column="30" />
+          <folding>
+            <element signature="e#0#18#0" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>
@@ -453,8 +454,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="515">
-          <caret line="235" column="39" lean-forward="true" selection-start-line="235" selection-start-column="39" selection-end-line="235" selection-end-column="39" />
+        <state relative-caret-position="306">
+          <caret line="250" column="44" lean-forward="false" selection-start-line="250" selection-start-column="44" selection-end-line="250" selection-end-column="44" />
           <folding>
             <element signature="e#81#118#0" expanded="true" />
           </folding>

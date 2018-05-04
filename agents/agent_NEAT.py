@@ -15,6 +15,7 @@ import random
 import time
 import requests
 import visualize
+import sys
 from neat.six_util import iteritems, itervalues
 # Multi-core machine support
 NUM_CORES = 1
@@ -25,7 +26,8 @@ env = gym.make('Forex-v0')
 print("action space: {0!r}".format(env.action_space))
 print("observation space: {0!r}".format(env.observation_space))
 env = gym.wrappers.Monitor(env, 'results', force=True)
-my_url="http://192.168.0.241:3338"
+# First argument is the dataset, second is the  url
+my_url=sys.argv[2]
 
 # LanderGenome class
 class LanderGenome(neat.DefaultGenome):
@@ -230,7 +232,6 @@ def run():
                            if closer is None or min_dist is None or dist < min_dist:
                                closer = g
                                min_dist = dist
-
                         # se selecciona el que tenga menos distancia al pop2.champion en los pop1
                         #closer = None
                         #min_dist = None
@@ -245,6 +246,10 @@ def run():
                         # overwrites original genome key with the replacing one
                         tmp_genom.key = closer.key
                         pop.population[closer.key] = tmp_genom
+                        # marca como gen_best y best_genome el nuevo
+                        pop.best_genome=tmp_genom
+                        gen_best = tmp_genom
+
                         #pop.species = pop.species.speciate(config, pop.population, rep.current_generation)
                 # Si el perf reportado es menor pero no igual al de pop1
                 if cont['result'][0]['current_block_performance'] < best_fitness:
