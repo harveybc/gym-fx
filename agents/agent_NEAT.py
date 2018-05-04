@@ -25,6 +25,7 @@ env = gym.make('Forex-v0')
 print("action space: {0!r}".format(env.action_space))
 print("observation space: {0!r}".format(env.observation_space))
 env = gym.wrappers.Monitor(env, 'results', force=True)
+my_url="http://192.168.0.241:3338"
 
 # LanderGenome class
 class LanderGenome(neat.DefaultGenome):
@@ -197,7 +198,7 @@ def run():
                 # Lee en pop2 el último checkpoint desde syn
                 # Hace request de getLastParam(process_hash,use_current) a syn TODO: HACER PROCESS CONFIGURABLE Y POR HASH no por id
                 res = requests.get(
-                    "http://192.168.0.241:3338/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
+                    my_url+"/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
                 cont = res.json()
                 print('\ncurrent_block_performance =', cont['result'][0]['current_block_performance'])
                 print('\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
@@ -212,7 +213,7 @@ def run():
                 if cont['result'][0]['current_block_performance'] > best_fitness:
                     # hace request GetParameter(id)
                     res_p = requests.get(
-                        "http://192.168.0.241:3338/parameters/" + str(
+                        my_url+"/parameters/" + str(
                             last_optimum_id) + "?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
                     cont_param = res_p.json()
                     # descarga el checkpoint del link de la respuesta si cont.parameter_link
@@ -254,13 +255,13 @@ def run():
                     print('\npop.best_genome =', pop.best_genome)
 
                     form_data = {"process_hash": "ph", "app_hash": "ah",
-                                 "parameter_link": "http://192.168.0.241:3338/genoms/" + filename,
+                                 "parameter_link": my_url+"/genoms/" + filename,
                                  "parameter_text": pop.best_genome.key, "parameter_blob": "", "validation_hash": "",
                                  "hash": "h", "performance": best_fitness, "redir": "1", "username": "harveybc",
                                  "pass_hash": "$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q"}
                     # TODO: COLOCAR DIRECCION CONFIGURABLE
                     res = requests.post(
-                        "http://192.168.0.241:3338/parameters?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph",
+                        my_url+"/parameters?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph",
                         data=form_data)
                     res_json = res.json()
                 # TODO FIN: FUNCION DE SINCRONIZACION CON SINGULARITY
