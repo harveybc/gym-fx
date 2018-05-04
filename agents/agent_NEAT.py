@@ -249,7 +249,7 @@ def run():
                     tmp_genom.key=closer.key
                     pop.population[closer.key]=tmp_genom
                     # Debudgging print
-                    print("\npop.species=", pop.species)
+                    print("\npop.species.members=", pop.species.members)
                     pop.species=pop.species.speciate(config, pop, rep.current_generation)
             # Si el perf reportado es menor pero no igual al de pop1
             if cont['result'][0]['current_block_performance'] < best_fitness:
