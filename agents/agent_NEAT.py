@@ -94,8 +94,8 @@ class PooledErrorCompute(object):
         self.test_episodes = []
         self.generation = 0
 
-        self.min_reward = -200
-        self.max_reward = 200
+        self.min_reward = -2000
+        self.max_reward = 2000
 
         self.episode_score = []
         self.episode_length = []
@@ -108,7 +108,7 @@ class PooledErrorCompute(object):
             data = []
             while 1:
                 step += 1
-                if step < 200 and random.random() < 0.2:
+                if step < 100 and random.random() < 0.1:
                     action = env.action_space.sample()
                 else:
                     output = net.activate(nn_format(observation))
@@ -144,7 +144,7 @@ class PooledErrorCompute(object):
 
         # Periodically generate a new set of episodes for comparison.
         if 1 == self.generation % 10:
-            self.test_episodes = self.test_episodes[-300:]
+            # self.test_episodes = self.test_episodes[-300:]
             self.simulate(nets)
             print("simulation run time {0}".format(time.time() - t0))
             t0 = time.time()
