@@ -228,7 +228,8 @@ def run():
                     genom_data = requests.get(cont_param['result'][0]['parameter_link']).content
                     with open('remote_genom', 'wb') as handler:
                         handler.write(genom_data)
-                        # carga genom descargado en nueva población pop2
+                        handler.close()
+                    # carga genom descargado en nueva población pop2
                     with open('remote_genom', 'rb') as f:
                         remote_genom = pickle.load(f)
                     # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2 como http://neo.lcc.uma.es/Articles/WRH98.pdf
