@@ -16,6 +16,7 @@ import time
 import requests
 import visualize
 import sys
+from copy import deepcopy
 from neat.six_util import iteritems, itervalues
 # Multi-core machine support
 NUM_CORES = 1
@@ -239,21 +240,21 @@ def run():
                         for g in itervalues(pop.population):
                             dist = g.distance(remote_genom, config.genome_config)
                             if closer is None or min_dist is None:
-                                closer = g
+                                closer = deepcopy(g)
                                 min_dist = dist
                             if dist < min_dist:
-                                closer = g
+                                closer = deepcopy(g)
                                 min_dist = dist
 
 
                         # reemplazar el champ de pop2 en pop1
-                        tmp_genom = remote_genom
+                        tmp_genom = deepcopy(remote_genom)
                         # Hack: overwrites original genome key with the replacing one
                         tmp_genom.key = closer.key
-                        pop.population[closer.key] = tmp_genom
+                        pop.population[closer.key] = deepcopy(tmp_genom)
                         # actualiza gen_best y best_genome al remoto
-                        pop.best_genome=tmp_genom
-                        gen_best = tmp_genom
+                        pop.best_genome=deepcopy(tmp_genom)
+                        gen_best = deepcopy(tmp_genom)
                         #ejecuta speciate
                         pop.species.speciate(config, pop.population, pop.generation)
                         print("\ndone")
