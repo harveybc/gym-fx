@@ -303,7 +303,7 @@ def run():
 
             solved = True
             best_scores = []
-            for k in range(10):
+            for k in range(1):
                 observation = env.reset()
                 score = 0
                 step = 0
@@ -311,10 +311,15 @@ def run():
                     step += 1
                     # Use the total reward estimates from all five networks to
                     # determine the best action given the current state.
+                    #votes = np.zeros((4,))
+                    #for n in best_networks:
+                    #    output = n.activate(nn_format(observation))
+                    #    votes[np.argmax(output)] += 1
+
                     votes = np.zeros((4,))
-                    for n in best_networks:
-                        output = n.activate(nn_format(observation))
-                        votes[np.argmax(output)] += 1
+                    # for n in best_networks:
+                    output = gen_best.activate(nn_format(observation))
+                    votes[np.argmax(output)] += 1
 
                     best_action = np.argmax(votes)
                     observation, reward, done, info = env.step(best_action)
