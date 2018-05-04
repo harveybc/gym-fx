@@ -232,16 +232,18 @@ def run():
                         #   if closer is None or min_dist is None or dist < min_dist:
                         #       closer = g
                         #       min_dist = dist
-                        # se selecciona el que tenga menos distancia al pop2.champion en los pop1
+                        # se selecciona el que tenga menos distancia al pop2.champion en los representantes de  pop1
                         closer = None
                         min_dist = None
-                        for g in itervalues(pop.population):
-                            dist = g.distance(remote_genom, config.genome_config)
+                        # descarga el checkpoint del link de la respuesta si cont.parameter_link
+                        print('\ncont_param =', pop.species)
+                        for s in itervalues(pop.species):
+                            dist = s.representative.distance(remote_genom, config.genome_config)
                             if closer is None or min_dist is None:
-                                closer = g
+                                closer = s.representative
                                 min_dist = dist
                             if dist < min_dist:
-                                closer = g
+                                closer = s.representative
                                 min_dist = dist
 
 
@@ -250,9 +252,16 @@ def run():
                         # overwrites original genome key with the replacing one
                         tmp_genom.key = closer.key
                         pop.population[closer.key] = tmp_genom
-                        # marca como gen_best y best_genome el nuevo
+                        # actualiza gen_best y best_genome al remoto
                         pop.best_genome=tmp_genom
                         gen_best = tmp_genom
+                        # actualiza el representante de la especie como el remoto
+                        for s in itervalues(pop.species):
+                            if s.representative.key == tmp_genom.key:
+                                s.representative = tmp_genom
+                                tmp_species=s
+                        #actualiza en el members={} el genoma remoto por el key del representante actual
+                        print('\ntmp_species.members =', tmp_species.members)
 
                         #pop.species = pop.species.speciate(config, pop.population, rep.current_generation)
                 # Si el perf reportado es menor pero no igual al de pop1
@@ -262,10 +271,7 @@ def run():
                     filename = '{0}{1}'.format("best-genome-", rep.current_generation)
                     with open(filename, 'wb') as f:
                         pickle.dump(gen_best, f)
-
                     # Hace request de CreateParam a syn
-                    print('\npop.best_genome =', pop.best_genome)
-
                     form_data = {"process_hash": "ph", "app_hash": "ah",
                                  "parameter_link": my_url+"/genoms/" + filename,
                                  "parameter_text": pop.best_genome.key, "parameter_blob": "", "validation_hash": "",

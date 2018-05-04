@@ -38,8 +38,8 @@
       <file leaf-file-name="agent_NEAT.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="323">
-              <caret line="239" column="66" lean-forward="false" selection-start-line="239" selection-start-column="66" selection-end-line="239" selection-end-column="66" />
+            <state relative-caret-position="709">
+              <caret line="263" column="76" lean-forward="false" selection-start-line="263" selection-start-column="76" selection-end-line="263" selection-end-column="76" />
               <folding>
                 <element signature="e#81#118#0" expanded="true" />
               </folding>
@@ -96,6 +96,7 @@
       <find>temp</find>
       <find>env</find>
       <find>config</find>
+      <find>print</find>
     </findStrings>
   </component>
   <component name="Git.Settings">
@@ -116,7 +117,7 @@
       </list>
     </option>
   </component>
-  <component name="ProjectFrameBounds" extendedState="6">
+  <component name="ProjectFrameBounds">
     <option name="x" value="-8" />
     <option name="y" value="37" />
     <option name="width" value="1016" />
@@ -199,10 +200,10 @@
     <servers />
   </component>
   <component name="ToolWindowManager">
-    <frame x="-8" y="-8" width="1936" height="1056" extended-state="6" />
+    <frame x="-8" y="37" width="1016" height="876" extended-state="0" />
     <editor active="true" />
     <layout>
-      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.08177083" sideWeight="0.5" order="1" side_tool="false" content_ui="combo" />
+      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.157" sideWeight="0.5" order="1" side_tool="false" content_ui="combo" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="10" side_tool="false" content_ui="tabs" />
       <window_info id="Event Log" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="0" side_tool="true" content_ui="tabs" />
       <window_info id="Version Control" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
@@ -454,8 +455,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="323">
-          <caret line="239" column="66" lean-forward="false" selection-start-line="239" selection-start-column="66" selection-end-line="239" selection-end-column="66" />
+        <state relative-caret-position="709">
+          <caret line="263" column="76" lean-forward="false" selection-start-line="263" selection-start-column="76" selection-end-line="263" selection-end-column="76" />
           <folding>
             <element signature="e#81#118#0" expanded="true" />
           </folding>
