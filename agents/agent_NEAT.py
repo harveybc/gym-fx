@@ -239,7 +239,7 @@ def run():
                     print("\ngen_best=",gen_best)
                     print("\nremote_genom=", remote_genom)
                     for g in itervalues(pop.population):
-                        dist=g.distance(remote_genom, g.config)
+                        dist=g.distance(remote_genom, config)
                         if closer is None or min_dist is None or dist<min_dist:
                             closer = g
                             min_dist=dist
