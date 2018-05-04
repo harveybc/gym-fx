@@ -38,8 +38,8 @@
       <file leaf-file-name="agent_NEAT.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="383">
-              <caret line="255" column="41" lean-forward="true" selection-start-line="255" selection-start-column="41" selection-end-line="255" selection-end-column="41" />
+            <state relative-caret-position="185">
+              <caret line="249" column="28" lean-forward="false" selection-start-line="249" selection-start-column="28" selection-end-line="249" selection-end-column="28" />
               <folding>
                 <element signature="e#81#118#0" expanded="true" />
               </folding>
@@ -452,8 +452,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="383">
-          <caret line="255" column="41" lean-forward="true" selection-start-line="255" selection-start-column="41" selection-end-line="255" selection-end-column="41" />
+        <state relative-caret-position="185">
+          <caret line="249" column="28" lean-forward="false" selection-start-line="249" selection-start-column="28" selection-end-line="249" selection-end-column="28" />
           <folding>
             <element signature="e#81#118#0" expanded="true" />
           </folding>
