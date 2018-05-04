@@ -205,10 +205,6 @@ def run():
                 last_optimum_id = cont['result'][0]['last_optimum_id']
                 # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness
                 best_fitness = gen_best.fitness
-                # imprimir pop
-                print('\npop.population=', pop.population)
-                # imprimir pop
-                print('\npop.bestgen=', gen_best)
                 print('\nbest_fitness =', best_fitness)
                 if cont['result'][0]['current_block_performance'] > best_fitness:
                     # hace request GetParameter(id)
@@ -227,16 +223,23 @@ def run():
                         with open('remote_genom', 'rb') as f:
                             remote_genom = pickle.load(f)
                         # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2 como http://neo.lcc.uma.es/Articles/WRH98.pdf
-                        # se selecciona el que tenga menos distancia al pop2.champion en los pop1
                         closer = None
                         min_dist = None
-                        print("\ngen_best=", gen_best)
-                        print("\nremote_genom=", remote_genom)
                         for g in itervalues(pop.population):
-                            dist = g.distance(remote_genom, config.genome_config)
-                            if closer is None or min_dist is None or dist < min_dist:
-                                closer = g
-                                min_dist = dist
+                           dist = g.fitness
+                           if closer is None or min_dist is None or dist < min_dist:
+                               closer = g
+                               min_dist = dist
+
+                        # se selecciona el que tenga menos distancia al pop2.champion en los pop1
+                        #closer = None
+                        #min_dist = None
+                        #for g in itervalues(pop.population):
+                        #    dist = g.distance(remote_genom, config.genome_config)
+                        #    if closer is None or min_dist is None or dist < min_dist:
+                        #        closer = g
+                        #        min_dist = dist
+
                         # reemplazar el champ de pop2 en pop1
                         tmp_genom = remote_genom
                         # overwrites original genome key with the replacing one
