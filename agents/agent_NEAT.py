@@ -189,10 +189,10 @@ def run():
     # Run until the winner from a generation is able to solve the environment
     # or the user interrupts the process.
     ec = PooledErrorCompute()
+    temp = 0
     while 1:
-        temp=0
         try:
-            if rep.current_generation > 1:
+            if temp > 0:
                 # TODO: FUNCION DE SINCRONIZACION CON SINGULARITY
                 # Lee en pop2 el último checkpoint desde syn
                 # Hace request de getLastParam(process_hash,use_current) a syn TODO: HACER PROCESS CONFIGURABLE Y POR HASH no por id
@@ -264,8 +264,9 @@ def run():
                         data=form_data)
                     res_json = res.json()
                 # TODO FIN: FUNCION DE SINCRONIZACION CON SINGULARITY
-
+            temp = temp + 1
             gen_best = pop.run(ec.evaluate_genomes, 5)
+
             #print(gen_best)
             visualize.plot_stats(stats, ylog=False, view=False, filename="fitness.svg")
             plt.plot(ec.episode_score, 'g-', label='score')
