@@ -227,19 +227,23 @@ def run():
                         # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2 como http://neo.lcc.uma.es/Articles/WRH98.pdf
                         closer = None
                         min_dist = None
-                        for g in itervalues(pop.population):
-                           dist = g.fitness
-                           if closer is None or min_dist is None or dist < min_dist:
-                               closer = g
-                               min_dist = dist
-                        # se selecciona el que tenga menos distancia al pop2.champion en los pop1
-                        #closer = None
-                        #min_dist = None
                         #for g in itervalues(pop.population):
-                        #    dist = g.distance(remote_genom, config.genome_config)
-                        #    if closer is None or min_dist is None or dist < min_dist:
-                        #        closer = g
-                        #        min_dist = dist
+                        #   dist = g.fitness
+                        #   if closer is None or min_dist is None or dist < min_dist:
+                        #       closer = g
+                        #       min_dist = dist
+                        # se selecciona el que tenga menos distancia al pop2.champion en los pop1
+                        closer = None
+                        min_dist = None
+                        for g in itervalues(pop.population):
+                            dist = g.distance(remote_genom, config.genome_config)
+                            if closer is None or min_dist is None:
+                                closer = g
+                                min_dist = dist
+                            if dist < min_dist:
+                                closer = g
+                                min_dist = dist
+
 
                         # reemplazar el champ de pop2 en pop1
                         tmp_genom = remote_genom
