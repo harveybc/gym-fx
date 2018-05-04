@@ -236,34 +236,27 @@ def run():
                         closer = None
                         min_dist = None
                         # descarga el checkpoint del link de la respuesta si cont.parameter_link
-                        print('\ncont_param =', pop.species)
-                        for s in itervalues(pop.species):
-                            dist = s.representative.distance(remote_genom, config.genome_config)
+                        for g in itervalues(pop.population):
+                            dist = g.distance(remote_genom, config.genome_config)
                             if closer is None or min_dist is None:
-                                closer = s.representative
+                                closer = g
                                 min_dist = dist
                             if dist < min_dist:
-                                closer = s.representative
+                                closer = g
                                 min_dist = dist
 
 
                         # reemplazar el champ de pop2 en pop1
                         tmp_genom = remote_genom
-                        # overwrites original genome key with the replacing one
+                        # Hack: overwrites original genome key with the replacing one
                         tmp_genom.key = closer.key
                         pop.population[closer.key] = tmp_genom
                         # actualiza gen_best y best_genome al remoto
                         pop.best_genome=tmp_genom
                         gen_best = tmp_genom
-                        # actualiza el representante de la especie como el remoto
-                        for s in itervalues(pop.species):
-                            if s.representative.key == tmp_genom.key:
-                                s.representative = tmp_genom
-                                tmp_species=s
-                        #actualiza en el members={} el genoma remoto por el key del representante actual
-                        print('\ntmp_species.members =', tmp_species.members)
-
-                        #pop.species = pop.species.speciate(config, pop.population, rep.current_generation)
+                        #ejecuta speciate
+                        pop.species.speciate(config, pop.population, pop.generation)
+                        print("\ndone")
                 # Si el perf reportado es menor pero no igual al de pop1
                 if cont['result'][0]['current_block_performance'] < best_fitness:
                     # Guarda checkpoint del mejor genoma y lo copia a ubicación para servir vía syn.
