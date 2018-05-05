@@ -330,6 +330,7 @@ class ForexEnv(gym.Env):
                 reward = reward + 32*bonus
             if ((self.equity_ant >= (16 * self.initial_capital)) and (equity_increment > 0)):
                 reward = reward + 64*bonus
+            reward = reward / 10000
         self.reward=self.reward+reward
                     # if self.order_status==0:
                 # TODO: penalizar reward con el cuadrado del tiempo que lleva sin orden * -0.01
