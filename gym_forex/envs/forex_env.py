@@ -25,30 +25,35 @@ class ForexEnv(gym.Env):
     """
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, dataset="/home/harveybc/gym-forex/datasets/ts_3m.CSV"):
+    # Initialize parameters
+    def init_parameters(self, dataset_filename):
+        self.dataset = dataset_filename
+
+    def __init__(self):
         metadata = {'render.modes': ['human', 'ansi']}
         # initialize initial capital
-        capital = 10000
-        min_sl = 100
-        min_tp = 100
-        max_sl = 2000
-        max_tp = 1000
-        leverage = 100
-        # Number of past ticks per feature to be used as observations (1440min=1day, 10080=1Week, 43200=1month, )
+        self.capital = 10000
+        self.min_sl = 100
+        self.min_tp = 100
+        self.max_sl = 2000
+        self.max_tp = 1000
+        self.leverage = 100
+        self.dataset = dataset
+         # Number of past ticks per feature to be used as observations (1440min=1day, 10080=1Week, 43200=1month, )
         # TODO: Colocar como parámetro
         self.obs_ticks = 2 # best 48@ 700k
         num_symbols = 1
         # TODO: Dejar como params
         self.debug = 0  # Show debug msgs
         #csv_f = 'C:\\Users\\HarveyD\\Anaconda3\\Lib\\site-packages\\gym\\envs\\forex\\ts_4y.CSV'
-        csv_f = dataset
+        csv_f = self.dataset
         print("\nReading dataset: ",csv_f)
-        self.initial_capital = capital
-        self.equity = capital
-        self.balance = capital
-        self.balance_ant=capital
+        self.initial_capital = self.capital
+        self.equity = self.capital
+        self.balance = self.capital
+        self.balance_ant=self.capital
         # for equity variation calculus
-        self.equity_ant = capital
+        self.equity_ant = self.capital
         # order status: -1=sell, 1=buy, 00=nop
         self.order_status = 0
         self.order_profit = 0.0
@@ -59,10 +64,6 @@ class ForexEnv(gym.Env):
         # initialize reward value
         self.reward = 0
         # Min / Max SL / TP, Min / Max (Default 1000?) in pips
-        self.min_sl = min_sl
-        self.min_tp = min_tp
-        self.max_sl = max_sl
-        self.max_tp = max_tp
         self.pip_cost = 0.00001
         # margin acumulativo = open_price*volume*100000/leverage TODO: Hacer uno para cada orden y recalcular total
         self.margin = 0.0
@@ -74,8 +75,7 @@ class ForexEnv(gym.Env):
         self.spread_funct = 0
         # using spread=20 sinse its above the average plus the stddev in alpari but on
         self.spread = 20
-        # Leverage (Default 100)
-        self.leverage = leverage
+
         # num_symbols
         self.num_symbols = 1
         # initialize tick counter
@@ -140,6 +140,7 @@ class ForexEnv(gym.Env):
         # TODO; Quitar cuando se controle SL Y TP
         self.sl = self.max_sl
         self.tp = self.max_tp
+
 
     """
     _step parameters:
