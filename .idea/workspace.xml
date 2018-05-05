@@ -35,31 +35,11 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="agent_NEAT.py" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="-2034">
-              <caret line="199" column="4" lean-forward="true" selection-start-line="199" selection-start-column="4" selection-end-line="199" selection-end-column="4" />
-              <folding />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="agent_NEAT_simple.py" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_simple.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="261">
-              <caret line="268" column="59" lean-forward="false" selection-start-line="268" selection-start-column="59" selection-end-line="268" selection-end-column="59" />
-              <folding />
-            </state>
-          </provider>
-        </entry>
-      </file>
       <file leaf-file-name="agent_NEAT_reps.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="210">
-              <caret line="265" column="25" lean-forward="false" selection-start-line="265" selection-start-column="25" selection-end-line="265" selection-end-column="25" />
+            <state relative-caret-position="273">
+              <caret line="251" column="3" lean-forward="true" selection-start-line="251" selection-start-column="3" selection-end-line="251" selection-end-column="3" />
               <folding />
             </state>
           </provider>
@@ -96,9 +76,9 @@
       <find>test_episodes.append</find>
       <find>evaluating</find>
       <find>test_episodes</find>
+      <find>species</find>
       <find>iterva</find>
       <find>brea</find>
-      <find>species</find>
     </findStrings>
   </component>
   <component name="Git.Settings">
@@ -394,14 +374,6 @@
     <entry file="file://$PROJECT_DIR$/gym-forex.py" />
     <entry file="file://$PROJECT_DIR$/gym_forex.py" />
     <entry file="file://$PROJECT_DIR$/__init__.py" />
-    <entry file="file://$PROJECT_DIR$/gym_forex/envs/__init__.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="0">
-          <caret line="0" column="42" lean-forward="false" selection-start-line="0" selection-start-column="42" selection-end-line="0" selection-end-column="42" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/gym_forex/__init__.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="102">
@@ -416,14 +388,6 @@
           <folding>
             <element signature="e#0#18#0" expanded="true" />
           </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_simple.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="261">
-          <caret line="268" column="59" lean-forward="false" selection-start-line="268" selection-start-column="59" selection-end-line="268" selection-end-column="59" />
-          <folding />
         </state>
       </provider>
     </entry>
@@ -453,6 +417,14 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_simple.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="278">
+          <caret line="245" column="36" lean-forward="true" selection-start-line="245" selection-start-column="36" selection-end-line="245" selection-end-column="36" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="-2034">
@@ -461,10 +433,18 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/gym_forex/envs/__init__.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="0">
+          <caret line="0" column="42" lean-forward="false" selection-start-line="0" selection-start-column="42" selection-end-line="0" selection-end-column="42" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="210">
-          <caret line="265" column="25" lean-forward="false" selection-start-line="265" selection-start-column="25" selection-end-line="265" selection-end-column="25" />
+        <state relative-caret-position="273">
+          <caret line="251" column="3" lean-forward="true" selection-start-line="251" selection-start-column="3" selection-end-line="251" selection-end-column="3" />
           <folding />
         </state>
       </provider>

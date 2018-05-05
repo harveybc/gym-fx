@@ -243,15 +243,16 @@ def run():
                                     closer = deepcopy(g)
                                     min_dist = dist
                             # si el remote fitness>local, reemplazar el remote de pop2 en pop1
-                            if remote_reps[i].fitness>closer.fitness:
-                                tmp_genom = deepcopy(remote_reps[i])
-                                # Hack: overwrites original genome key with the replacing one
-                                tmp_genom.key = closer.key
-                                pop.population[closer.key] = deepcopy(tmp_genom)
-                            # actualiza gen_best y best_genome al remoto
-                            if i==0:
-                                pop.best_genome=deepcopy(tmp_genom)
-                                gen_best = deepcopy(tmp_genom)
+                            if closer is not None:
+                                if remote_reps[i].fitness>closer.fitness:
+                                    tmp_genom = deepcopy(remote_reps[i])
+                                    # Hack: overwrites original genome key with the replacing one
+                                    tmp_genom.key = closer.key
+                                    pop.population[closer.key] = deepcopy(tmp_genom)
+                                # actualiza gen_best y best_genome al remoto
+                                if i==0:
+                                    pop.best_genome=deepcopy(tmp_genom)
+                                    gen_best = deepcopy(tmp_genom)
                         #ejecuta speciate
                         pop.species.speciate(config, pop.population, pop.generation)
                         print("\ndone")
