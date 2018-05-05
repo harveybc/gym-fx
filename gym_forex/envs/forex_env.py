@@ -311,7 +311,7 @@ class ForexEnv(gym.Env):
             equity_increment = self.equity - self.equity_ant
         if self.reward_function == 0:
             # TODO: REWARD FUNCTION:  1=Tabla
-            reward = reward + (self.equity / self.num_ticks)
+            reward = reward + ((self.equity - self.initial_capital)  / self.num_ticks)
             # reward de duración hasta alcanzar total de ticks
             reward = reward + (self.tick_count / self.num_ticks)
             bonus=((self.tick_count/self.num_ticks)+1)*((self.equity_ant * equity_increment) / (self.initial_capital * self.num_ticks))
