@@ -130,7 +130,7 @@ class ForexEnv(gym.Env):
         # action space = nop,buy,sell
         self.action_space = spaces.Discrete(3)
         # observation_space=(16 columns + 3 state variables)* obs_ticks, shape=(width,height, channels?)
-        self.observation_space = spaces.Box(low=-1.0, high=1.0, shape=(self.obs_ticks, 1, 19))
+        self.observation_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(self.obs_ticks, 1, 19))
         self.order_time = 0
         # TODO; Quitar cuando se controle SL Y TP
         self.sl = self.max_sl
@@ -360,8 +360,7 @@ class ForexEnv(gym.Env):
         # Episode over es TRUE cuando se termina el juego, es decir cuando tick_count=self.num_ticks
         if self.tick_count >= (self.num_ticks - 1):
             episode_over = bool(1)
-            print('episode_over, Balance =', self.equity, ',  Performance =', self.balance / self.initial_capital,
-                  ', Time=', self.tick_count)
+            print('Balance =', self.equity, ',  Reward =', reward, 'Time=', self.tick_count)
             # self._reset()
             # self.__init__()
             # TODO: IMPRIMIR ESTADiSTICAS DE METATRADER
