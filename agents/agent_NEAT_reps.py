@@ -295,7 +295,7 @@ def run():
                     res_json = res.json()
                 # TODO FIN: FUNCION DE SINCRONIZACION CON SINGULARITY
             temp = temp + 1
-            gen_best = pop.run(ec.evaluate_genomes, 5)
+            gen_best = pop.run(ec.evaluate_genomes, 1)
 
             #print(gen_best)
             visualize.plot_stats(stats, ylog=False, view=False, filename="fitness.svg")
