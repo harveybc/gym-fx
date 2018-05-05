@@ -57,7 +57,7 @@ class ForexEnv(gym.Env):
         # symbor of active order (from symbol list)
         self.order_symbol = 0
         # initialize reward value
-        self.reward = 0
+        self.reward = 0.0
         # Min / Max SL / TP, Min / Max (Default 1000?) in pips
         self.pip_cost = 0.00001
         # margin acumulativo = open_price*volume*100000/leverage TODO: Hacer uno para cada orden y recalcular total
@@ -309,26 +309,27 @@ class ForexEnv(gym.Env):
             equity_increment = self.balance - self.balance_ant
         else:
             equity_increment = self.equity - self.equity_ant
-    #if self.reward_function == 0:
-        # TODO: REWARD FUNCTION:  1=Tabla
-        # reward de duración hasta alcanzar total de ticks
-        # reward = reward + self.tick_count / (self.num_ticks)
-        bonus=((self.tick_count/self.num_ticks)+1)*((self.equity_ant * equity_increment) / (self.initial_capital * self.num_ticks))
-        reward = reward + bonus
-        if ((self.equity_ant>=(0.5*self.initial_capital)) and (equity_increment>0)):
+        if self.reward_function == 0:
+            # TODO: REWARD FUNCTION:  1=Tabla
+            reward=reward+self.equity
+            # reward de duración hasta alcanzar total de ticks
+            reward = reward + self.tick_count / (self.num_ticks)
+            bonus=((self.tick_count/self.num_ticks)+1)*((self.equity_ant * equity_increment) / (self.initial_capital * self.num_ticks))
             reward = reward + bonus
-        if ((self.equity_ant >= (0.75 * self.initial_capital)) and (equity_increment > 0)):
-            reward = reward + 2*bonus
-        if ((self.equity_ant >= self.initial_capital) and (equity_increment > 0)):
-            reward = reward + 4*bonus
-        if ((self.equity_ant >= (2*self.initial_capital)) and (equity_increment > 0)):
-            reward = reward + 8*bonus
-        if ((self.equity_ant >= (4 * self.initial_capital)) and (equity_increment > 0)):
-            reward = reward + 16*bonus
-        if ((self.equity_ant >= (8 * self.initial_capital)) and (equity_increment > 0)):
-            reward = reward + 32*bonus
-        if ((self.equity_ant >= (16 * self.initial_capital)) and (equity_increment > 0)):
-            reward = reward + 64*bonus
+            if ((self.equity_ant>=(0.5*self.initial_capital)) and (equity_increment>0)):
+                reward = reward + bonus
+            if ((self.equity_ant >= (0.75 * self.initial_capital)) and (equity_increment > 0)):
+                reward = reward + 2*bonus
+            if ((self.equity_ant >= self.initial_capital) and (equity_increment > 0)):
+                reward = reward + 4*bonus
+            if ((self.equity_ant >= (2*self.initial_capital)) and (equity_increment > 0)):
+                reward = reward + 8*bonus
+            if ((self.equity_ant >= (4 * self.initial_capital)) and (equity_increment > 0)):
+                reward = reward + 16*bonus
+            if ((self.equity_ant >= (8 * self.initial_capital)) and (equity_increment > 0)):
+                reward = reward + 32*bonus
+            if ((self.equity_ant >= (16 * self.initial_capital)) and (equity_increment > 0)):
+                reward = reward + 64*bonus
 
                     # if self.order_status==0:
                 # TODO: penalizar reward con el cuadrado del tiempo que lleva sin orden * -0.01
