@@ -255,7 +255,7 @@ def run():
                             else:
                                 # si el remote fitness>local, reemplazar el remote de pop2 en pop1
                                 if closer is not None:
-                                    if closer.fitness is not None:
+                                    if closer.fitness is not None or remote_reps[i].fitness is not None:
                                         if remote_reps[i].fitness>closer.fitness:
                                             tmp_genom = deepcopy(remote_reps[i])
                                             # Hack: overwrites original genome key with the replacing one
