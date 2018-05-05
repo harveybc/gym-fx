@@ -303,32 +303,32 @@ class ForexEnv(gym.Env):
                               self.order_volume, ',e', self.equity, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':',
                               MoH)
         # Calculates reward from RewardFunctionTable
-        reward = 0
+        reward = 0.0
         # Bonus_type selecciona si usar Balance=0 o Equity=1
         if self.bonus_type == 0:
             equity_increment = self.balance - self.balance_ant
         else:
             equity_increment = self.equity - self.equity_ant
-        if self.reward_function == 0:
-            # TODO: REWARD FUNCTION:  1=Tabla
-            # reward de duración hasta alcanzar total de ticks
-            # reward = reward + self.tick_count / (self.num_ticks)
-            bonus=((self.tick_count/self.num_ticks)+1)*((self.equity_ant * equity_increment) / (self.initial_capital * self.num_ticks))
+    #if self.reward_function == 0:
+        # TODO: REWARD FUNCTION:  1=Tabla
+        # reward de duración hasta alcanzar total de ticks
+        # reward = reward + self.tick_count / (self.num_ticks)
+        bonus=((self.tick_count/self.num_ticks)+1)*((self.equity_ant * equity_increment) / (self.initial_capital * self.num_ticks))
+        reward = reward + bonus
+        if ((self.equity_ant>=(0.5*self.initial_capital)) and (equity_increment>0)):
             reward = reward + bonus
-            if ((self.equity_ant>=(0.5*self.initial_capital)) and (equity_increment>0)):
-                reward = reward + bonus
-            if ((self.equity_ant >= (0.75 * self.initial_capital)) and (equity_increment > 0)):
-                reward = reward + 2*bonus
-            if ((self.equity_ant >= self.initial_capital) and (equity_increment > 0)):
-                reward = reward + 4*bonus
-            if ((self.equity_ant >= (2*self.initial_capital)) and (equity_increment > 0)):
-                reward = reward + 8*bonus
-            if ((self.equity_ant >= (4 * self.initial_capital)) and (equity_increment > 0)):
-                reward = reward + 16*bonus
-            if ((self.equity_ant >= (8 * self.initial_capital)) and (equity_increment > 0)):
-                reward = reward + 32*bonus
-            if ((self.equity_ant >= (16 * self.initial_capital)) and (equity_increment > 0)):
-                reward = reward + 64*bonus
+        if ((self.equity_ant >= (0.75 * self.initial_capital)) and (equity_increment > 0)):
+            reward = reward + 2*bonus
+        if ((self.equity_ant >= self.initial_capital) and (equity_increment > 0)):
+            reward = reward + 4*bonus
+        if ((self.equity_ant >= (2*self.initial_capital)) and (equity_increment > 0)):
+            reward = reward + 8*bonus
+        if ((self.equity_ant >= (4 * self.initial_capital)) and (equity_increment > 0)):
+            reward = reward + 16*bonus
+        if ((self.equity_ant >= (8 * self.initial_capital)) and (equity_increment > 0)):
+            reward = reward + 32*bonus
+        if ((self.equity_ant >= (16 * self.initial_capital)) and (equity_increment > 0)):
+            reward = reward + 64*bonus
 
                     # if self.order_status==0:
                 # TODO: penalizar reward con el cuadrado del tiempo que lleva sin orden * -0.01

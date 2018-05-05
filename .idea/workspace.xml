@@ -16,8 +16,8 @@
       <file leaf-file-name="forex_env.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/gym_forex/envs/forex_env.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="188">
-              <caret line="311" column="30" lean-forward="true" selection-start-line="311" selection-start-column="30" selection-end-line="311" selection-end-column="30" />
+            <state relative-caret-position="-62">
+              <caret line="315" column="31" lean-forward="false" selection-start-line="315" selection-start-column="21" selection-end-line="315" selection-end-column="31" />
               <folding>
                 <element signature="e#0#18#0" expanded="true" />
               </folding>
@@ -93,6 +93,9 @@
       <find>Box</find>
       <find>performance</find>
       <find>reward_function</find>
+      <find>balance</find>
+      <find>balance_ant</find>
+      <find>bonus_type</find>
     </findStrings>
   </component>
   <component name="Git.Settings">
@@ -118,7 +121,7 @@
   <component name="ProjectFrameBounds">
     <option name="x" value="663" />
     <option name="y" value="43" />
-    <option name="width" value="956" />
+    <option name="width" value="959" />
     <option name="height" value="763" />
   </component>
   <component name="ProjectLevelVcsManager">
@@ -199,10 +202,10 @@
     <servers />
   </component>
   <component name="ToolWindowManager">
-    <frame x="663" y="43" width="956" height="763" extended-state="0" />
+    <frame x="663" y="43" width="959" height="763" extended-state="0" />
     <editor active="true" />
     <layout>
-      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.16702127" sideWeight="0.5" order="1" side_tool="false" content_ui="combo" />
+      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.16648993" sideWeight="0.5" order="1" side_tool="false" content_ui="combo" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="10" side_tool="false" content_ui="tabs" />
       <window_info id="Event Log" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="0" side_tool="true" content_ui="tabs" />
       <window_info id="Version Control" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
@@ -454,8 +457,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/gym_forex/envs/forex_env.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="188">
-          <caret line="311" column="30" lean-forward="true" selection-start-line="311" selection-start-column="30" selection-end-line="311" selection-end-column="30" />
+        <state relative-caret-position="-62">
+          <caret line="315" column="31" lean-forward="false" selection-start-line="315" selection-start-column="21" selection-end-line="315" selection-end-column="31" />
           <folding>
             <element signature="e#0#18#0" expanded="true" />
           </folding>
