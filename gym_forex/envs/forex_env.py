@@ -25,7 +25,7 @@ class ForexEnv(gym.Env):
     """
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, dataset):
+    def __init__(self):
         metadata = {'render.modes': ['human', 'ansi']}
         # initialize initial capital
         self.capital = 10000
@@ -34,7 +34,6 @@ class ForexEnv(gym.Env):
         self.max_sl = 2000
         self.max_tp = 1000
         self.leverage = 100
-        self.dataset = dataset
          # Number of past ticks per feature to be used as observations (1440min=1day, 10080=1Week, 43200=1month, )
         # TODO: Colocar como parámetro
         self.obs_ticks = 2 # best 48@ 700k
