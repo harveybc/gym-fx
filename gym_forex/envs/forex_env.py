@@ -29,7 +29,7 @@ class ForexEnv(gym.Env):
     def init_parameters(self, dataset_filename):
         self.dataset = dataset_filename
 
-    def __init__(self):
+    def __init__(self, dataset='datasets/ts_3m.CSV'):
         metadata = {'render.modes': ['human', 'ansi']}
         # initialize initial capital
         self.capital = 10000
