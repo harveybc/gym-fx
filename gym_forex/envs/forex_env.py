@@ -41,7 +41,7 @@ class ForexEnv(gym.Env):
         # TODO: Dejar como params
         self.debug = 0  # Show debug msgs
         #csv_f = 'C:\\Users\\HarveyD\\Anaconda3\\Lib\\site-packages\\gym\\envs\\forex\\ts_4y.CSV'
-        csv_f = self.dataset
+        csv_f = dataset
         print("\nReading dataset: ",csv_f)
         self.initial_capital = self.capital
         self.equity = self.capital
