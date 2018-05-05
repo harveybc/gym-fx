@@ -3,7 +3,6 @@
   <component name="ChangeListManager">
     <list default="true" id="acda6e68-7e0a-401e-9578-a7679b1ac0bf" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agents/agent_NEAT_reps.py" afterPath="$PROJECT_DIR$/agents/agent_NEAT_reps.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agents/config" afterPath="$PROJECT_DIR$/agents/config" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="TRACKING_ENABLED" value="true" />
@@ -56,17 +55,17 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="agent_NEAT_reps.py" pinned="false" current-in-tab="false">
+      <file leaf-file-name="agent_NEAT_reps.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="408">
-              <caret line="264" column="58" lean-forward="false" selection-start-line="264" selection-start-column="58" selection-end-line="264" selection-end-column="58" />
+            <state relative-caret-position="289">
+              <caret line="257" column="36" lean-forward="true" selection-start-line="257" selection-start-column="36" selection-end-line="257" selection-end-column="36" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="config" pinned="false" current-in-tab="true">
+      <file leaf-file-name="config" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/agents/config">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="51">
@@ -97,9 +96,9 @@
       <find>test episodes</find>
       <find>test_episodes.append</find>
       <find>evaluating</find>
-      <find>brea</find>
       <find>test_episodes</find>
       <find>iterva</find>
+      <find>brea</find>
     </findStrings>
   </component>
   <component name="Git.Settings">
@@ -117,8 +116,8 @@
         <option value="$PROJECT_DIR$/agents/visualize.py" />
         <option value="$PROJECT_DIR$/agents/agent_NEAT.py" />
         <option value="$PROJECT_DIR$/agents/agent_NEAT_simple.py" />
-        <option value="$PROJECT_DIR$/agents/agent_NEAT_reps.py" />
         <option value="$PROJECT_DIR$/agents/config" />
+        <option value="$PROJECT_DIR$/agents/agent_NEAT_reps.py" />
       </list>
     </option>
   </component>
@@ -420,14 +419,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-2034">
-          <caret line="199" column="4" lean-forward="true" selection-start-line="199" selection-start-column="4" selection-end-line="199" selection-end-column="4" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_simple.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="261">
@@ -454,18 +445,26 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="408">
-          <caret line="264" column="58" lean-forward="false" selection-start-line="264" selection-start-column="58" selection-end-line="264" selection-end-column="58" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/agents/config">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="51">
           <caret line="3" column="26" lean-forward="false" selection-start-line="3" selection-start-column="26" selection-end-line="3" selection-end-column="26" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-2034">
+          <caret line="199" column="4" lean-forward="true" selection-start-line="199" selection-start-column="4" selection-end-line="199" selection-end-column="4" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="289">
+          <caret line="257" column="36" lean-forward="true" selection-start-line="257" selection-start-column="36" selection-end-line="257" selection-end-column="36" />
           <folding />
         </state>
       </provider>
