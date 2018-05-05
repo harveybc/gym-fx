@@ -221,6 +221,7 @@ def run():
                     cont_param = res_p.json()
                     # descarga el checkpoint del link de la respuesta si cont.parameter_link
                     print('\ncont_param =', cont_param)
+                    print('\nmigrations =')
                     if cont_param['result'][0]['parameter_link'] is not None:
                         genom_data = requests.get(cont_param['result'][0]['parameter_link']).content
                         with open('remote_reps', 'wb') as handler:
@@ -249,13 +250,14 @@ def run():
                                     # Hack: overwrites original genome key with the replacing one
                                     tmp_genom.key = closer.key
                                     pop.population[closer.key] = deepcopy(tmp_genom)
+                                    print(" ",closer.key)
                                 # actualiza gen_best y best_genome al remoto
                                 if i==0:
                                     pop.best_genome=deepcopy(tmp_genom)
                                     gen_best = deepcopy(tmp_genom)
                         #ejecuta speciate
                         pop.species.speciate(config, pop.population, pop.generation)
-                        print("\ndone")
+                        print("\nSpeciation after migration done")
                 # Si el perf reportado es menor pero no igual al de pop1
                 if cont['result'][0]['current_block_performance'] < best_fitness:
                     # Guarda checkpoint de los representatives de cada especie y lo copia a ubicación para servir vía syn.
