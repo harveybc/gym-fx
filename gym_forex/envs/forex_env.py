@@ -206,7 +206,7 @@ class ForexEnv(gym.Env):
             episode_over = bool(1)
             # TODO: ADICIONAR CONTROLES PARA SL Y TP ENTRE MAX_SL Y TP
             # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
-            print(self.tick_count, ',margin_call, b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
+            print('MARGIN CALL - Balance =', self.equity, ',  Reward =', self.reward, 'Time=', self.tick_count)
         if (episode_over==False):
             # Verify if close by SL
             if self.profit_pips <= (-1 * self.sl):
@@ -311,7 +311,7 @@ class ForexEnv(gym.Env):
             equity_increment = self.equity - self.equity_ant
         if self.reward_function == 0:
             # TODO: REWARD FUNCTION:  1=Tabla
-            reward=reward+self.equity
+            reward=reward+self.equity/1000
             # reward de duración hasta alcanzar total de ticks
             reward = reward + self.tick_count / (self.num_ticks)
             bonus=((self.tick_count/self.num_ticks)+1)*((self.equity_ant * equity_increment) / (self.initial_capital * self.num_ticks))
@@ -330,7 +330,7 @@ class ForexEnv(gym.Env):
                 reward = reward + 32*bonus
             if ((self.equity_ant >= (16 * self.initial_capital)) and (equity_increment > 0)):
                 reward = reward + 64*bonus
-
+        self.reward=self.reward+reward
                     # if self.order_status==0:
                 # TODO: penalizar reward con el cuadrado del tiempo que lleva sin orden * -0.01
                 # para evitar que sin acciones se obtenga ganancia 0 al final (deseado: -2, entonces variación=-2/num_ticks)
@@ -358,10 +358,11 @@ class ForexEnv(gym.Env):
         # update equity_Ant
         self.equity_ant = self.equity
         self.balance_ant=self.balance
+
         # Episode over es TRUE cuando se termina el juego, es decir cuando tick_count=self.num_ticks
         if self.tick_count >= (self.num_ticks - 1):
             episode_over = bool(1)
-            print('Balance =', self.equity, ',  Reward =', reward, 'Time=', self.tick_count)
+            print('Done - Balance =', self.equity, ',  Reward =', self.reward, 'Time=', self.tick_count)
             # self._reset()
             # self.__init__()
             # TODO: IMPRIMIR ESTADiSTICAS DE METATRADER
