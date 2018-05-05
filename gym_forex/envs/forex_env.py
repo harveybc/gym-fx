@@ -313,8 +313,8 @@ class ForexEnv(gym.Env):
             # TODO: REWARD FUNCTION:  1=Tabla
             reward = reward + ((self.equity - self.initial_capital)  / self.num_ticks)
             # reward de duración hasta alcanzar total de ticks
-            reward = reward + (self.tick_count / self.num_ticks)
-            bonus=((self.tick_count/self.num_ticks)+1)*((self.equity_ant * equity_increment) / (self.initial_capital * self.num_ticks))
+            #reward = reward + (self.tick_count / self.num_ticks)
+            #bonus=((self.tick_count/self.num_ticks)+1)*((self.equity_ant * equity_increment) / (self.initial_capital * self.num_ticks))
             reward = reward + bonus
             if ((self.equity_ant>=(0.5*self.initial_capital)) and (equity_increment>0)):
                 reward = reward + bonus
