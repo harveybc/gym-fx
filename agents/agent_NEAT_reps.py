@@ -3,6 +3,7 @@ from __future__ import print_function
 # Imports
 import gym
 import gym.wrappers
+from gym.envs.registration import register
 import gym_forex
 import json
 import matplotlib.pyplot as plt
@@ -21,6 +22,11 @@ from neat.six_util import iteritems, itervalues
 # Multi-core machine support
 NUM_CORES = 1
 # Make with the Name of the environment defined in gym_forex/__init__.py
+register(
+    id='Forex-v0',
+    entry_point='gym_forex.envs:ForexEnv',
+    kwargs={'dataset': sys.argv[1]}
+)
 env = gym.make('Forex-v0')
 # Shows the action and observation space from the forex_env, its observation space is
 # bidimentional, so it has to be converted to an array with nn_format() for direct ANN feed. (Not if evaluating with external DQN)
