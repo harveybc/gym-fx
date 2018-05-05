@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="acda6e68-7e0a-401e-9578-a7679b1ac0bf" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agents/agent_NEAT_simple.py" afterPath="$PROJECT_DIR$/agents/agent_NEAT_simple.py" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agents/agent_NEAT_reps.py" afterPath="$PROJECT_DIR$/agents/agent_NEAT_reps.py" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="TRACKING_ENABLED" value="true" />
@@ -58,8 +58,8 @@
       <file leaf-file-name="agent_NEAT_reps.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="1003">
-              <caret line="257" column="72" lean-forward="true" selection-start-line="257" selection-start-column="72" selection-end-line="257" selection-end-column="72" />
+            <state relative-caret-position="170">
+              <caret line="259" column="50" lean-forward="false" selection-start-line="259" selection-start-column="50" selection-end-line="259" selection-end-column="50" />
               <folding />
             </state>
           </provider>
@@ -505,8 +505,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="1003">
-          <caret line="257" column="72" lean-forward="true" selection-start-line="257" selection-start-column="72" selection-end-line="257" selection-end-column="72" />
+        <state relative-caret-position="170">
+          <caret line="259" column="50" lean-forward="false" selection-start-line="259" selection-start-column="50" selection-end-line="259" selection-end-column="50" />
           <folding />
         </state>
       </provider>

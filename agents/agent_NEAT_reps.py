@@ -262,7 +262,7 @@ def run():
                     filename = '{0}{1}'.format("reps-", rep.current_generation)
                     reps=[gen_best]
                     # Para cada especie, adiciona su representative a reps
-                    for s in itervalues(pop.species):
+                    for s in iteritems(pop.species):
                         reps.append(s.representative)
                     with open(filename, 'wb') as f:
                         pickle.dump(reps, f)
