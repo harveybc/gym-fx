@@ -1,4 +1,4 @@
-# Modified version of the Lander example included with neat-python for forex_env
+# Simplified version of the modified version of the Lander example included with neat-python for forex_env
 from __future__ import print_function
 # Imports
 import gym
@@ -102,6 +102,7 @@ class PooledErrorCompute(object):
 
     def simulate(self, nets):
         scores = []
+        self.test_episodes = []
         for genome, net in nets:
             observation = env.reset()
             step = 0
@@ -306,36 +307,33 @@ def run():
             ngb = neat.nn.FeedForwardNetwork.create(gen_best, config)
             solved = True
             best_scores = []
-            for k in range(100):
-                observation = env.reset()
-                score = 0
-                step = 0
-                while 1:
-                    step += 1
-                    # Use the total reward estimates from all five networks to
-                    # determine the best action given the current state.
-                    votes = np.zeros((4,))
-                    for n in best_networks:
-                        output = n.activate(nn_format(observation))
-                        votes[np.argmax(output)] += 1
-                    #output = ngb.activate(nn_format(observation))
-                    #votes[np.argmax(output)] += 1
-                    best_action = np.argmax(votes)
-                    observation, reward, done, info = env.step(best_action)
-                    score += reward
-                    env.render()
-                    if done:
-                        break
-
-                ec.episode_score.append(score)
-                ec.episode_length.append(step)
-
-                best_scores.append(score)
-                avg_score = sum(best_scores) / len(best_scores)
-                print(k, score, avg_score)
-                if avg_score < 20000:
-                    solved = False
+            observation = env.reset()
+            score = 0
+            step = 0
+            while 1:
+                step += 1
+                # Use the total reward estimates from all five networks to
+                # determine the best action given the current state.
+                votes = np.zeros((4,))
+                #for n in best_networks:
+                #    output = n.activate(nn_format(observation))
+                #    votes[np.argmax(output)] += 1
+                output = ngb.activate(nn_format(observation))
+                votes[np.argmax(output)] += 1
+                best_action = np.argmax(votes)
+                observation, reward, done, info = env.step(best_action)
+                score += reward
+                env.render()
+                if done:
                     break
+            ec.episode_score.append(score)
+            ec.episode_length.append(step)
+            best_scores.append(score)
+            avg_score = sum(best_scores) / len(best_scores)
+            print(score, avg_score)
+            if avg_score < 20000:
+                solved = False
+                break
 
 
             if solved:
