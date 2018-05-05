@@ -2,6 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="acda6e68-7e0a-401e-9578-a7679b1ac0bf" name="Default" comment="">
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agents/agent_NEAT_reps.py" afterPath="$PROJECT_DIR$/agents/agent_NEAT_reps.py" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -58,8 +59,8 @@
       <file leaf-file-name="agent_NEAT_reps.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="289">
-              <caret line="257" column="36" lean-forward="true" selection-start-line="257" selection-start-column="36" selection-end-line="257" selection-end-column="36" />
+            <state relative-caret-position="890">
+              <caret line="269" column="38" lean-forward="false" selection-start-line="269" selection-start-column="38" selection-end-line="269" selection-end-column="38" />
               <folding />
             </state>
           </provider>
@@ -86,7 +87,6 @@
       <find>best</find>
       <find>Best</find>
       <find>generation</find>
-      <find>species</find>
       <find>neat-check</find>
       <find>temp</find>
       <find>env</find>
@@ -99,6 +99,7 @@
       <find>test_episodes</find>
       <find>iterva</find>
       <find>brea</find>
+      <find>species</find>
     </findStrings>
   </component>
   <component name="Git.Settings">
@@ -122,8 +123,8 @@
     </option>
   </component>
   <component name="ProjectFrameBounds">
-    <option name="x" value="122" />
-    <option name="y" value="36" />
+    <option name="x" value="777" />
+    <option name="y" value="74" />
     <option name="width" value="944" />
     <option name="height" value="763" />
   </component>
@@ -205,7 +206,7 @@
     <servers />
   </component>
   <component name="ToolWindowManager">
-    <frame x="122" y="36" width="944" height="763" extended-state="0" />
+    <frame x="777" y="74" width="944" height="763" extended-state="0" />
     <editor active="true" />
     <layout>
       <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.16918103" sideWeight="0.5" order="1" side_tool="false" content_ui="combo" />
@@ -250,7 +251,7 @@
         <state relative-caret-position="289">
           <caret line="17" column="51" lean-forward="false" selection-start-line="17" selection-start-column="51" selection-end-line="17" selection-end-column="51" />
           <folding>
-            <element signature="e#0#37#0" expanded="true" />
+            <element signature="e#0#37#0" expanded="false" />
           </folding>
         </state>
       </provider>
@@ -332,7 +333,7 @@
         <state relative-caret-position="170">
           <caret line="17" column="51" lean-forward="false" selection-start-line="17" selection-start-column="51" selection-end-line="17" selection-end-column="51" />
           <folding>
-            <element signature="e#0#37#0" expanded="true" />
+            <element signature="e#0#37#0" expanded="false" />
           </folding>
         </state>
       </provider>
@@ -432,7 +433,7 @@
         <state relative-caret-position="238">
           <caret line="21" column="23" lean-forward="false" selection-start-line="21" selection-start-column="23" selection-end-line="21" selection-end-column="23" />
           <folding>
-            <element signature="e#0#37#0" expanded="true" />
+            <element signature="e#0#37#0" expanded="false" />
           </folding>
         </state>
       </provider>
@@ -463,8 +464,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="289">
-          <caret line="257" column="36" lean-forward="true" selection-start-line="257" selection-start-column="36" selection-end-line="257" selection-end-column="36" />
+        <state relative-caret-position="890">
+          <caret line="269" column="38" lean-forward="false" selection-start-line="269" selection-start-column="38" selection-end-line="269" selection-end-column="38" />
           <folding />
         </state>
       </provider>
