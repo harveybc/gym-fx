@@ -102,7 +102,7 @@ class PooledErrorCompute(object):
 
     def simulate(self, nets):
         scores = []
-        #self.test_episodes = []
+        test_episodes = []
         for genome, net in nets:
             observation = env.reset()
             step = 0
@@ -149,6 +149,8 @@ class PooledErrorCompute(object):
             self.simulate(nets)
             print("simulation run time {0}".format(time.time() - t0))
             t0 = time.time()
+
+        # Selecciona aleatoriamente entre los test_episodes al pop.config.pop_size
 
         # Assign a composite fitness to each genome; genomes can make progress either
         # by improving their total reward or by making more accurate reward estimates.
@@ -331,8 +333,6 @@ def run():
             print(score, avg_score)
             if avg_score < 20000:
                 solved = False
-                break
-
 
             if solved:
                 print("Solved.")
