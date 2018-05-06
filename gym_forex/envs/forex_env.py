@@ -334,7 +334,7 @@ class ForexEnv(gym.Env):
             #    reward = reward + (self.initial_capital / self.num_ticks)
             # penaliza margin call
             if self.c_c == 1:
-                reward = -(5 *self.initial_capital)
+                reward = -(5.0 *self.initial_capital)
             # penaliza red que no hace nada
             if self.tick_count >= (self.num_ticks - 2):
                 if self.equity == self.initial_capital:
@@ -362,7 +362,7 @@ class ForexEnv(gym.Env):
             #    reward = reward + 32*bonus
             #if ((self.equity_ant >= (16 * self.initial_capital)) and (equity_increment > 0)):
             #    reward = reward + 64*bonus
-            #reward = reward / self.initial_capital
+            reward = reward / self.initial_capital
                     # if self.order_status==0:
                 # TODO: penalizar reward con el cuadrado del tiempo que lleva sin orden * -0.01
                 # para evitar que sin acciones se obtenga ganancia 0 al final (deseado: -2, entonces variación=-2/num_ticks)
