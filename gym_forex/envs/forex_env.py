@@ -328,10 +328,10 @@ class ForexEnv(gym.Env):
             reward = reward + bonus
             # penaliza inactividad hasta alcanzar total de ticks con 5 para que tenga menos que los de balance positivo con mal comportamiento
             if equity_increment == 0.0:
-                reward = reward - (self.initial_capital / self.num_ticks)
+                reward = reward - (2*self.initial_capital / self.num_ticks)
             # premia incrementos
             if equity_increment > 0.0:
-                reward = reward + (self.initial_capital / self.num_ticks)
+                reward = reward + (2*self.initial_capital / self.num_ticks)
             # penaliza margin call
             if self.c_c == 1:
                 reward = -(10*self.initial_capital)
@@ -343,10 +343,10 @@ class ForexEnv(gym.Env):
                     reward = reward -(2 * self.initial_capital) / self.num_ticks
             # premia cierre por take profit
             if self.c_c == 3:
-                reward = reward + (0.5*self.initial_capital) / self.num_ticks
+                reward = reward + (2*self.initial_capital) / self.num_ticks
                 # premia por consecutive tp
                 if self.ant_c_c == 3:
-                    reward = reward + (2 * self.initial_capital) / self.num_ticks
+                    reward = reward + (4 * self.initial_capital) / self.num_ticks
             # bonus
             if ((self.equity_ant >= self.initial_capital) and (equity_increment > 0)):
                 reward = reward + 4*bonus
