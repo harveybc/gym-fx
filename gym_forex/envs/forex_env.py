@@ -34,6 +34,8 @@ class ForexEnv(gym.Env):
         self.max_sl = 2000
         self.max_tp = 1000
         self.leverage = 100
+        # Closing cause
+        self.c_c = 0
          # Number of past ticks per feature to be used as observations (1440min=1day, 10080=1Week, 43200=1month, )
         # TODO: Colocar como parámetro
         self.obs_ticks = 2 # best 48@ 700k
@@ -69,7 +71,7 @@ class ForexEnv(gym.Env):
         self.spread_funct = 0
         # using spread=20 sinse its above the average plus the stddev in alpari but on
         self.spread = 20
-
+        self.ant_c_c = 0 #TODO: ATERIOR CLOSING CAUSE PARA DETECTAR SL CONSECUTIVOS Y PENALIZARLOS
         # num_symbols
         self.num_symbols = 1
         # initialize tick counter
@@ -200,12 +202,13 @@ class ForexEnv(gym.Env):
             # reset margin
             self.margin = 0.0
             # Set closing cause 1 = Margin call
+            self.ant_c_c = self.c_c
             self.c_c = 1
             # End episode
             episode_over = bool(1)
             # TODO: ADICIONAR CONTROLES PARA SL Y TP ENTRE MAX_SL Y TP
             # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
-            print('MARGIN CALL - Balance =', self.equity, ',  Reward =', self.reward-10, 'Time=', self.tick_count)
+            print('MARGIN CALL - Balance =', self.equity, ',  Reward =', self.reward-5, 'Time=', self.tick_count)
         if (episode_over==False):
             # Verify if close by SL
             if self.profit_pips <= (-1 * self.sl):
@@ -220,6 +223,7 @@ class ForexEnv(gym.Env):
                     print(self.tick_count, ',stop_loss, o', self.open_price, ',p', self.profit_pips, ',v',
                           self.order_volume, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
                 # Set closing cause 2 = sl
+                self.ant_c_c = self.c_c
                 self.c_c = 2
             # Verify if close by TP
             if self.profit_pips >= self.tp:
@@ -234,6 +238,7 @@ class ForexEnv(gym.Env):
                     print(self.tick_count, ',take_profit, o', self.open_price, ',p', self.profit_pips, ',v',
                           self.order_volume, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
                 # Set closing cause 3 = tp
+                self.ant_c_c = self.c_c
                 self.c_c = 3
             # TODO: Hacer opcion realista de ordenes que se ABREN Y CIERRAN solo si durante el siguiente minuto
             #       el precio de la orden(close) no es high o low del siguiente candle.
@@ -242,6 +247,8 @@ class ForexEnv(gym.Env):
                 if self.order_status == -1:
                     self.balance = self.equity
                     self.margin = 0
+                    self.ant_c_c = self.c_c
+                    self.c_c = 0
                 self.order_status = 1
                 # open price = Ask (Close_bid+Spread)
                 self.open_price = Close + spread
@@ -266,6 +273,9 @@ class ForexEnv(gym.Env):
                 if self.order_status == 1:
                     # close existing order
                     self.balance = self.equity
+                    self.margin = 0
+                    self.ant_c_c = self.c_c
+                    self.c_c = 0
                 self.order_status = -1
                 # open_price = Bid
                 self.open_price = Close
@@ -285,6 +295,8 @@ class ForexEnv(gym.Env):
             if ((self.tick_count - self.order_time) > self.min_order_time):
                 if self.order_status == 1 and action == 1:
                     self.order_status = 0
+                    self.ant_c_c = self.c_c
+                    self.c_c = 0
                     self.balance = self.equity
                     self.margin = 0
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
@@ -294,6 +306,8 @@ class ForexEnv(gym.Env):
                               MoH)
                 if self.order_status == -1 and action == 2:
                     self.order_status = 0
+                    self.ant_c_c = self.c_c
+                    self.c_c = 0
                     self.balance = self.equity
                     self.margin = 0
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
@@ -316,11 +330,20 @@ class ForexEnv(gym.Env):
             reward = reward - (self.initial_capital / self.num_ticks)
             # penaliza margin call
             if self.c_c == 1:
-                reward = -(10*self.initial_capital)
-            if ((self.equity_ant>=(0.5*self.initial_capital)) and (equity_increment>0)):
-                reward = reward + bonus
-            if ((self.equity_ant >= (0.75 * self.initial_capital)) and (equity_increment > 0)):
-                reward = reward + 2*bonus
+                reward = -(5*self.initial_capital)
+            # penaliza cierre por stop loss
+            if self.c_c == 2:
+                reward = reward - (4 * self.initial_capital) / self.num_ticks
+                # penaliza por consecutive sl
+                if self.ant_c_c == 2:
+                    reward = reward -(16 * self.initial_capital) / self.num_ticks
+            # premia cierre por take profit
+            if self.c_c == 3:
+                reward = reward + (4 * self.initial_capital) / self.num_ticks
+                # premia por consecutive tp
+                if self.ant_c_c == 3:
+                    reward = reward + (16 * self.initial_capital) / self.num_ticks
+            # bonus
             if ((self.equity_ant >= self.initial_capital) and (equity_increment > 0)):
                 reward = reward + 4*bonus
             if ((self.equity_ant >= (2*self.initial_capital)) and (equity_increment > 0)):
@@ -387,6 +410,8 @@ class ForexEnv(gym.Env):
         self.reward = 0.0
         self.order_profit = 0.0
         self.margin = 0.0
+        self.c_c=0
+        self.ant_c_c=0
         # Serial data - to - parallel observation matrix and state matrix
         self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         self.state = self.state_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
