@@ -142,11 +142,11 @@ class PooledErrorCompute(object):
         t0 = time.time()
 
         # Periodically generate a new set of episodes for comparison.
-        if 1 == self.generation % 10:
-            self.test_episodes = self.test_episodes[-300:]
-            scores=self.simulate(nets)
-            print("simulation run time {0}".format(time.time() - t0))
-            t0 = time.time()
+        #if 1 == self.generation % 10:
+        #self.test_episodes = self.test_episodes[-300:]
+        scores=self.simulate(nets)
+        print("simulation run time {0}".format(time.time() - t0))
+        t0 = time.time()
 
         # Assign a composite fitness to each genome; genomes can make progress either
         # by improving their total reward or by making more accurate reward estimates.
