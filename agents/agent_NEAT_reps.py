@@ -96,8 +96,8 @@ class PooledErrorCompute(object):
         self.test_episodes = []
         self.generation = 0
 
-        self.min_reward = -2000
-        self.max_reward = 2000
+        self.min_reward = -100
+        self.max_reward = 100
 
         self.episode_score = []
         self.episode_length = []
@@ -317,7 +317,7 @@ def run():
             solved = True
             best_scores = []
             observation = env.reset()
-            score = 0
+            score = 0.0
             step = 0
             gen_best_nn=neat.nn.FeedForwardNetwork.create(gen_best, config)
             while 1:
@@ -333,7 +333,7 @@ def run():
             ec.episode_length.append(step)
             best_scores.append(score)
             avg_score = sum(best_scores) / len(best_scores)
-            print("\nEnsemble score=", score, " avg_score=",avg_score)
+            print("\nScore score=", score, " avg_score=",avg_score)
 
             if avg_score < 2000000000:
                 solved = False

@@ -333,16 +333,16 @@ class ForexEnv(gym.Env):
                 reward = -(10*self.initial_capital)
             # penaliza cierre por stop loss
             if self.c_c == 2:
-                reward = reward - (4 * self.initial_capital) / self.num_ticks
+                reward = reward - (self.initial_capital) / self.num_ticks
                 # penaliza por consecutive sl
                 if self.ant_c_c == 2:
-                    reward = reward -(16 * self.initial_capital) / self.num_ticks
+                    reward = reward -(4 * self.initial_capital) / self.num_ticks
             # premia cierre por take profit
             if self.c_c == 3:
-                reward = reward + (4 * self.initial_capital) / self.num_ticks
+                reward = reward + (self.initial_capital) / self.num_ticks
                 # premia por consecutive tp
                 if self.ant_c_c == 3:
-                    reward = reward + (16 * self.initial_capital) / self.num_ticks
+                    reward = reward + (4 * self.initial_capital) / self.num_ticks
             # bonus
             if ((self.equity_ant >= self.initial_capital) and (equity_increment > 0)):
                 reward = reward + 4*bonus
