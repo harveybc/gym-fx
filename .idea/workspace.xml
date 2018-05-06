@@ -16,8 +16,8 @@
       <file leaf-file-name="forex_env.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/gym_forex/envs/forex_env.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="244">
-              <caret line="320" column="28" lean-forward="false" selection-start-line="320" selection-start-column="28" selection-end-line="320" selection-end-column="28" />
+            <state relative-caret-position="123">
+              <caret line="316" column="31" lean-forward="false" selection-start-line="316" selection-start-column="31" selection-end-line="316" selection-end-column="31" />
               <folding>
                 <element signature="e#0#18#0" expanded="true" />
               </folding>
@@ -40,8 +40,8 @@
       <file leaf-file-name="agent_NEAT.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="170">
-              <caret line="304" column="16" lean-forward="false" selection-start-line="304" selection-start-column="16" selection-end-line="304" selection-end-column="82" />
+            <state relative-caret-position="289">
+              <caret line="314" column="34" lean-forward="false" selection-start-line="314" selection-start-column="34" selection-end-line="314" selection-end-column="34" />
               <folding />
             </state>
           </provider>
@@ -435,14 +435,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="170">
-          <caret line="304" column="16" lean-forward="false" selection-start-line="304" selection-start-column="16" selection-end-line="304" selection-end-column="82" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="259">
@@ -453,10 +445,18 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/agents/agent_NEAT.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="289">
+          <caret line="314" column="34" lean-forward="false" selection-start-line="314" selection-start-column="34" selection-end-line="314" selection-end-column="34" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/gym_forex/envs/forex_env.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="244">
-          <caret line="320" column="28" lean-forward="false" selection-start-line="320" selection-start-column="28" selection-end-line="320" selection-end-column="28" />
+        <state relative-caret-position="123">
+          <caret line="316" column="31" lean-forward="false" selection-start-line="316" selection-start-column="31" selection-end-line="316" selection-end-column="31" />
           <folding>
             <element signature="e#0#18#0" expanded="true" />
           </folding>

@@ -206,7 +206,7 @@ class ForexEnv(gym.Env):
             episode_over = bool(1)
             # TODO: ADICIONAR CONTROLES PARA SL Y TP ENTRE MAX_SL Y TP
             # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
-            print('MARGIN CALL - Balance =', self.equity, ',  Reward =', self.reward, 'Time=', self.tick_count)
+            print('MARGIN CALL - Balance =', self.equity, ',  Reward =', self.reward-10, 'Time=', self.tick_count)
         if (episode_over==False):
             # Verify if close by SL
             if self.profit_pips <= (-1 * self.sl):
@@ -315,6 +315,9 @@ class ForexEnv(gym.Env):
             reward = reward + bonus
             # penaliza reward de duración hasta alcanzar total de ticks
             reward = reward - (self.initial_capital / self.num_ticks)
+            # penaliza margin call
+            if self.equity < self.margin:
+                reward = reward-(10*self.initial_capital)
             if ((self.equity_ant>=(0.5*self.initial_capital)) and (equity_increment>0)):
                 reward = reward + bonus
             if ((self.equity_ant >= (0.75 * self.initial_capital)) and (equity_increment > 0)):
@@ -357,7 +360,7 @@ class ForexEnv(gym.Env):
         # update equity_Ant
         self.equity_ant = self.equity
         self.balance_ant=self.balance
-
+        self.reward = self.reward + reward
         # Episode over es TRUE cuando se termina el juego, es decir cuando tick_count=self.num_ticks
         if self.tick_count >= (self.num_ticks - 1):
             episode_over = bool(1)
@@ -382,7 +385,7 @@ class ForexEnv(gym.Env):
         self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         self.state = self.state_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         self.order_status = 0
-        self.reward = 0
+        self.reward = 0.0
         self.order_profit = 0.0
         self.margin = 0.0
         # Serial data - to - parallel observation matrix and state matrix
