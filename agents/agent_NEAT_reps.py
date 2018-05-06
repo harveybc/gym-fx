@@ -96,8 +96,8 @@ class PooledErrorCompute(object):
         self.test_episodes = []
         self.generation = 0
 
-        self.min_reward = -100
-        self.max_reward = 100
+        self.min_reward = -15
+        self.max_reward = 15
 
         self.episode_score = []
         self.episode_length = []
@@ -111,12 +111,9 @@ class PooledErrorCompute(object):
             data = []
             while 1:
                 step += 1
-                if step < 100 and random.random() < 0.1:
-                    action = env.action_space.sample()
-                else:
-                    output = net.activate(nn_format(observation))
-                    #print("output: {0!r}".format(output))
-                    action = np.argmax(output)
+                output = net.activate(nn_format(observation))
+                #print("output: {0!r}".format(output))
+                action = np.argmax(output)
                 #print("observation: {0!r}".format(self.nn_format(observation)))
                 #print("action: {0!r}".format(action))
                 observation, reward, done, info = env.step(action)
