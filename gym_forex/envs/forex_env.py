@@ -334,7 +334,7 @@ class ForexEnv(gym.Env):
             #    reward = reward + (self.initial_capital / self.num_ticks)
             # penaliza margin call
             if self.c_c == 1:
-                reward = -(5*self.initial_capital)
+                reward = -(5 *self.initial_capital)
             # penaliza red que no hace nada
             if self.tick_count >= (self.num_ticks - 2):
                 if self.equity == self.initial_capital:
