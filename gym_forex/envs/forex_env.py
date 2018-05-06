@@ -6,7 +6,7 @@ from collections import deque
 from numpy import genfromtxt
 from gym import utils
 from gym import spaces
-
+import numpy as np
 
 class ForexEnv(gym.Env):
     """
@@ -42,7 +42,6 @@ class ForexEnv(gym.Env):
         self.debug = 0  # Show debug msgs
         #csv_f = 'C:\\Users\\HarveyD\\Anaconda3\\Lib\\site-packages\\gym\\envs\\forex\\ts_4y.CSV'
         csv_f = dataset
-        print("\nReading dataset: ",csv_f)
         self.initial_capital = self.capital
         self.equity = self.capital
         self.balance = self.capital
@@ -130,7 +129,7 @@ class ForexEnv(gym.Env):
         # action space = nop,buy,sell
         self.action_space = spaces.Discrete(3)
         # observation_space=(16 columns + 3 state variables)* obs_ticks, shape=(width,height, channels?)
-        self.observation_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(self.obs_ticks, 1, 19))
+        self.observation_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(self.obs_ticks, 1, 19), dtype=np.float32)
         self.order_time = 0
         # TODO; Quitar cuando se controle SL Y TP
         self.sl = self.max_sl
