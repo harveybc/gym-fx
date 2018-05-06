@@ -80,11 +80,9 @@ def compute_fitness(genome, net, episodes, min_reward, max_reward):
         dr = np.clip(dr, -1.0, 1.0)
 
         for row, dr in zip(data, dr):
-            observation = row[:38]
-            action = int(row[3])
-            #print("observation: {0!r}".format(observation))
-            #print("f_observation: {0!r}".format(nn_format(observation)))
-            output = net.activate(observation)
+            #observation = row[:38]
+            #action = int(row[3])
+            #output = net.activate(observation)
             reward_error.append(float((output[action] - dr) ** 2))
 
     return reward_error
@@ -130,6 +128,7 @@ class PooledErrorCompute(object):
             self.test_episodes.append((score, data))
 
         print("Score range [{:.3f}, {:.3f}]".format(min(scores), max(scores)))
+        return scores
 
     def evaluate_genomes(self, genomes, config):
         self.generation += 1
@@ -145,30 +144,20 @@ class PooledErrorCompute(object):
         # Periodically generate a new set of episodes for comparison.
         if 1 == self.generation % 10:
             self.test_episodes = self.test_episodes[-300:]
-            self.simulate(nets)
+            scores=self.simulate(nets)
             print("simulation run time {0}".format(time.time() - t0))
             t0 = time.time()
-
-        # Selecciona aleatoriamente entre los test_episodes al pop.config.pop_size
 
         # Assign a composite fitness to each genome; genomes can make progress either
         # by improving their total reward or by making more accurate reward estimates.
 
         print("Evaluating {0} test episodes".format(len(self.test_episodes)))
-        if self.pool is None:
-            for genome, net in nets:
-                reward_error = compute_fitness(genome, net, self.test_episodes, self.min_reward, self.max_reward)
-                genome.fitness = -np.sum(reward_error) / len(self.test_episodes)
-        else:
-            jobs = []
-            for genome, net in nets:
-                jobs.append(self.pool.apply_async(compute_fitness,
-                    (genome, net, self.test_episodes, self.min_reward, self.max_reward)))
 
-            for job, (genome_id, genome) in zip(jobs, genomes):
-                reward_error = job.get(timeout=None)
-                genome.fitness = -np.sum(reward_error) / len(self.test_episodes)
-
+        i = 0
+        for genome, net in nets:
+            #reward_error = compute_fitness(genome, net, self.test_episodes, self.min_reward, self.max_reward)
+            genome.fitness = scores[i]
+            i = i + 1
         print("final fitness compute time {0}\n".format(time.time() - t0))
 
 
