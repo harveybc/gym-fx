@@ -208,7 +208,7 @@ class ForexEnv(gym.Env):
             episode_over = bool(1)
             # TODO: ADICIONAR CONTROLES PARA SL Y TP ENTRE MAX_SL Y TP
             # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
-            print('MARGIN CALL - Balance =', self.equity, ',  Reward =', self.reward-5, 'Time=', self.tick_count)
+            print('MARGIN CALL - Balance =', self.equity, ',  Reward =', self.reward-10, 'Time=', self.tick_count)
         if (episode_over==False):
             # Verify if close by SL
             if self.profit_pips <= (-1 * self.sl):
@@ -330,7 +330,7 @@ class ForexEnv(gym.Env):
             reward = reward - (self.initial_capital / self.num_ticks)
             # penaliza margin call
             if self.c_c == 1:
-                reward = -(5*self.initial_capital)
+                reward = -(10*self.initial_capital)
             # penaliza cierre por stop loss
             if self.c_c == 2:
                 reward = reward - (4 * self.initial_capital) / self.num_ticks
