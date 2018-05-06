@@ -311,11 +311,10 @@ class ForexEnv(gym.Env):
             equity_increment = self.equity - self.equity_ant
         if self.reward_function == 0:
             # TODO: REWARD FUNCTION:  1=Tabla
-            reward = reward + ((self.equity - self.initial_capital)  / self.num_ticks)
-            # reward de duración hasta alcanzar total de ticks
-            #reward = reward + (self.tick_count / self.num_ticks)
-            bonus=((self.tick_count/self.num_ticks)+1)*((self.equity_ant * equity_increment) / (self.initial_capital * self.num_ticks))
+            bonus=((self.equity - self.initial_capital) / self.num_ticks)
             reward = reward + bonus
+            # penaliza reward de duración hasta alcanzar total de ticks
+            reward = reward - (self.initial_capital / self.num_ticks)
             if ((self.equity_ant>=(0.5*self.initial_capital)) and (equity_increment>0)):
                 reward = reward + bonus
             if ((self.equity_ant >= (0.75 * self.initial_capital)) and (equity_increment > 0)):
@@ -330,7 +329,7 @@ class ForexEnv(gym.Env):
                 reward = reward + 32*bonus
             if ((self.equity_ant >= (16 * self.initial_capital)) and (equity_increment > 0)):
                 reward = reward + 64*bonus
-            reward = reward / 10000
+            reward = reward / self.initial_capital
                     # if self.order_status==0:
                 # TODO: penalizar reward con el cuadrado del tiempo que lleva sin orden * -0.01
                 # para evitar que sin acciones se obtenga ganancia 0 al final (deseado: -2, entonces variación=-2/num_ticks)
