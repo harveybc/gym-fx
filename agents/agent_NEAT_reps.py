@@ -306,45 +306,46 @@ def run():
             plt.savefig("scores.svg")
             plt.close()
 
-            mfs = sum(stats.get_fitness_mean()[-5:]) / 5.0
-            print("Average mean fitness over last 5 generations: {0}".format(mfs))
+            mfs = sum(stats.get_fitness_mean()[-3:]) / 3.0
+            print("Average mean fitness over last 3 generations: {0}".format(mfs))
 
-            mfs = sum(stats.get_fitness_stat(min)[-5:]) / 5.0
-            print("Average min fitness over last 5 generations: {0}".format(mfs))
+            mfs = sum(stats.get_fitness_stat(min)[-3:]) / 3.0
+            print("Average min fitness over last 3 generations: {0}".format(mfs))
 
             # Use the best genomes seen so far as an ensemble-ish control system.
             best_genomes = stats.best_unique_genomes(3)
             best_networks = []
-            #for g in best_genomes:
-                #best_networks.append(neat.nn.FeedForwardNetwork.create(g, config))
-            ngb = neat.nn.FeedForwardNetwork.create(gen_best, config)
+            for g in best_genomes:
+                best_networks.append(neat.nn.FeedForwardNetwork.create(g, config))
             solved = True
             best_scores = []
-            observation = env.reset()
-            score = 0
-            step = 0
-            while 1:
-                step += 1
-                # Use the total reward estimates from all five networks to
-                # determine the best action given the current state.
-                votes = np.zeros((4,))
-                #for n in best_networks:
-                #    output = n.activate(nn_format(observation))
-                #    votes[np.argmax(output)] += 1
-                output = ngb.activate(nn_format(observation))
-                votes[np.argmax(output)] += 1
-                best_action = np.argmax(votes)
-                observation, reward, done, info = env.step(best_action)
-                score += reward
-                env.render()
-                if done:
-                    break
-            ec.episode_score.append(score)
-            ec.episode_length.append(step)
-            best_scores.append(score)
-            avg_score = sum(best_scores) / len(best_scores)
-            print(score, avg_score)
-            if avg_score < 20000:
+            for k in range(100):
+                observation = env.reset()
+                score = 0
+                step = 0
+                while 1:
+                    step += 1
+                    # Use the total reward estimates from all five networks to
+                    # determine the best action given the current state.
+                    votes = np.zeros((3,))
+                    for n in best_networks:
+                        output = n.activate(nn_format(observation))
+                        votes[np.argmax(output)] += 1
+                    best_action = np.argmax(votes)
+                    observation, reward, done, info = env.step(best_action)
+                    score += reward
+                    print("\nk=",k," reward=",reward)
+                    env.render()
+                    if done:
+                        break
+
+                ec.episode_score.append(score)
+                ec.episode_length.append(step)
+                best_scores.append(score)
+                avg_score = sum(best_scores) / len(best_scores)
+                print("\nEnsemble score=", score, " avg=",avg_score)
+
+            if avg_score < 2000000000:
                 solved = False
 
             if solved:

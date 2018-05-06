@@ -301,12 +301,11 @@ def run():
             # Use the best genomes seen so far as an ensemble-ish control system.
             best_genomes = stats.best_unique_genomes(3)
             best_networks = []
-            #for g in best_genomes:
-                #best_networks.append(neat.nn.FeedForwardNetwork.create(g, config))
-            ngb = neat.nn.FeedForwardNetwork.create(gen_best, config)
+            for g in best_genomes:
+                best_networks.append(neat.nn.FeedForwardNetwork.create(g, config))
             solved = True
             best_scores = []
-            for k in range(10):
+            for k in range(100):
                 observation = env.reset()
                 score = 0
                 step = 0
@@ -318,8 +317,6 @@ def run():
                     for n in best_networks:
                         output = n.activate(nn_format(observation))
                         votes[np.argmax(output)] += 1
-                    #output = ngb.activate(nn_format(observation))
-                    #votes[np.argmax(output)] += 1
                     best_action = np.argmax(votes)
                     observation, reward, done, info = env.step(best_action)
                     score += reward
@@ -333,7 +330,7 @@ def run():
                 best_scores.append(score)
                 avg_score = sum(best_scores) / len(best_scores)
                 print(k, score, avg_score)
-                if avg_score < 20000:
+                if avg_score < 2000000000:
                     solved = False
                     break
 
