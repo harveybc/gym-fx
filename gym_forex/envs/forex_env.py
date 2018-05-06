@@ -336,7 +336,7 @@ class ForexEnv(gym.Env):
             if self.c_c == 1:
                 reward = -(5*self.initial_capital)
             # penaliza red que no hace nada
-            if self.tick_count >= (self.num_ticks - 1):
+            if self.tick_count >= (self.num_ticks - 2):
                 if self.equity == self.initial_capital:
                     reward = -(10 * self.initial_capital)
             # penaliza cierre por stop loss
