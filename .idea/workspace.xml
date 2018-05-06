@@ -16,8 +16,8 @@
       <file leaf-file-name="forex_env.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/gym_forex/envs/forex_env.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="204">
-              <caret line="329" column="34" lean-forward="false" selection-start-line="329" selection-start-column="34" selection-end-line="329" selection-end-column="34" />
+            <state relative-caret-position="325">
+              <caret line="337" column="34" lean-forward="true" selection-start-line="337" selection-start-column="34" selection-end-line="337" selection-end-column="34" />
               <folding>
                 <element signature="e#0#18#0" expanded="true" />
               </folding>
@@ -51,7 +51,6 @@
   </component>
   <component name="FindInProjectRecents">
     <findStrings>
-      <find>config</find>
       <find>compat</find>
       <find>print</find>
       <find>test episodes</find>
@@ -81,6 +80,7 @@
       <find>self.c_c</find>
       <find>min_rewar</find>
       <find>rep</find>
+      <find>order_st</find>
     </findStrings>
   </component>
   <component name="Git.Settings">
@@ -431,8 +431,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/gym_forex/envs/forex_env.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="204">
-          <caret line="329" column="34" lean-forward="false" selection-start-line="329" selection-start-column="34" selection-end-line="329" selection-end-column="34" />
+        <state relative-caret-position="325">
+          <caret line="337" column="34" lean-forward="true" selection-start-line="337" selection-start-column="34" selection-end-line="337" selection-end-column="34" />
           <folding>
             <element signature="e#0#18#0" expanded="true" />
           </folding>
