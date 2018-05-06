@@ -318,19 +318,19 @@ class ForexEnv(gym.Env):
         # Calculates reward from RewardFunctionTable
         reward = 0.0
         # Bonus_type selecciona si usar Balance=0 o Equity=1
-        if self.bonus_type == 0:
-            equity_increment = self.balance - self.balance_ant
-        else:
-            equity_increment = self.equity - self.equity_ant
+        #if self.bonus_type == 0:
+        #    equity_increment = self.balance - self.balance_ant
+        #else:
+        equity_increment = self.equity - self.equity_ant
         if self.reward_function == 0:
             # TODO: REWARD FUNCTION:  1=Tabla
             bonus=((self.equity - self.initial_capital) / self.num_ticks)
             reward = reward + bonus
             # penaliza inactividad hasta alcanzar total de ticks con 5 para que tenga menos que los de balance positivo con mal comportamiento
-            if equity_increment <= 0.0:
+            if equity_increment == 0.0:
                 reward = reward - (self.initial_capital / self.num_ticks)
             # premia incrementos
-            else:
+            if equity_increment > 0.0:
                 reward = reward + (self.initial_capital / self.num_ticks)
             # penaliza margin call
             if self.c_c == 1:
