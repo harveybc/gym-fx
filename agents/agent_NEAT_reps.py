@@ -319,7 +319,7 @@ def run():
                 best_networks.append(neat.nn.FeedForwardNetwork.create(g, config))
             solved = True
             best_scores = []
-            for k in range(100):
+            for k in range(4):
                 observation = env.reset()
                 score = 0
                 step = 0
@@ -334,16 +334,14 @@ def run():
                     best_action = np.argmax(votes)
                     observation, reward, done, info = env.step(best_action)
                     score += reward
-                    print("\nk=",k," reward=",reward)
                     env.render()
                     if done:
                         break
-
                 ec.episode_score.append(score)
                 ec.episode_length.append(step)
                 best_scores.append(score)
                 avg_score = sum(best_scores) / len(best_scores)
-                print("\nEnsemble score=", score, " avg=",avg_score)
+                print("\nk=", k, "ensemble score=", score, " avg_score=",avg_score)
 
             if avg_score < 2000000000:
                 solved = False

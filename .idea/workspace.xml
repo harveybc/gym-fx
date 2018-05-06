@@ -2,7 +2,6 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="acda6e68-7e0a-401e-9578-a7679b1ac0bf" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agents/agent_NEAT.py" afterPath="$PROJECT_DIR$/agents/agent_NEAT.py" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agents/agent_NEAT_reps.py" afterPath="$PROJECT_DIR$/agents/agent_NEAT_reps.py" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -79,8 +78,8 @@
       <file leaf-file-name="agent_NEAT_reps.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="378">
-              <caret line="336" column="52" lean-forward="false" selection-start-line="336" selection-start-column="52" selection-end-line="336" selection-end-column="52" />
+            <state relative-caret-position="344">
+              <caret line="343" column="70" lean-forward="false" selection-start-line="343" selection-start-column="70" selection-end-line="343" selection-end-column="70" />
               <folding>
                 <element signature="e#107#144#0" expanded="true" />
               </folding>
@@ -486,8 +485,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="378">
-          <caret line="336" column="52" lean-forward="false" selection-start-line="336" selection-start-column="52" selection-end-line="336" selection-end-column="52" />
+        <state relative-caret-position="344">
+          <caret line="343" column="70" lean-forward="false" selection-start-line="343" selection-start-column="70" selection-end-line="343" selection-end-column="70" />
           <folding>
             <element signature="e#107#144#0" expanded="true" />
           </folding>
