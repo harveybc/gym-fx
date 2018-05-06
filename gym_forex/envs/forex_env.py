@@ -330,23 +330,27 @@ class ForexEnv(gym.Env):
             #if equity_increment == 0.0:
             #    reward = reward - (2*self.initial_capital / self.num_ticks)
             # premia incrementos
-            if equity_increment > 0.0:
-                reward = reward + (self.initial_capital / self.num_ticks)
+            #if equity_increment > 0.0:
+            #    reward = reward + (self.initial_capital / self.num_ticks)
             # penaliza margin call
             if self.c_c == 1:
-                reward = -(10*self.initial_capital)
+                reward = -(5*self.initial_capital)
+            # penaliza red que no hace nada
+            if self.tick_count >= (self.num_ticks - 1):
+                if self.equity == self.initial_capital:
+                    reward = -(10 * self.initial_capital)
             # penaliza cierre por stop loss
             if self.c_c == 2:
                 reward = reward - (0.5*self.initial_capital) / self.num_ticks
                 # penaliza por consecutive sl
-                if self.ant_c_c == 2:
-                    reward = reward -(2 * self.initial_capital) / self.num_ticks
+            #    if self.ant_c_c == 2:
+            #        reward = reward -(2 * self.initial_capital) / self.num_ticks
             # premia cierre por take profit
             if self.c_c == 3:
                 reward = reward + (0.5*self.initial_capital) / self.num_ticks
-                # premia por consecutive tp
-                if self.ant_c_c == 3:
-                    reward = reward + (2 * self.initial_capital) / self.num_ticks
+            #    # premia por consecutive tp
+            #    if self.ant_c_c == 3:
+            #        reward = reward + (2 * self.initial_capital) / self.num_ticks
             # bonus
             if ((self.equity_ant >= self.initial_capital) and (equity_increment > 0)):
                 reward = reward + 4*bonus
