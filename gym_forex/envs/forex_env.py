@@ -326,8 +326,8 @@ class ForexEnv(gym.Env):
             # TODO: REWARD FUNCTION:  1=Tabla
             bonus=((self.equity - self.initial_capital) / self.num_ticks)
             reward = reward + bonus
-            # penaliza reward de duración hasta alcanzar total de ticks
-            reward = reward - (self.initial_capital / self.num_ticks)
+            # penaliza reward de duración hasta alcanzar total de ticks con 5 para que tenga menos que los de balance positivo con mal comportamiento
+            reward = reward - (self.initial_capital*5 / self.num_ticks)
             # penaliza margin call
             if self.c_c == 1:
                 reward = -(10*self.initial_capital)

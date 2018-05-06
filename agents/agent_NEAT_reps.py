@@ -265,7 +265,8 @@ def run():
                     # Para cada especie, adiciona su representative a reps
                     for sid, s in iteritems(pop.species.species):
                         #print("\ns=",s)
-                        reps.append(s.representative)
+                        if s.representative not in reps:
+                            reps.append(s.representative)
                     with open(filename, 'wb') as f:
                         pickle.dump(reps, f)
                     # Hace request de CreateParam a syn
