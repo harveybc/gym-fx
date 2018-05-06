@@ -208,7 +208,7 @@ class ForexEnv(gym.Env):
             episode_over = bool(1)
             # TODO: ADICIONAR CONTROLES PARA SL Y TP ENTRE MAX_SL Y TP
             # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
-            print('MARGIN CALL - Balance =', self.equity, ',  Reward =', self.reward-10, 'Time=', self.tick_count)
+            print('MARGIN CALL - Balance =', self.equity, ',  Reward =', self.reward-5, 'Time=', self.tick_count)
         if (episode_over==False):
             # Verify if close by SL
             if self.profit_pips <= (-1 * self.sl):
@@ -338,31 +338,31 @@ class ForexEnv(gym.Env):
             # penaliza red que no hace nada
             if self.tick_count >= (self.num_ticks - 2):
                 if self.equity == self.initial_capital:
-                    reward = -(10 * self.initial_capital)
+                    reward = -(10.0 * self.initial_capital)
             # penaliza cierre por stop loss
-            if self.c_c == 2:
-                reward = reward - (0.5*self.initial_capital) / self.num_ticks
+            #if self.c_c == 2:
+            #    reward = reward - (0.5*self.initial_capital) / self.num_ticks
                 # penaliza por consecutive sl
             #    if self.ant_c_c == 2:
             #        reward = reward -(2 * self.initial_capital) / self.num_ticks
             # premia cierre por take profit
-            if self.c_c == 3:
-                reward = reward + (0.5*self.initial_capital) / self.num_ticks
+            #if self.c_c == 3:
+            #    reward = reward + (0.5*self.initial_capital) / self.num_ticks
             #    # premia por consecutive tp
             #    if self.ant_c_c == 3:
             #        reward = reward + (2 * self.initial_capital) / self.num_ticks
             # bonus
-            if ((self.equity_ant >= self.initial_capital) and (equity_increment > 0)):
-                reward = reward + 4*bonus
-            if ((self.equity_ant >= (2*self.initial_capital)) and (equity_increment > 0)):
-                reward = reward + 8*bonus
-            if ((self.equity_ant >= (4 * self.initial_capital)) and (equity_increment > 0)):
-                reward = reward + 16*bonus
-            if ((self.equity_ant >= (8 * self.initial_capital)) and (equity_increment > 0)):
-                reward = reward + 32*bonus
-            if ((self.equity_ant >= (16 * self.initial_capital)) and (equity_increment > 0)):
-                reward = reward + 64*bonus
-            reward = reward / self.initial_capital
+            #if ((self.equity_ant >= self.initial_capital) and (equity_increment > 0)):
+            #    reward = reward + 4*bonus
+            #if ((self.equity_ant >= (2*self.initial_capital)) and (equity_increment > 0)):
+            #    reward = reward + 8*bonus
+            #if ((self.equity_ant >= (4 * self.initial_capital)) and (equity_increment > 0)):
+            #    reward = reward + 16*bonus
+            #if ((self.equity_ant >= (8 * self.initial_capital)) and (equity_increment > 0)):
+            #    reward = reward + 32*bonus
+            #if ((self.equity_ant >= (16 * self.initial_capital)) and (equity_increment > 0)):
+            #    reward = reward + 64*bonus
+            #reward = reward / self.initial_capital
                     # if self.order_status==0:
                 # TODO: penalizar reward con el cuadrado del tiempo que lleva sin orden * -0.01
                 # para evitar que sin acciones se obtenga ganancia 0 al final (deseado: -2, entonces variación=-2/num_ticks)
