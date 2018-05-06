@@ -331,7 +331,6 @@ class ForexEnv(gym.Env):
             if ((self.equity_ant >= (16 * self.initial_capital)) and (equity_increment > 0)):
                 reward = reward + 64*bonus
             reward = reward / 10000
-        self.reward=self.reward+reward
                     # if self.order_status==0:
                 # TODO: penalizar reward con el cuadrado del tiempo que lleva sin orden * -0.01
                 # para evitar que sin acciones se obtenga ganancia 0 al final (deseado: -2, entonces variación=-2/num_ticks)

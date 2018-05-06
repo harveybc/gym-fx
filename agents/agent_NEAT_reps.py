@@ -312,36 +312,28 @@ def run():
             mfs = sum(stats.get_fitness_stat(min)[-3:]) / 3.0
             print("Average min fitness over last 3 generations: {0}".format(mfs))
 
-            # Use the best genomes seen so far as an ensemble-ish control system.
+            # Use the best genome to evaluate an environment.
             best_genomes = stats.best_unique_genomes(3)
-            best_networks = []
-            for g in best_genomes:
-                best_networks.append(neat.nn.FeedForwardNetwork.create(g, config))
             solved = True
             best_scores = []
-            for k in range(4):
-                observation = env.reset()
-                score = 0
-                step = 0
-                while 1:
-                    step += 1
-                    # Use the total reward estimates from all five networks to
-                    # determine the best action given the current state.
-                    votes = np.zeros((3,))
-                    for n in best_networks:
-                        output = n.activate(nn_format(observation))
-                        votes[np.argmax(output)] += 1
-                    best_action = np.argmax(votes)
-                    observation, reward, done, info = env.step(best_action)
-                    score += reward
-                    env.render()
-                    if done:
-                        break
-                ec.episode_score.append(score)
-                ec.episode_length.append(step)
-                best_scores.append(score)
-                avg_score = sum(best_scores) / len(best_scores)
-                print("\nk=", k, "ensemble score=", score, " avg_score=",avg_score)
+            observation = env.reset()
+            score = 0
+            step = 0
+            gen_best_nn=neat.nn.FeedForwardNetwork.create(gen_best, config)
+            while 1:
+                step += 1
+                output = gen_best_nn.activate(nn_format(observation))
+                best_action = np.argmax(output)
+                observation, reward, done, info = env.step(best_action)
+                score += reward
+                env.render()
+                if done:
+                    break
+            ec.episode_score.append(score)
+            ec.episode_length.append(step)
+            best_scores.append(score)
+            avg_score = sum(best_scores) / len(best_scores)
+            print("\nEnsemble score=", score, " avg_score=",avg_score)
 
             if avg_score < 2000000000:
                 solved = False
