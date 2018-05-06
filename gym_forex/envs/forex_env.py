@@ -315,8 +315,8 @@ class ForexEnv(gym.Env):
             # penaliza reward de duración hasta alcanzar total de ticks
             reward = reward - (self.initial_capital / self.num_ticks)
             # penaliza margin call
-            if self.equity < self.margin:
-                reward = reward-(10*self.initial_capital)
+            if self.c_c == 1:
+                reward = -(10*self.initial_capital)
             if ((self.equity_ant>=(0.5*self.initial_capital)) and (equity_increment>0)):
                 reward = reward + bonus
             if ((self.equity_ant >= (0.75 * self.initial_capital)) and (equity_increment > 0)):
