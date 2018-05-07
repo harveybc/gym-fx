@@ -182,7 +182,9 @@ def run():
     rep = neat.Checkpointer(25, 900)
     pop.add_reporter(rep)
 
-    gen_best=pop.population['1']
+    # asigna un gen_best para poder cargar los demás desde syn
+    for g in itervalues(pop.population):
+        gen_best=g
 
     # Run until the winner from a generation is able to solve the environment
     # or the user interrupts the process.
