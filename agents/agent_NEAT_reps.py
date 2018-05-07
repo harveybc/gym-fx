@@ -188,7 +188,7 @@ def run():
     temp = 0
     while 1:
         try:
-            if temp > 0:
+            if temp >= 0:
                 # TODO: FUNCION DE SINCRONIZACION CON SINGULARITY
                 # Lee en pop2 el último checkpoint desde syn
                 # Hace request de getLastParam(process_hash,use_current) a syn TODO: HACER PROCESS CONFIGURABLE Y POR HASH no por id
@@ -224,15 +224,17 @@ def run():
                             closer = None
                             min_dist = None
                             for g in itervalues(pop.population):
-                                dist = g.distance(remote_reps[i], config.genome_config)
+                                if g not in remote_reps:
+                                    dist = g.distance(remote_reps[i], config.genome_config)
+                                else:
+                                    dist=100000000
                                 # do not count already migrated remote_reps
                                 if closer is None or min_dist is None:
                                     closer = deepcopy(g)
                                     min_dist = dist
                                 if dist < min_dist:
-                                    if g not in remote_reps:
-                                        closer = deepcopy(g)
-                                        min_dist = dist
+                                    closer = deepcopy(g)
+                                    min_dist = dist
                             # For the best genom in position 0
                             if i==0:
                                 tmp_genom = deepcopy(remote_reps[i])
