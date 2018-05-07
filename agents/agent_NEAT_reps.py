@@ -182,6 +182,8 @@ def run():
     rep = neat.Checkpointer(25, 900)
     pop.add_reporter(rep)
 
+    gen_best=pop.population[0]
+
     # Run until the winner from a generation is able to solve the environment
     # or the user interrupts the process.
     ec = PooledErrorCompute()
