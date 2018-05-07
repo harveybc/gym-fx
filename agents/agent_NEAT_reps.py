@@ -185,6 +185,8 @@ def run():
     # asigna un gen_best para poder cargar los demás desde syn
     for g in itervalues(pop.population):
         gen_best=g
+        g.fitness = -10000000.0
+
 
     # Run until the winner from a generation is able to solve the environment
     # or the user interrupts the process.
