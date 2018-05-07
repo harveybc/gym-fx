@@ -226,15 +226,13 @@ def run():
                             for g in itervalues(pop.population):
                                 dist = g.distance(remote_reps[i], config.genome_config)
                                 # do not count already migrated remote_reps
-                                if closer in remote_reps:
-                                    dist = 10000000
                                 if closer is None or min_dist is None:
                                     closer = deepcopy(g)
                                     min_dist = dist
                                 if dist < min_dist:
-                                    closer = deepcopy(g)
-                                    min_dist = dist
-
+                                    if g not in remote_reps:
+                                        closer = deepcopy(g)
+                                        min_dist = dist
                             # For the best genom in position 0
                             if i==0:
                                 tmp_genom = deepcopy(remote_reps[i])
