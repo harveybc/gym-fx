@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="acda6e68-7e0a-401e-9578-a7679b1ac0bf" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/gym_forex/envs/forex_env.py" afterPath="$PROJECT_DIR$/gym_forex/envs/forex_env.py" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agents/config" afterPath="$PROJECT_DIR$/agents/config" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="TRACKING_ENABLED" value="true" />
@@ -13,11 +13,11 @@
   </component>
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
-      <file leaf-file-name="forex_env.py" pinned="false" current-in-tab="true">
+      <file leaf-file-name="forex_env.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/gym_forex/envs/forex_env.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="747">
-              <caret line="364" column="12" lean-forward="false" selection-start-line="364" selection-start-column="12" selection-end-line="364" selection-end-column="12" />
+            <state relative-caret-position="339">
+              <caret line="337" column="37" lean-forward="true" selection-start-line="337" selection-start-column="37" selection-end-line="337" selection-end-column="37" />
               <folding>
                 <element signature="e#0#18#0" expanded="true" />
               </folding>
@@ -28,7 +28,7 @@
       <file leaf-file-name="agent_NEAT_reps.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="-712">
+            <state relative-caret-position="1175">
               <caret line="220" column="47" lean-forward="false" selection-start-line="220" selection-start-column="47" selection-end-line="220" selection-end-column="47" />
               <folding>
                 <element signature="e#107#144#0" expanded="true" />
@@ -37,11 +37,11 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="config" pinned="false" current-in-tab="false">
+      <file leaf-file-name="config" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/agents/config">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="51">
-              <caret line="3" column="25" lean-forward="false" selection-start-line="3" selection-start-column="25" selection-end-line="3" selection-end-column="25" />
+              <caret line="3" column="27" lean-forward="false" selection-start-line="3" selection-start-column="27" selection-end-line="3" selection-end-column="27" />
               <folding />
             </state>
           </provider>
@@ -96,10 +96,10 @@
         <option value="$PROJECT_DIR$/agents/visualize.py" />
         <option value="$PROJECT_DIR$/agents/agent_NEAT_simple.py" />
         <option value="$PROJECT_DIR$/gym_forex/__init__.py" />
-        <option value="$PROJECT_DIR$/agents/config" />
         <option value="$PROJECT_DIR$/agents/agent_NEAT.py" />
         <option value="$PROJECT_DIR$/agents/agent_NEAT_reps.py" />
         <option value="$PROJECT_DIR$/gym_forex/envs/forex_env.py" />
+        <option value="$PROJECT_DIR$/agents/config" />
       </list>
     </option>
   </component>
@@ -411,17 +411,19 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/agents/config">
+    <entry file="file://$PROJECT_DIR$/gym_forex/envs/forex_env.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="51">
-          <caret line="3" column="25" lean-forward="false" selection-start-line="3" selection-start-column="25" selection-end-line="3" selection-end-column="25" />
-          <folding />
+        <state relative-caret-position="339">
+          <caret line="337" column="37" lean-forward="true" selection-start-line="337" selection-start-column="37" selection-end-line="337" selection-end-column="37" />
+          <folding>
+            <element signature="e#0#18#0" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-712">
+        <state relative-caret-position="1175">
           <caret line="220" column="47" lean-forward="false" selection-start-line="220" selection-start-column="47" selection-end-line="220" selection-end-column="47" />
           <folding>
             <element signature="e#107#144#0" expanded="true" />
@@ -429,13 +431,11 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/gym_forex/envs/forex_env.py">
+    <entry file="file://$PROJECT_DIR$/agents/config">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="747">
-          <caret line="364" column="12" lean-forward="false" selection-start-line="364" selection-start-column="12" selection-end-line="364" selection-end-column="12" />
-          <folding>
-            <element signature="e#0#18#0" expanded="true" />
-          </folding>
+        <state relative-caret-position="51">
+          <caret line="3" column="27" lean-forward="false" selection-start-line="3" selection-start-column="27" selection-end-line="3" selection-end-column="27" />
+          <folding />
         </state>
       </provider>
     </entry>
