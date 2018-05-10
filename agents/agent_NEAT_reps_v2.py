@@ -302,6 +302,7 @@ def run():
                     if remote_reps is None:
                         for l in reps_local:
                             reps.append(l)
+                            reps[len(reps)-1]=deepcopy(l)
                     else:
                         # para cada reps_local l
                         for l in reps_local:
@@ -326,6 +327,7 @@ def run():
                  #               adiciona l a reps si ya no estaba en reps
                                 if l not in reps:
                                     reps.append(l)
+                                    reps[len(reps) - 1] = deepcopy(l)
                  #           sino
                             else:
                  #               si l tiene más fitness que closer,
@@ -334,11 +336,13 @@ def run():
                  #                       adiciona l a reps si ya no estaba en reps
                                         if l not in reps:
                                             reps.append(l)
+                                            reps[len(reps) - 1] = deepcopy(l)
                  #               sino
                                     else:
                  #                      adiciona closer a reps si ya no estaba en reps
                                         if l not in reps:
                                             reps.append(pop.population[closer.key])
+                                            reps[len(reps) - 1] = deepcopy(pop.population[closer.key])
                                             # Guarda checkpoint de los representatives de cada especie y lo copia a ubicación para servir vía syn.
                                             # rep.save_checkpoint(config,pop,neat.DefaultSpeciesSet,rep.current_generation)
                     print("\nreps=",reps)
