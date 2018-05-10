@@ -2,8 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="acda6e68-7e0a-401e-9578-a7679b1ac0bf" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agents/agent_NEAT_reps.py" afterPath="$PROJECT_DIR$/agents/agent_NEAT_reps.py" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py" afterPath="$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="TRACKING_ENABLED" value="true" />
@@ -29,8 +28,8 @@
       <file leaf-file-name="agent_NEAT_reps_v2.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="235">
-              <caret line="236" column="102" lean-forward="false" selection-start-line="236" selection-start-column="102" selection-end-line="236" selection-end-column="102" />
+            <state relative-caret-position="286">
+              <caret line="284" column="47" lean-forward="true" selection-start-line="284" selection-start-column="47" selection-end-line="284" selection-end-column="47" />
               <folding />
             </state>
           </provider>
@@ -94,8 +93,8 @@
     </option>
   </component>
   <component name="ProjectFrameBounds">
-    <option name="x" value="78" />
-    <option name="y" value="95" />
+    <option name="x" value="772" />
+    <option name="y" value="42" />
     <option name="width" value="959" />
     <option name="height" value="761" />
   </component>
@@ -157,7 +156,7 @@
     <servers />
   </component>
   <component name="ToolWindowManager">
-    <frame x="78" y="95" width="959" height="761" extended-state="0" />
+    <frame x="772" y="42" width="959" height="761" extended-state="0" />
     <editor active="true" />
     <layout>
       <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.16648993" sideWeight="0.5" order="1" side_tool="false" content_ui="combo" />
@@ -400,8 +399,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="235">
-          <caret line="236" column="102" lean-forward="false" selection-start-line="236" selection-start-column="102" selection-end-line="236" selection-end-column="102" />
+        <state relative-caret-position="286">
+          <caret line="284" column="47" lean-forward="true" selection-start-line="284" selection-start-column="47" selection-end-line="284" selection-end-column="47" />
           <folding />
         </state>
       </provider>

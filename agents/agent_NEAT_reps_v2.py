@@ -277,7 +277,7 @@ def run():
                             reps_local.append(s.representative)
              # TODO: Conservar los mejores reps, solo reemplazarlos por los mas cercanos
              #       para cada reps_local l
-                    for lid,l in iteritems(reps_local):
+                    for l in reps_local:
              #           busca el closer a l en reps_remote
                         for i in range(len(remote_reps)):
                             closer = None
