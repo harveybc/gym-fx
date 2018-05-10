@@ -1,7 +1,7 @@
 # neat-python configuration for the Forex-v0 environment on OpenAI Gym
 
 [NEAT]
-pop_size              = 50
+pop_size              = 100
 # Note: the fitness threshold will never be reached because
 # we are controlling the termination ourselves based on simulation performance.
 fitness_criterion     = max
