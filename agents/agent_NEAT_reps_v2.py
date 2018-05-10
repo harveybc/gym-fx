@@ -298,7 +298,7 @@ def run():
                             for i in range(len(remote_reps)):
                                 closer = None
                                 min_dist = None
-                                for g in itervalues(reps_local):
+                                for g in reps_local:
                                     if g not in remote_reps:
                                         dist = g.distance(remote_reps[i], config.genome_config)
                                     else:
