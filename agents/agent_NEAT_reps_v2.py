@@ -288,13 +288,14 @@ def run():
                         #print("\ns=",s)
                         if s.representative not in reps_local:
                             reps_local.append(s.representative)
-             # TODO: Conservar los mejores reps, solo reemplazarlos por los mas cercanos
-             #       para cada reps_local l
+                    # TODO: Conservar los mejores reps, solo reemplazarlos por los mas cercanos
                     if remote_reps is None:
-                        remote_reps=reps_local
-                    else:
                         for l in reps_local:
-                 #           busca el closer a l en reps_remote
+                            reps.append(l)
+                    else:
+                        # para cada reps_local l
+                        for l in reps_local:
+                            # busca el closer a l en reps_remote
                             for i in range(len(remote_reps)):
                                 closer = None
                                 min_dist = None
