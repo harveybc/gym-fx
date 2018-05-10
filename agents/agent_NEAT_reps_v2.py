@@ -223,8 +223,7 @@ def run():
                                     min_dist = dist
                             # For the best genom in position 0
                             if i==0:
-                               # tmp_genom = deepcopy(remote_reps[i])
-                                i=0
+                                tmp_genom = deepcopy(remote_reps[i])
                                # Hack: overwrites original genome key with the replacing one
                                 tmp_genom.key = closer.key
                                 pop.population[closer.key] = deepcopy(tmp_genom)
