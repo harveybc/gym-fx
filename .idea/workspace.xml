@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="acda6e68-7e0a-401e-9578-a7679b1ac0bf" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py" afterPath="$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agents/config" afterPath="$PROJECT_DIR$/agents/config" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="TRACKING_ENABLED" value="true" />
@@ -35,17 +35,17 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="config" pinned="false" current-in-tab="false">
+      <file leaf-file-name="config" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/agents/config">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="51">
-              <caret line="3" column="25" lean-forward="false" selection-start-line="3" selection-start-column="25" selection-end-line="3" selection-end-column="25" />
+              <caret line="3" column="27" lean-forward="false" selection-start-line="3" selection-start-column="27" selection-end-line="3" selection-end-column="27" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="agent_NEAT_reps_v2.py" pinned="false" current-in-tab="true">
+      <file leaf-file-name="agent_NEAT_reps_v2.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="262">
@@ -107,8 +107,8 @@
         <option value="$PROJECT_DIR$/agents/agent_NEAT_reps.py" />
         <option value="$PROJECT_DIR$/gym_forex/__init__.py" />
         <option value="$PROJECT_DIR$/gym_forex/envs/forex_env.py" />
-        <option value="$PROJECT_DIR$/agents/config" />
         <option value="$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py" />
+        <option value="$PROJECT_DIR$/agents/config" />
       </list>
     </option>
   </component>
@@ -437,14 +437,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/agents/config">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="51">
-          <caret line="3" column="25" lean-forward="false" selection-start-line="3" selection-start-column="25" selection-end-line="3" selection-end-column="25" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/gym_forex/envs/forex_env.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="153">
@@ -459,6 +451,14 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="262">
           <caret line="344" column="101" lean-forward="false" selection-start-line="344" selection-start-column="101" selection-end-line="344" selection-end-column="101" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/agents/config">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="51">
+          <caret line="3" column="27" lean-forward="false" selection-start-line="3" selection-start-column="27" selection-end-line="3" selection-end-column="27" />
           <folding />
         </state>
       </provider>
