@@ -249,8 +249,8 @@ def run():
                                             tmp_genom = deepcopy(remote_reps[i])
                                             # Hack: overwrites original genome key with the replacing one
                                             tmp_genom.key = len(pop.population) + 1
-                                            pop.population.add(tmp_genom)
-                                            print("Created Por fitness=NONE : ", tmp_genom.key)
+                                            pop.population[tmp_genom.key]=tmp_genom
+                                            print("Created Por closer.fitness=NONE : ", tmp_genom.key)
                                             # actualiza gen_best y best_genome al remoto
                                             pop.best_genome = deepcopy(tmp_genom)
                                             gen_best = deepcopy(tmp_genom)
@@ -259,8 +259,8 @@ def run():
                                         tmp_genom = deepcopy(remote_reps[i])
                                         # Hack: overwrites original genome key with the replacing one
                                         tmp_genom.key = len(pop.population)+1
-                                        pop.population.append(tmp_genom)
-                                        print("Created=", tmp_genom.key)
+                                        pop.population[tmp_genom.key] = tmp_genom
+                                        print("Created por Closer in rempte_reps=", tmp_genom.key)
                                         # actualiza gen_best y best_genome al remoto
                                         pop.best_genome = deepcopy(tmp_genom)
                                         gen_best = deepcopy(tmp_genom)
