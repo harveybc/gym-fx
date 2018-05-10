@@ -252,6 +252,7 @@ def run():
                 if cont['result'][0]['current_block_performance'] < best_fitness:
                     # Obtiene remote_reps
                     # hace request GetParameter(id)
+                    remote_reps=None
                     res_p = requests.get(
                         my_url + "/parameters/" + str(
                             last_optimum_id) + "?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
