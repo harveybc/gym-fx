@@ -287,7 +287,7 @@ def run():
                     for sid, s in iteritems(pop.species.species):
                         #print("\ns=",s)
                         if s.representative not in reps_local:
-                            reps_local.append(s.representative)
+                            reps_local.append(pop.population[s.representative.key])
                     # TODO: Conservar los mejores reps, solo reemplazarlos por los mas cercanos
                     if remote_reps is None:
                         for l in reps_local:
