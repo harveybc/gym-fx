@@ -324,9 +324,9 @@ class ForexEnv(gym.Env):
         equity_increment = self.equity - self.equity_ant
         if self.reward_function == 0:
             # TODO: REWARD FUNCTION:  1=Tabla
-            #bonus=((self.equity - self.initial_capital) / self.num_ticks)
+            bonus=((self.equity - self.initial_capital) / self.num_ticks)
             # reward = reward + bonus
-            reward = equity_increment
+            reward = (equity_increment + bonus)/2
             # penaliza inactividad hasta alcanzar total de ticks con 5 para que tenga menos que los de balance positivo con mal comportamiento
             #if equity_increment == 0.0:
             #    reward = reward - (2*self.initial_capital / self.num_ticks)
