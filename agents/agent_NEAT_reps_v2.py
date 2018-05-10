@@ -241,17 +241,26 @@ def run():
                                                 # Hack: overwrites original genome key with the replacing one
                                                 tmp_genom.key = closer.key
                                                 pop.population[closer.key] = deepcopy(tmp_genom)
-                                                print(" ",closer.key)
+                                                print("Replaced=",closer.key)
                                                 # actualiza gen_best y best_genome al remoto
                                                 pop.best_genome = deepcopy(tmp_genom)
                                                 gen_best = deepcopy(tmp_genom)
+                                        if closer.fitness is None:
+                                            tmp_genom = deepcopy(remote_reps[i])
+                                            # Hack: overwrites original genome key with the replacing one
+                                            tmp_genom.key = len(pop.population) + 1
+                                            pop.population.append(tmp_genom)
+                                            print("Created Por fitness=NONE : ", tmp_genom.key)
+                                            # actualiza gen_best y best_genome al remoto
+                                            pop.best_genome = deepcopy(tmp_genom)
+                                            gen_best = deepcopy(tmp_genom)
                                     else:
                                         #si closer está en remote_reps es porque no hay ningun otro cercano así que lo adiciona
                                         tmp_genom = deepcopy(remote_reps[i])
                                         # Hack: overwrites original genome key with the replacing one
                                         tmp_genom.key = len(pop.population)+1
                                         pop.population.append(tmp_genom)
-                                        print(" ", tmp_genom.key)
+                                        print("Created=", tmp_genom.key)
                                         # actualiza gen_best y best_genome al remoto
                                         pop.best_genome = deepcopy(tmp_genom)
                                         gen_best = deepcopy(tmp_genom)
