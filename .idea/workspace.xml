@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="acda6e68-7e0a-401e-9578-a7679b1ac0bf" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agents/config" afterPath="$PROJECT_DIR$/agents/config" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py" afterPath="$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="TRACKING_ENABLED" value="true" />
@@ -35,7 +35,7 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="config" pinned="false" current-in-tab="true">
+      <file leaf-file-name="config" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/agents/config">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="51">
@@ -45,21 +45,11 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="agent_NEAT_reps_v2.py" pinned="false" current-in-tab="false">
+      <file leaf-file-name="agent_NEAT_reps_v2.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="347">
-              <caret line="247" column="49" lean-forward="false" selection-start-line="247" selection-start-column="43" selection-end-line="247" selection-end-column="49" />
-              <folding />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="agent_NEAT_simple.py" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_simple.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="278">
-              <caret line="245" column="36" lean-forward="true" selection-start-line="245" selection-start-column="36" selection-end-line="245" selection-end-column="36" />
+            <state relative-caret-position="2183">
+              <caret line="331" column="65" lean-forward="false" selection-start-line="331" selection-start-column="65" selection-end-line="331" selection-end-column="65" />
               <folding />
             </state>
           </provider>
@@ -115,10 +105,10 @@
         <option value="$PROJECT_DIR$/agents/agent_NEAT_simple.py" />
         <option value="$PROJECT_DIR$/agents/agent_NEAT.py" />
         <option value="$PROJECT_DIR$/agents/agent_NEAT_reps.py" />
-        <option value="$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py" />
         <option value="$PROJECT_DIR$/gym_forex/__init__.py" />
         <option value="$PROJECT_DIR$/gym_forex/envs/forex_env.py" />
         <option value="$PROJECT_DIR$/agents/config" />
+        <option value="$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py" />
       </list>
     </option>
   </component>
@@ -439,18 +429,18 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="347">
-          <caret line="247" column="49" lean-forward="false" selection-start-line="247" selection-start-column="43" selection-end-line="247" selection-end-column="49" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/gym_forex/__init__.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="85">
           <caret line="5" column="38" lean-forward="false" selection-start-line="5" selection-start-column="38" selection-end-line="5" selection-end-column="38" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/agents/config">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="51">
+          <caret line="3" column="25" lean-forward="false" selection-start-line="3" selection-start-column="25" selection-end-line="3" selection-end-column="25" />
           <folding />
         </state>
       </provider>
@@ -465,10 +455,10 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/agents/config">
+    <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="51">
-          <caret line="3" column="25" lean-forward="false" selection-start-line="3" selection-start-column="25" selection-end-line="3" selection-end-column="25" />
+        <state relative-caret-position="2183">
+          <caret line="331" column="65" lean-forward="false" selection-start-line="331" selection-start-column="65" selection-end-line="331" selection-end-column="65" />
           <folding />
         </state>
       </provider>

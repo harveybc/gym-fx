@@ -329,7 +329,7 @@ def run():
                  #           sino
                             else:
                  #               si l tiene más fitness que closer,
-                                if closer.fitness is not None or l.fitness is not None:
+                                if closer.fitness is not None and l.fitness is not None:
                                     if l.fitness>pop.population[closer.key].fitness:
                  #                       adiciona l a reps si ya no estaba en reps
                                         if l not in reps:
