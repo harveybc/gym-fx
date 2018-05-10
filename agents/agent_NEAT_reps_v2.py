@@ -249,7 +249,7 @@ def run():
                                             tmp_genom = deepcopy(remote_reps[i])
                                             # Hack: overwrites original genome key with the replacing one
                                             tmp_genom.key = len(pop.population) + 1
-                                            pop.population.append(tmp_genom)
+                                            pop.population.add(tmp_genom)
                                             print("Created Por fitness=NONE : ", tmp_genom.key)
                                             # actualiza gen_best y best_genome al remoto
                                             pop.best_genome = deepcopy(tmp_genom)
@@ -329,7 +329,7 @@ def run():
                             else:
                  #               si l tiene más fitness que closer,
                                 if closer.fitness is not None or l.fitness is not None:
-                                    if l.fitness>closer.fitness:
+                                    if l.fitness>pop.population[closer.key].fitness:
                  #                       adiciona l a reps si ya no estaba en reps
                                         if l not in reps:
                                             reps.append(l)
@@ -337,7 +337,7 @@ def run():
                                     else:
                  #                      adiciona closer a reps si ya no estaba en reps
                                         if l not in reps:
-                                            reps.append(closer)
+                                            reps.append(pop.population[closer.key])
                                             # Guarda checkpoint de los representatives de cada especie y lo copia a ubicación para servir vía syn.
                                             # rep.save_checkpoint(config,pop,neat.DefaultSpeciesSet,rep.current_generation)
                     print("\nreps=",reps)
