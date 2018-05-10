@@ -277,43 +277,47 @@ def run():
                             reps_local.append(s.representative)
              # TODO: Conservar los mejores reps, solo reemplazarlos por los mas cercanos
              #       para cada reps_local l
-                    for l in reps_local:
-             #           busca el closer a l en reps_remote
-                        for i in range(len(remote_reps)):
-                            closer = None
-                            min_dist = None
-                            for g in itervalues(reps_local):
-                                if g not in remote_reps:
-                                    dist = g.distance(remote_reps[i], config.genome_config)
-                                else:
-                                    dist=100000000
-                                # do not count already migrated remote_reps
-                                if closer is None or min_dist is None:
-                                    closer = deepcopy(g)
-                                    min_dist = dist
-                                if dist < min_dist:
-                                    closer = deepcopy(g)
-                                    min_dist = dist
-             #           si closer is in reps
-                        if closer in reps:
-             #               adiciona l a reps si ya no estaba en reps
-                            if l not in reps:
-                                reps.append(l)
-             #           sino
-                        else:
-             #               si l tiene más fitness que closer,
-                            if closer.fitness is not None or l.fitness is not None:
-                                if l.fitness>closer.fitness:
-             #                       adiciona l a reps si ya no estaba en reps
-                                    if l not in reps:
-                                        reps.append(l)
-             #               sino
-                                else:
-             #                      adiciona closer a reps si ya no estaba en reps
-                                    if l not in reps:
-                                        reps.append(closer)
-                                        # Guarda checkpoint de los representatives de cada especie y lo copia a ubicación para servir vía syn.
-                                        # rep.save_checkpoint(config,pop,neat.DefaultSpeciesSet,rep.current_generation)
+                    if remote_reps is None:
+                        remote_reps=reps_local
+                    else:
+                        for l in reps_local:
+                 #           busca el closer a l en reps_remote
+                            for i in range(len(remote_reps)):
+                                closer = None
+                                min_dist = None
+                                for g in itervalues(reps_local):
+                                    if g not in remote_reps:
+                                        dist = g.distance(remote_reps[i], config.genome_config)
+                                    else:
+                                        dist=100000000
+                                    # do not count already migrated remote_reps
+                                    if closer is None or min_dist is None:
+                                        closer = deepcopy(g)
+                                        min_dist = dist
+                                    if dist < min_dist:
+                                        closer = deepcopy(g)
+                                        min_dist = dist
+                 #           si closer is in reps
+                            if closer in reps:
+                 #               adiciona l a reps si ya no estaba en reps
+                                if l not in reps:
+                                    reps.append(l)
+                 #           sino
+                            else:
+                 #               si l tiene más fitness que closer,
+                                if closer.fitness is not None or l.fitness is not None:
+                                    if l.fitness>closer.fitness:
+                 #                       adiciona l a reps si ya no estaba en reps
+                                        if l not in reps:
+                                            reps.append(l)
+                 #               sino
+                                    else:
+                 #                      adiciona closer a reps si ya no estaba en reps
+                                        if l not in reps:
+                                            reps.append(closer)
+                                            # Guarda checkpoint de los representatives de cada especie y lo copia a ubicación para servir vía syn.
+                                            # rep.save_checkpoint(config,pop,neat.DefaultSpeciesSet,rep.current_generation)
+
                     filename = '{0}{1}'.format("reps-", rep.current_generation)
                     with open(filename, 'wb') as f:
                         pickle.dump(reps, f)
