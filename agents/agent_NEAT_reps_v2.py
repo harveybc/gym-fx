@@ -225,26 +225,39 @@ def run():
                             if i==0:
                                # tmp_genom = deepcopy(remote_reps[i])
                                 i=0
-                               # # Hack: overwrites original genome key with the replacing one
-                               # tmp_genom.key = closer.key
-                               # pop.population[closer.key] = deepcopy(tmp_genom)
-                               # print(" gen_best=", closer.key)
-                               # pop.best_genome=deepcopy(tmp_genom)
-                               # gen_best = deepcopy(tmp_genom)
+                               # Hack: overwrites original genome key with the replacing one
+                                tmp_genom.key = closer.key
+                                pop.population[closer.key] = deepcopy(tmp_genom)
+                                print(" gen_best=", closer.key)
+                                pop.best_genome=deepcopy(tmp_genom)
+                                gen_best = deepcopy(tmp_genom)
                             else:
                                 # si el remote fitness>local, reemplazar el remote de pop2 en pop1
                                 if closer is not None:
-                                    # ADicionada condición para que NO migre el campeón, solo los reps (prueba)
-                                    if closer.fitness is not None and remote_reps[i].fitness is not None and remote_reps[i] is not remote_reps[0]:
-                                        if remote_reps[i].fitness>closer.fitness:
-                                            tmp_genom = deepcopy(remote_reps[i])
-                                            # Hack: overwrites original genome key with the replacing one
-                                            tmp_genom.key = closer.key
-                                            pop.population[closer.key] = deepcopy(tmp_genom)
-                                            print(" ",closer.key)
-                                            # actualiza gen_best y best_genome al remoto
-                                            pop.best_genome = deepcopy(tmp_genom)
-                                            gen_best = deepcopy(tmp_genom)
+                                    if closer not in remote_reps:
+                                        # ADicionada condición para que NO migre el campeón, solo los reps (prueba)
+                                        if closer.fitness is not None and remote_reps[i].fitness is not None:
+                                            if remote_reps[i].fitness>closer.fitness:
+                                                tmp_genom = deepcopy(remote_reps[i])
+                                                # Hack: overwrites original genome key with the replacing one
+                                                tmp_genom.key = closer.key
+                                                pop.population[closer.key] = deepcopy(tmp_genom)
+                                                print(" ",closer.key)
+                                                # actualiza gen_best y best_genome al remoto
+                                                pop.best_genome = deepcopy(tmp_genom)
+                                                gen_best = deepcopy(tmp_genom)
+                                    else:
+                                        #si closer está en remote_reps es porque no hay ningun otro cercano así que lo adiciona
+                                        tmp_genom = deepcopy(remote_reps[i])
+                                        # Hack: overwrites original genome key with the replacing one
+                                        tmp_genom.key = len(pop.population)+1
+                                        pop.population.append(tmp_genom)
+                                        print(" ", tmp_genom.key)
+                                        # actualiza gen_best y best_genome al remoto
+                                        pop.best_genome = deepcopy(tmp_genom)
+                                        gen_best = deepcopy(tmp_genom)
+
+
                         #ejecuta speciate
                         pop.species.speciate(config, pop.population, pop.generation)
                         print("\nSpeciation after migration done")
@@ -318,7 +331,7 @@ def run():
                                             reps.append(closer)
                                             # Guarda checkpoint de los representatives de cada especie y lo copia a ubicación para servir vía syn.
                                             # rep.save_checkpoint(config,pop,neat.DefaultSpeciesSet,rep.current_generation)
-
+                    print("\nreps=",reps)
                     filename = '{0}{1}'.format("reps-", rep.current_generation)
                     with open(filename, 'wb') as f:
                         pickle.dump(reps, f)
