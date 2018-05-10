@@ -297,6 +297,7 @@ def run():
                         #print("\ns=",s)
                         if s.representative not in reps_local:
                             reps_local.append(pop.population[s.representative.key])
+                            reps_local[len(reps_local)-1]=deepcopy(pop.population[s.representative.key])
                     # TODO: Conservar los mejores reps, solo reemplazarlos por los mas cercanos
                     if remote_reps is None:
                         for l in reps_local:

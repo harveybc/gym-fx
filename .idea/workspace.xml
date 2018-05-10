@@ -2,10 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="acda6e68-7e0a-401e-9578-a7679b1ac0bf" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agents/agent_NEAT_reps.py" afterPath="$PROJECT_DIR$/agents/agent_NEAT_reps.py" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py" afterPath="$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/gym_forex/__init__.py" afterPath="$PROJECT_DIR$/gym_forex/__init__.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/gym_forex/envs/forex_env.py" afterPath="$PROJECT_DIR$/gym_forex/envs/forex_env.py" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="TRACKING_ENABLED" value="true" />
@@ -41,8 +38,8 @@
       <file leaf-file-name="agent_NEAT_reps_v2.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="1911">
-              <caret line="261" column="81" lean-forward="false" selection-start-line="261" selection-start-column="81" selection-end-line="261" selection-end-column="81" />
+            <state relative-caret-position="517">
+              <caret line="299" column="103" lean-forward="false" selection-start-line="299" selection-start-column="103" selection-end-line="299" selection-end-column="103" />
               <folding />
             </state>
           </provider>
@@ -108,10 +105,10 @@
         <option value="$PROJECT_DIR$/agents/agent_NEAT_simple.py" />
         <option value="$PROJECT_DIR$/agents/agent_NEAT.py" />
         <option value="$PROJECT_DIR$/agents/config" />
-        <option value="$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py" />
         <option value="$PROJECT_DIR$/gym_forex/envs/forex_env.py" />
         <option value="$PROJECT_DIR$/gym_forex/__init__.py" />
         <option value="$PROJECT_DIR$/agents/agent_NEAT_reps.py" />
+        <option value="$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py" />
       </list>
     </option>
   </component>
@@ -480,8 +477,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/agents/agent_NEAT_reps_v2.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="1911">
-          <caret line="261" column="81" lean-forward="false" selection-start-line="261" selection-start-column="81" selection-end-line="261" selection-end-column="81" />
+        <state relative-caret-position="517">
+          <caret line="299" column="103" lean-forward="false" selection-start-line="299" selection-start-column="103" selection-end-line="299" selection-end-column="103" />
           <folding />
         </state>
       </provider>
