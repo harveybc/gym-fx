@@ -8,7 +8,7 @@ from gym import utils
 from gym import spaces
 import numpy as np
 
-class ForexEnv(gym.Env):
+class ForexEnv22(gym.Env):
     """
     This environment simulates a Forex trading account with only one open order 
     at any time.
@@ -25,7 +25,7 @@ class ForexEnv(gym.Env):
     """
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, dataset='datasets/ts_1y.CSV'):
+    def __init__(self,dataset='datasets/ts_1y.CSV'):
         metadata = {'render.modes': ['human', 'ansi']}
         # initialize initial capital
         self.capital = 10000
@@ -42,7 +42,7 @@ class ForexEnv(gym.Env):
         num_symbols = 1
         # TODO: Dejar como params
         self.debug = 0  # Show debug msgs
-        print("Using dataset :", dataset)
+        #csv_f = 'C:\\Users\\HarveyD\\Anaconda3\\Lib\\site-packages\\gym\\envs\\forex\\ts_4y.CSV'
         csv_f = dataset
         self.initial_capital = self.capital
         self.equity = self.capital

@@ -23,7 +23,8 @@ from neat.six_util import iteritems, itervalues
 NUM_CORES = 1
 # Make with the Name of the environment defined in gym_forex/__init__.py
 
-env = gym.make('Forex-v0')
+env = gym.make('ForexTrainingSet-v0')
+env2 = gym.make('ForexValidationSet-v0')
 # Shows the action and observation space from the forex_env, its observation space is
 # bidimentional, so it has to be converted to an array with nn_format() for direct ANN feed. (Not if evaluating with external DQN)
 print("action space: {0!r}".format(env.action_space))
@@ -401,7 +402,28 @@ def run():
             ec.episode_length.append(step)
             best_scores.append(score)
             avg_score = sum(best_scores) / len(best_scores)
-            print("\nScore score=", score, " avg_score=",avg_score)
+            print("Training Set Score =", score, " avg_score=",avg_score)
+
+            #Calculate the validation set score
+            best_genomes = stats.best_unique_genomes(3)
+            solved = True
+            best_scores = []
+            observation = env2.reset()
+            score = 0.0
+            step = 0
+            gen_best_nn=neat.nn.FeedForwardNetwork.create(gen_best, config)
+            while 1:
+                step += 1
+                output = gen_best_nn.activate(nn_format(observation))
+                best_action = np.argmax(output)
+                observation, reward, done, info = env2.step(best_action)
+                score += reward
+                env2.render()
+                if done:
+                    break
+            best_scores.append(score)
+            avg_score = sum(best_scores) / len(best_scores)
+            print("Validation Set Score =", score, " avg_score=",avg_score)
 
             if avg_score < 2000000000:
                 solved = False
