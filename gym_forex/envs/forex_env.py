@@ -43,7 +43,8 @@ class ForexEnv(gym.Env):
         # TODO: Dejar como params
         self.debug = 0  # Show debug msgs
         print("Using dataset :", dataset)
-        self.csv_f = dataset
+        csv_f = dataset
+        self.dataset = dataset
         self.initial_capital = self.capital
         self.equity = self.capital
         self.balance = self.capital
@@ -425,7 +426,7 @@ class ForexEnv(gym.Env):
         self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         self.state = self.state_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         ob = numpy.concatenate([self.obs_matrix, self.state])
-        self.__init__(self, self.csv_f)
+        self.__init__(self.dataset)
         return ob
 
     """
