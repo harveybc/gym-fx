@@ -425,7 +425,7 @@ class ForexEnv(gym.Env):
         self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         self.state = self.state_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         ob = numpy.concatenate([self.obs_matrix, self.state])
-        self.__init__(self.csv_f)
+        self.__init__(self, self.csv_f)
         return ob
 
     """
