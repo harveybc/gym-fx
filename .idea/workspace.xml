@@ -16,8 +16,8 @@
       <file leaf-file-name="forex_env.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/gym_forex/envs/forex_env.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="411">
-              <caret line="427" column="34" lean-forward="false" selection-start-line="427" selection-start-column="34" selection-end-line="427" selection-end-column="34" />
+            <state relative-caret-position="321">
+              <caret line="427" column="32" lean-forward="false" selection-start-line="427" selection-start-column="32" selection-end-line="427" selection-end-column="32" />
               <folding>
                 <element signature="e#0#18#0" expanded="true" />
               </folding>
@@ -478,8 +478,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/gym_forex/envs/forex_env.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="411">
-          <caret line="427" column="34" lean-forward="false" selection-start-line="427" selection-start-column="34" selection-end-line="427" selection-end-column="34" />
+        <state relative-caret-position="321">
+          <caret line="427" column="32" lean-forward="false" selection-start-line="427" selection-start-column="32" selection-end-line="427" selection-end-column="32" />
           <folding>
             <element signature="e#0#18#0" expanded="true" />
           </folding>
