@@ -42,7 +42,7 @@ class ForexEnv(gym.Env):
         num_symbols = 1
         # TODO: Dejar como params
         self.debug = 0  # Show debug msgs
-        print("Using dataset :", dataset)
+        #print("Using dataset :", dataset)
         csv_f = dataset
         self.dataset = dataset
         self.initial_capital = self.capital
