@@ -125,7 +125,7 @@ class PooledErrorCompute(object):
                 if step < 100 and random.random() < 0.2:
                     action = env.action_space.sample()
                 else:
-                    output = net.activate(observation)
+                    output = net.activate(nn_format(observation))
                     action = np.argmax(output)
                     
                 observation, reward, done, info = env.step(action)
