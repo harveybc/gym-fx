@@ -22,25 +22,24 @@ from neat.six_util import iteritems, itervalues
 # Multi-core machine support
 NUM_CORES = 1
 # Make with the Name of the environments defined in gym_forex/__init__.py
-env_t=[]
-env_t.append(gym.make('ForexTrainingSet1-v0'))
-env_t.append(gym.make('ForexTrainingSet2-v0'))
-env_t.append(gym.make('ForexTrainingSet3-v0'))
-env_t.append(gym.make('ForexTrainingSet4-v0'))
-env_t.append(gym.make('ForexTrainingSet5-v0'))
-env_t.append(gym.make('ForexTrainingSet6-v0'))
-env_t.append(gym.make('ForexTrainingSet7-v0'))
-env_t.append(gym.make('ForexTrainingSet8-v0'))
-env_t.append(gym.make('ForexTrainingSet9-v0'))
-env_t.append(gym.make('ForexTrainingSet10-v0'))
-env_t.append(gym.make('ForexTrainingSet11-v0'))
-env_t.append(gym.make('ForexTrainingSet12-v0'))
+env=gym.make('ForexTrainingSet-v0')
+#env_t.append(gym.make('ForexTrainingSet2-v0'))
+#env_t.append(gym.make('ForexTrainingSet3-v0'))
+#env_t.append(gym.make('ForexTrainingSet4-v0'))
+#env_t.append(gym.make('ForexTrainingSet5-v0'))
+#env_t.append(gym.make('ForexTrainingSet6-v0'))
+#env_t.append(gym.make('ForexTrainingSet7-v0'))
+#env_t.append(gym.make('ForexTrainingSet8-v0'))
+#env_t.append(gym.make('ForexTrainingSet9-v0'))
+#env_t.append(gym.make('ForexTrainingSet10-v0'))
+#env_t.append(gym.make('ForexTrainingSet11-v0'))
+#env_t.append(gym.make('ForexTrainingSet12-v0'))#
 
 env_v = gym.make('ForexValidationSet-v0')
 # Shows the action and observation space from the forex_env, its observation space is
 # bidimentional, so it has to be converted to an array with nn_format() for direct ANN feed. (Not if evaluating with external DQN)
-print("action space: {0!r}".format(env_t[0].action_space))
-print("observation space: {0!r}".format(env_t[0].observation_space))
+print("action space: {0!r}".format(env.action_space))
+print("observation space: {0!r}".format(env.observation_space))
 env_v = gym.wrappers.Monitor(env_v, 'results', force=True)
 # First argument is the dataset, second is the  url
 my_url=sys.argv[2]
