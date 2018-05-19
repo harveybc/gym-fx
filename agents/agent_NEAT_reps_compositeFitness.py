@@ -22,25 +22,24 @@ from neat.six_util import iteritems, itervalues
 # Multi-core machine support
 NUM_CORES = 1
 # Make with the Name of the environments defined in gym_forex/__init__.py
-env_t=[]
-env_t.append(gym.make('ForexTrainingSet1-v0'))
-env_t.append(gym.make('ForexTrainingSet2-v0'))
-env_t.append(gym.make('ForexTrainingSet3-v0'))
-env_t.append(gym.make('ForexTrainingSet4-v0'))
-env_t.append(gym.make('ForexTrainingSet5-v0'))
-env_t.append(gym.make('ForexTrainingSet6-v0'))
-env_t.append(gym.make('ForexTrainingSet7-v0'))
-env_t.append(gym.make('ForexTrainingSet8-v0'))
-env_t.append(gym.make('ForexTrainingSet9-v0'))
-env_t.append(gym.make('ForexTrainingSet10-v0'))
-env_t.append(gym.make('ForexTrainingSet11-v0'))
-env_t.append(gym.make('ForexTrainingSet12-v0'))
+env=gym.make('ForexTrainingSet-v0')
+#env_t.append(gym.make('ForexTrainingSet2-v0'))
+#env_t.append(gym.make('ForexTrainingSet3-v0'))
+#env_t.append(gym.make('ForexTrainingSet4-v0'))
+#env_t.append(gym.make('ForexTrainingSet5-v0'))
+#env_t.append(gym.make('ForexTrainingSet6-v0'))
+#env_t.append(gym.make('ForexTrainingSet7-v0'))
+#env_t.append(gym.make('ForexTrainingSet8-v0'))
+#env_t.append(gym.make('ForexTrainingSet9-v0'))
+#env_t.append(gym.make('ForexTrainingSet10-v0'))
+#env_t.append(gym.make('ForexTrainingSet11-v0'))
+#env_t.append(gym.make('ForexTrainingSet12-v0'))#
 
 env_v = gym.make('ForexValidationSet-v0')
 # Shows the action and observation space from the forex_env, its observation space is
 # bidimentional, so it has to be converted to an array with nn_format() for direct ANN feed. (Not if evaluating with external DQN)
-print("action space: {0!r}".format(env_t[0].action_space))
-print("observation space: {0!r}".format(env_t[0].observation_space))
+print("action space: {0!r}".format(env.action_space))
+print("observation space: {0!r}".format(env.observation_space))
 env_v = gym.wrappers.Monitor(env_v, 'results', force=True)
 # First argument is the dataset, second is the  url
 my_url=sys.argv[2]
@@ -73,26 +72,6 @@ class LanderGenome(neat.DefaultGenome):
         return "Reward discount: {0}\n{1}".format(self.discount,
                                                   super().__str__())
 
-    def compute_fitness(genome, net, episodes, min_reward, max_reward):
-        m = int(round(np.log(0.01) / np.log(genome.discount)))
-        discount_function = [genome.discount ** (m - i) for i in range(m + 1)]
-
-        reward_error = []
-        for score, data in episodes:
-            # Compute normalized discounted reward.
-            dr = np.convolve(data[:, -1], discount_function)[m:]
-            dr = 2 * (dr - min_reward) / (max_reward - min_reward) - 1.0
-            dr = np.clip(dr, -1.0, 1.0)
-
-            for row, dr in zip(data, dr):
-                observation = row[:8]
-                action = int(row[8])
-                output = net.activate(observation)
-                reward_error.append(float((output[action] - dr) ** 2))
-
-        return reward_error
-
-
 # converts a bidimentional matrix to an one-dimention array
 def nn_format(obs):
     output=[]
@@ -100,6 +79,26 @@ def nn_format(obs):
         for val in arr:
             output.append(val)
     return output
+
+def compute_fitness(genome, net, episodes, min_reward, max_reward):
+    m = int(round(np.log(0.01) / np.log(genome.discount)))
+    discount_function = [genome.discount ** (m - i) for i in range(m + 1)]
+
+    reward_error = []
+    for score, data in episodes:
+        # Compute normalized discounted reward.
+        dr = np.convolve(data[:,-1], discount_function)[m:]
+        dr = 2 * (dr - min_reward) / (max_reward - min_reward) - 1.0
+        dr = np.clip(dr, -1.0, 1.0)
+
+        for row, dr in zip(data, dr):
+            observation = row[:38]
+            action = int(row[38])
+            output = net.activate(observation)
+            reward_error.append(float((output[action] - dr) ** 2))
+
+    return reward_error
+
 
 class PooledErrorCompute(object):
     def __init__(self):
@@ -112,7 +111,8 @@ class PooledErrorCompute(object):
 
         self.episode_score = []
         self.episode_length = []
-
+        
+    # evaluate nets, obtain scores and fills data with obs,act,rew
     def simulate(self, nets):
         scores = []
         self.test_episodes = []
@@ -122,13 +122,15 @@ class PooledErrorCompute(object):
             data = []
             while 1:
                 step += 1
-                output = net.activate(nn_format(observation))
-                #print("output: {0!r}".format(output))
-                action = np.argmax(output)
-                #print("observation: {0!r}".format(self.nn_format(observation)))
-                #print("action: {0!r}".format(action))
+                if step < 100 and random.random() < 0.2:
+                    action = env.action_space.sample()
+                else:
+                    output = net.activate(nn_format(observation))
+                    action = np.argmax(output)
+                    
                 observation, reward, done, info = env.step(action)
                 data.append(np.hstack((nn_format(observation), action, reward)))
+                
                 if done:
                     break
 
@@ -155,22 +157,35 @@ class PooledErrorCompute(object):
         t0 = time.time()
 
         # Periodically generate a new set of episodes for comparison.
-        #if 1 == self.generation % 10:
-        #self.test_episodes = self.test_episodes[-300:]
-        scores=self.simulate(nets)
-        print("simulation run time {0}".format(time.time() - t0))
-        t0 = time.time()
+        if 1 == self.generation % 10:
+            self.test_episodes = self.test_episodes[-300:]
+            scores=self.simulate(nets)
+            print("simulation run time {0}".format(time.time() - t0))
+            t0 = time.time()
 
         # Assign a composite fitness to each genome; genomes can make progress either
         # by improving their total reward or by making more accurate reward estimates.
-
         print("Evaluating {0} test episodes".format(len(self.test_episodes)))
+#        i = 0
+#        for genome, net in nets:
+#            #reward_error = compute_fitness(genome, net, self.test_episodes, self.min_reward, self.max_reward)
+#            genome.fitness = scores[i]
+#            i = i + 1
+        if self.pool is None:
+            for genome, net in nets:
+                reward_error = compute_fitness(genome, net, self.test_episodes, self.min_reward, self.max_reward)
+                genome.fitness = -np.sum(reward_error) / len(self.test_episodes)
+        else:
+            jobs = []
+            for genome, net in nets:
+                jobs.append(self.pool.apply_async(compute_fitness,
+                    (genome, net, self.test_episodes, self.min_reward, self.max_reward)))
 
-        i = 0
-        for genome, net in nets:
-            #reward_error = compute_fitness(genome, net, self.test_episodes, self.min_reward, self.max_reward)
-            genome.fitness = scores[i]
-            i = i + 1
+            for job, (genome_id, genome) in zip(jobs, genomes):
+                reward_error = job.get(timeout=None)
+                genome.fitness = -np.sum(reward_error) / len(self.test_episodes)
+
+        
         print("final fitness compute time {0}\n".format(time.time() - t0))
 
 
