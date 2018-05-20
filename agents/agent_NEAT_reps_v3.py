@@ -423,7 +423,7 @@ def run():
             best_genomes = stats.best_unique_genomes(3)
             solved = True
             best_scores = []
-            observation = env.reset()
+            observation = env_t[index_t].reset()
             score = 0.0
             step = 0
             gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
@@ -432,9 +432,9 @@ def run():
                 step += 1
                 output = gen_best_nn.activate(nn_format(observation))
                 best_action = np.argmax(output)
-                observation, reward, done, info = env.step(best_action)
+                observation, reward, done, info = env_t[index_t].step(best_action)
                 score += reward
-                env.render()
+                env_t[index_t].render()
                 if done:
                     break
             ec.episode_score.append(score)
