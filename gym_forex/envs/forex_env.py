@@ -397,7 +397,7 @@ class ForexEnv(gym.Env):
         # Episode over es TRUE cuando se termina el juego, es decir cuando tick_count=self.num_ticks
         if self.tick_count >= (self.num_ticks - 1):
             episode_over = bool(1)
-            print('Done - Balance =', self.equity, ',  Reward =', self.reward, 'Time=', self.tick_count)
+            # print('Done - Balance =', self.equity, ',  Reward =', self.reward, 'Time=', self.tick_count)
             # self._reset()
             # self.__init__()
             # TODO: IMPRIMIR ESTADiSTICAS DE METATRADER

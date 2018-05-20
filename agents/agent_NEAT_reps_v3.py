@@ -42,10 +42,12 @@ env_v = gym.make('ForexValidationSet-v0')
 print("action space: {0!r}".format(env_t[0].action_space))
 print("observation space: {0!r}".format(env_t[0].observation_space))
 env_v = gym.wrappers.Monitor(env_v, 'results', force=True)
-# First argument is the dataset, second is the  url
+# First argument is the dataset, second is the  url, 
 my_url = sys.argv[2]
 # for cross-validation like training set
 index_t = 0
+# third is the config filename
+my_config = sys.argv[3]
 
 # LanderGenome class
 class LanderGenome(neat.DefaultGenome):
@@ -181,7 +183,7 @@ def run():
     # Load the config file, which is assumed to live in
     # the same directory as this script.
     local_dir = os.path.dirname(__file__)
-    config_path = os.path.join(local_dir, 'config')
+    config_path = os.path.join(local_dir, my_config)
     config = neat.Config(LanderGenome, neat.DefaultReproduction,
                          neat.DefaultSpeciesSet, neat.DefaultStagnation,
                          config_path)
@@ -467,7 +469,8 @@ def run():
             if avg_score_v > avg_score_v_ant:
                 avg_score_v_ant = avg_score_v
             avg_score_v = sum(best_scores) / len(best_scores)
-            print("Training-Validation Set Score = ", avg_score_v)
+            print("************************************************")
+            print("Training-Validation Set Score = ", avg_score_v, " Max = ", avg_score_v_ant, " i = ", index_t)
             # si validation_score > validation_score_ant incrementa index_t, verifica sus limites e imprime
             if avg_score_v > avg_score_v_ant:
                 if index_t >= len(env_t):
