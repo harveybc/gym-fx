@@ -251,19 +251,19 @@ def run():
                 # for WAS left for future changes aside index_t
                 for i in range(0,12):
                     observation = env_t[i].reset()
-                    score = 0.0
-                    if i != index_t:
-                        while 1:
-                            step += 1
-                            output = gen_best_nn.activate(nn_format(observation))
-                            best_action = np.argmax(output)
-                            observation, reward, done, info = env_t[i].step(best_action)
-                            score += reward
-                            #env_t[i].render()
-                            if done:
-                                break
-                        best_scores.append(score)
-                #if avg_score_v > avg_score_v_ant:
+                    score = 0.
+                    # the if only is needed when using just one validation set for training
+                    #if i == index_t:
+                    while 1:
+                        step += 1
+                        output = gen_best_nn.activate(nn_format(observation))
+                        best_action = np.argmax(output)
+                        observation, reward, done, info = env_t[i].step(best_action)
+                        score += reward
+                        #env_t[i].render()
+                        if done:
+                            break
+                    best_scores.append(score)
                 avg_score_v_ant = avg_score_v
                 avg_score_v = sum(best_scores) / len(best_scores)
                 print("*********************************************************")
