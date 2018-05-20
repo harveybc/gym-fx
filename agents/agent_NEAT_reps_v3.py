@@ -350,9 +350,14 @@ def run():
                         for i in range(len(remote_reps)):
                             closer = None
                             min_dist = None
+                            # initialize for less fit search
+                            less_fit = pop.best_genome
+                            less_fitness = less_fit.fitness
                             for g in itervalues(pop.population):
                                 if g not in remote_reps:
                                     dist = g.distance(remote_reps[i], config.genome_config)
+                                    if dist is None:
+                                       dist = 100000000 
                                 else:
                                     dist = 100000000
                                 # do not count already migrated remote_reps
@@ -362,6 +367,11 @@ def run():
                                 if dist < min_dist:
                                     closer = deepcopy(g)
                                     min_dist = dist
+                                if g.fitness is None:
+                                    g.fitness = -10
+                                if g.fitness < less_fitness:
+                                    less_fitness = g.fitness
+                                    less_fit = deepcopy(g)
                             # For the best genom in position 0
                             if i == 0:
                                 tmp_genom = deepcopy(remote_reps[i])
@@ -373,8 +383,13 @@ def run():
                                 gen_best = deepcopy(tmp_genom)
                             else:
                                 # si el remote fitness>local, reemplazar el remote de pop2 en pop1
+                                if closer is None:
+                                    # busca el pop con el menor fitness
+                                    closer = less_fit
                                 if closer is not None:
                                     if closer not in remote_reps:
+                                        if closer.fitness is None:
+                                            closer.fitness = less_fitness
                                         if closer.fitness is not None and remote_reps[i].fitness is not None:
                                             if remote_reps[i].fitness > closer.fitness:
                                                 tmp_genom = deepcopy(remote_reps[i])
@@ -462,7 +477,7 @@ def run():
                                     if dist < min_dist:
                                         closer = deepcopy(g)
                                         min_dist = dist
-                #           si closer is in reps
+                 #           si closer is in reps
                             if closer in reps:
                  #               adiciona l a reps si ya no estaba en reps
                                 if l not in reps:
