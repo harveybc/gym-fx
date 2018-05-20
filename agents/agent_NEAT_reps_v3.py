@@ -466,11 +466,11 @@ def run():
                         if done:
                             break
                     best_scores.append(score)
-            if avg_score_v > avg_score_v_ant:
-                avg_score_v_ant = avg_score_v
+            #if avg_score_v > avg_score_v_ant:
+            avg_score_v_ant = avg_score_v
             avg_score_v = sum(best_scores) / len(best_scores)
-            print("************************************************")
-            print("Training-Validation Set Score = ", avg_score_v, " Max = ", avg_score_v_ant, " i = ", index_t)
+            print("********************************************************************************************")
+            print("Training-Validation Set Score = ", avg_score_v, " Ant = ", avg_score_v_ant, " i = ", index_t)
             # si validation_score > validation_score_ant incrementa index_t, verifica sus limites e imprime
             if avg_score_v > avg_score_v_ant:
                 if index_t >= len(env_t):
@@ -478,7 +478,7 @@ def run():
                 else:
                     index_t=index_t+1
                 print("New highest validation score, rotating training st to: ", index_t)
-                
+            print("********************************************************************************************")
             #Calculate the real-validation set score
             best_genomes = stats.best_unique_genomes(3)
             solved = True
