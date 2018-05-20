@@ -203,6 +203,7 @@ def run():
     index_t = 0
     avg_score_v = -10000000.0
     avg_score_v_ant = avg_score_v
+    avg_score = avg_score_v
 
     # asigna un gen_best para poder cargar los demás desde syn
     for g in itervalues(pop.population):
