@@ -215,6 +215,7 @@ def run():
     # or the user interrupts the process.
     ec = PooledErrorCompute()
     temp = 0
+    best_fitness=-2000.0;
     while 1:
         try:
             if temp >0:
