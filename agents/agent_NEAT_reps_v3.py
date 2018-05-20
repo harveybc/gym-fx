@@ -295,9 +295,20 @@ def run():
                         break
                 best_scores.append(score)
                 avg_score = sum(best_scores) / len(best_scores)
-                print("*********************************************************")
                 print("Real-Validation Set Score = ", avg_score)
                 print("*********************************************************")
+                # Calcula el best_fitness (PARA SYNC)como el promedio del score de vtraining y el promedio del fitness de los reps. 
+                reps_local = []
+                reps = [gen_best]
+                accum = 0
+                countr = 0
+                for sid, s in iteritems(pop.species.species):
+                    accum=accum+pop.population[s.representative.key].fitness
+                    countr = countr + 1
+                if contr > 0:    
+                    best_fitness = (avg_score_v+(accum/countr))
+                else:
+                    best_fitness = (avg_score_v)
                 #FIN de calculo de real validation        
                 
             if temp >= 0:
@@ -310,9 +321,11 @@ def run():
                 print('\ncurrent_block_performance =', cont['result'][0]['current_block_performance'])
                 print('\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
                 last_optimum_id = cont['result'][0]['last_optimum_id']
-                # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness de validation training
-                best_fitness = (avg_score_v)
-                print('\nvalidation_fitness = ',avg_score, " t_validation_fitness =", avg_score_v , "fitness = ",gen_best.fitness, "avg_tv_fitness = ", best_fitness )
+
+                
+                # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness de validation training        
+                print("\nPerformance = ", best_fitness)
+                print("*********************************************************")
                 if cont['result'][0]['current_block_performance'] > best_fitness:
                     # hace request GetParameter(id)
                     res_p = requests.get(
@@ -360,7 +373,6 @@ def run():
                                 # si el remote fitness>local, reemplazar el remote de pop2 en pop1
                                 if closer is not None:
                                     if closer not in remote_reps:
-                                        # ADicionada condición para que NO migre el campeón, solo los reps (prueba)
                                         if closer.fitness is not None and remote_reps[i].fitness is not None:
                                             if remote_reps[i].fitness > closer.fitness:
                                                 tmp_genom = deepcopy(remote_reps[i])
