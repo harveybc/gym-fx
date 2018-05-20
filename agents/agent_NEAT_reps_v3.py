@@ -1,28 +1,28 @@
 # Simplified version of the modified version of the Lander example included with neat-python for forex_env
 from __future__ import print_function
-# Imports
+from copy import deepcopy
 import gym
-import gym.wrappers
 from gym.envs.registration import register
+import gym.wrappers
 import gym_forex
 import json
 import matplotlib.pyplot as plt
 import multiprocessing
 import neat
+from neat.six_util import iteritems
+from neat.six_util import itervalues
 import numpy as np
 import os
 import pickle
 import random
-import time
 import requests
-import visualize
 import sys
-from copy import deepcopy
-from neat.six_util import iteritems, itervalues
+import time
+import visualize
 # Multi-core machine support
 NUM_CORES = 1
 # Make with the Name of the environments defined in gym_forex/__init__.py
-env_t=[]
+env_t = []
 env_t.append(gym.make('ForexTrainingSet1-v0'))
 env_t.append(gym.make('ForexTrainingSet2-v0'))
 env_t.append(gym.make('ForexTrainingSet3-v0'))
@@ -43,7 +43,9 @@ print("action space: {0!r}".format(env_t[0].action_space))
 print("observation space: {0!r}".format(env_t[0].observation_space))
 env_v = gym.wrappers.Monitor(env_v, 'results', force=True)
 # First argument is the dataset, second is the  url
-my_url=sys.argv[2]
+my_url = sys.argv[2]
+# for cross-validation like training set
+index_t = 0
 
 # LanderGenome class
 class LanderGenome(neat.DefaultGenome):
@@ -95,7 +97,7 @@ class LanderGenome(neat.DefaultGenome):
 
 # converts a bidimentional matrix to an one-dimention array
 def nn_format(obs):
-    output=[]
+    output = []
     for arr in obs:
         for val in arr:
             output.append(val)
@@ -116,8 +118,9 @@ class PooledErrorCompute(object):
     def simulate(self, nets):
         scores = []
         self.test_episodes = []
+        # Eval�a cada net en el env actual 
         for genome, net in nets:
-            observation = env.reset()
+            observation = env_t[index_t].reset()
             step = 0
             data = []
             while 1:
@@ -127,13 +130,13 @@ class PooledErrorCompute(object):
                 action = np.argmax(output)
                 #print("observation: {0!r}".format(self.nn_format(observation)))
                 #print("action: {0!r}".format(action))
-                observation, reward, done, info = env.step(action)
+                observation, reward, done, info = env_t[index_t].step(action)
                 data.append(np.hstack((nn_format(observation), action, reward)))
                 if done:
                     break
 
             data = np.array(data)
-            score = np.sum(data[:,-1])
+            score = np.sum(data[:, -1])
             self.episode_score.append(score)
             scores.append(score)
             self.episode_length.append(step)
@@ -157,7 +160,7 @@ class PooledErrorCompute(object):
         # Periodically generate a new set of episodes for comparison.
         #if 1 == self.generation % 10:
         #self.test_episodes = self.test_episodes[-300:]
-        scores=self.simulate(nets)
+        scores = self.simulate(nets)
         print("simulation run time {0}".format(time.time() - t0))
         t0 = time.time()
 
@@ -194,10 +197,13 @@ def run():
     # Checkpoint every 25 generations or 900 seconds.
     rep = neat.Checkpointer(25, 900)
     pop.add_reporter(rep)
+    # Training set index 
+    index_t = 0
+    avg_score_v=-1000000
 
     # asigna un gen_best para poder cargar los demás desde syn
     for g in itervalues(pop.population):
-        gen_best=g
+        gen_best = g
         g.fitness = -10000000.0
 
 
@@ -212,7 +218,7 @@ def run():
                 # Lee en pop2 el último checkpoint desde syn
                 # Hace request de getLastParam(process_hash,use_current) a syn TODO: HACER PROCESS CONFIGURABLE Y POR HASH no por id
                 res = requests.get(
-                    my_url+"/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
+                                   my_url + "/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
                 cont = res.json()
                 print('\ncurrent_block_performance =', cont['result'][0]['current_block_performance'])
                 print('\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
@@ -223,8 +229,8 @@ def run():
                 if cont['result'][0]['current_block_performance'] > best_fitness:
                     # hace request GetParameter(id)
                     res_p = requests.get(
-                        my_url+"/parameters/" + str(
-                            last_optimum_id) + "?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
+                                         my_url + "/parameters/" + str(
+                                         last_optimum_id) + "?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
                     cont_param = res_p.json()
                     # descarga el checkpoint del link de la respuesta si cont.parameter_link
                     print('\ncont_param =', cont_param)
@@ -246,7 +252,7 @@ def run():
                                 if g not in remote_reps:
                                     dist = g.distance(remote_reps[i], config.genome_config)
                                 else:
-                                    dist=100000000
+                                    dist = 100000000
                                 # do not count already migrated remote_reps
                                 if closer is None or min_dist is None:
                                     closer = deepcopy(g)
@@ -255,13 +261,13 @@ def run():
                                     closer = deepcopy(g)
                                     min_dist = dist
                             # For the best genom in position 0
-                            if i==0:
+                            if i == 0:
                                 tmp_genom = deepcopy(remote_reps[i])
-                               # Hack: overwrites original genome key with the replacing one
+                            # Hack: overwrites original genome key with the replacing one
                                 tmp_genom.key = closer.key
                                 pop.population[closer.key] = deepcopy(tmp_genom)
                                 print(" gen_best=", closer.key)
-                                pop.best_genome=deepcopy(tmp_genom)
+                                pop.best_genome = deepcopy(tmp_genom)
                                 gen_best = deepcopy(tmp_genom)
                             else:
                                 # si el remote fitness>local, reemplazar el remote de pop2 en pop1
@@ -269,12 +275,12 @@ def run():
                                     if closer not in remote_reps:
                                         # ADicionada condición para que NO migre el campeón, solo los reps (prueba)
                                         if closer.fitness is not None and remote_reps[i].fitness is not None:
-                                            if remote_reps[i].fitness>closer.fitness:
+                                            if remote_reps[i].fitness > closer.fitness:
                                                 tmp_genom = deepcopy(remote_reps[i])
                                                 # Hack: overwrites original genome key with the replacing one
                                                 tmp_genom.key = closer.key
                                                 pop.population[closer.key] = deepcopy(tmp_genom)
-                                                print("Replaced=",closer.key)
+                                                print("Replaced=", closer.key)
                                                 # actualiza gen_best y best_genome al remoto
                                                 pop.best_genome = deepcopy(tmp_genom)
                                                 gen_best = deepcopy(tmp_genom)
@@ -282,7 +288,7 @@ def run():
                                             tmp_genom = deepcopy(remote_reps[i])
                                             # Hack: overwrites original genome key with the replacing one
                                             tmp_genom.key = len(pop.population) + 1
-                                            pop.population[tmp_genom.key]=tmp_genom
+                                            pop.population[tmp_genom.key] = tmp_genom
                                             print("Created Por closer.fitness=NONE : ", tmp_genom.key)
                                             # actualiza gen_best y best_genome al remoto
                                             pop.best_genome = deepcopy(tmp_genom)
@@ -291,7 +297,7 @@ def run():
                                         #si closer está en remote_reps es porque no hay ningun otro cercano así que lo adiciona
                                         tmp_genom = deepcopy(remote_reps[i])
                                         # Hack: overwrites original genome key with the replacing one
-                                        tmp_genom.key = len(pop.population)+1
+                                        tmp_genom.key = len(pop.population) + 1
                                         pop.population[tmp_genom.key] = tmp_genom
                                         print("Created por Closer in rempte_reps=", tmp_genom.key)
                                         # actualiza gen_best y best_genome al remoto
@@ -306,10 +312,10 @@ def run():
                 if cont['result'][0]['current_block_performance'] < best_fitness:
                     # Obtiene remote_reps
                     # hace request GetParameter(id)
-                    remote_reps=None
+                    remote_reps = None
                     res_p = requests.get(
-                        my_url + "/parameters/" + str(
-                            last_optimum_id) + "?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
+                                         my_url + "/parameters/" + str(
+                                         last_optimum_id) + "?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
                     cont_param = res_p.json()
                     # descarga el checkpoint del link de la respuesta si cont.parameter_link
                     print('\ncont_param =', cont_param)
@@ -322,20 +328,20 @@ def run():
                         # carga genom descargado en nueva población pop2
                         with open('remote_reps', 'rb') as f:
                             remote_reps = pickle.load(f)
-                   #Guarda los mejores reps
-                    reps_local=[]
-                    reps=[gen_best]
+                #Guarda los mejores reps
+                    reps_local = []
+                    reps = [gen_best]
                     # Para cada especie, adiciona su representative a reps
                     for sid, s in iteritems(pop.species.species):
                         #print("\ns=",s)
                         if s.representative not in reps_local:
                             reps_local.append(pop.population[s.representative.key])
-                            reps_local[len(reps_local)-1]=deepcopy(pop.population[s.representative.key])
+                            reps_local[len(reps_local)-1] = deepcopy(pop.population[s.representative.key])
                     # TODO: Conservar los mejores reps, solo reemplazarlos por los mas cercanos
                     if remote_reps is None:
                         for l in reps_local:
                             reps.append(l)
-                            reps[len(reps)-1]=deepcopy(l)
+                            reps[len(reps)-1] = deepcopy(l)
                     else:
                         # para cada reps_local l
                         for l in reps_local:
@@ -347,7 +353,7 @@ def run():
                                     if g not in remote_reps:
                                         dist = g.distance(remote_reps[i], config.genome_config)
                                     else:
-                                        dist=100000000
+                                        dist = 100000000
                                     # do not count already migrated remote_reps
                                     if closer is None or min_dist is None:
                                         closer = deepcopy(g)
@@ -355,7 +361,7 @@ def run():
                                     if dist < min_dist:
                                         closer = deepcopy(g)
                                         min_dist = dist
-                 #           si closer is in reps
+                #           si closer is in reps
                             if closer in reps:
                  #               adiciona l a reps si ya no estaba en reps
                                 if l not in reps:
@@ -384,14 +390,14 @@ def run():
                         pickle.dump(reps, f)
                     # Hace request de CreateParam a syn
                     form_data = {"process_hash": "ph", "app_hash": "ah",
-                                 "parameter_link": my_url+"/genoms/" + filename,
-                                 "parameter_text": pop.best_genome.key, "parameter_blob": "", "validation_hash": "",
-                                 "hash": "h", "performance": best_fitness, "redir": "1", "username": "harveybc",
-                                 "pass_hash": "$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q"}
+                        "parameter_link": my_url + "/genoms/" + filename,
+                        "parameter_text": pop.best_genome.key, "parameter_blob": "", "validation_hash": "",
+                        "hash": "h", "performance": best_fitness, "redir": "1", "username": "harveybc",
+                        "pass_hash": "$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q"}
                     # TODO: COLOCAR DIRECCION CONFIGURABLE
                     res = requests.post(
-                        my_url+"/parameters?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph",
-                        data=form_data)
+                                        my_url + "/parameters?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph",
+                                        data=form_data)
                     res_json = res.json()
                 # TODO FIN: FUNCION DE SINCRONIZACION CON SINGULARITY
             temp = temp + 1
@@ -407,10 +413,10 @@ def run():
             plt.savefig("scores.svg")
             plt.close()
 
-            mfs = sum(stats.get_fitness_mean()[-3:]) / 3.0
-            print("Average mean fitness over last 3 generations: {0}".format(mfs))
+            mfs = sum(stats.get_fitness_mean()[-5:]) / 5.0
+            print("Average mean fitness over last 5 generations: {0}".format(mfs))
 
-            mfs = sum(stats.get_fitness_stat(min)[-3:]) / 3.0
+            mfs = sum(stats.get_fitness_stat(min)[-5:]) / 5.0
             print("Average min fitness over last 3 generations: {0}".format(mfs))
 
             # Use the best genome to evaluate an environment.
@@ -420,7 +426,8 @@ def run():
             observation = env.reset()
             score = 0.0
             step = 0
-            gen_best_nn=neat.nn.FeedForwardNetwork.create(gen_best, config)
+            gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
+            
             while 1:
                 step += 1
                 output = gen_best_nn.activate(nn_format(observation))
@@ -434,7 +441,7 @@ def run():
             ec.episode_length.append(step)
             best_scores.append(score)
             avg_score = sum(best_scores) / len(best_scores)
-            print("Training Set Score =", score, " avg_score=",avg_score)
+            print("Training Set Score =", score, " avg_score=", avg_score)
 
             #Calculate the validation set score
             best_genomes = stats.best_unique_genomes(3)
@@ -443,20 +450,31 @@ def run():
             observation = env_v.reset()
             score = 0.0
             step = 0
-            gen_best_nn=neat.nn.FeedForwardNetwork.create(gen_best, config)
-            while 1:
-                step += 1
-                output = gen_best_nn.activate(nn_format(observation))
-                best_action = np.argmax(output)
-                observation, reward, done, info = env_v.step(best_action)
-                score += reward
-                env_v.render()
-                if done:
-                    break
-            best_scores.append(score)
-            avg_score = sum(best_scores) / len(best_scores)
-            print("Validation Set Score =", score, " avg_score=",avg_score)
-
+            gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
+            for i in range(0,12):
+                if i != index_t:
+                    while 1:
+                        step += 1
+                        output = gen_best_nn.activate(nn_format(observation))
+                        best_action = np.argmax(output)
+                        observation, reward, done, info = env_v.step(best_action)
+                        score += reward
+                        env_v.render()
+                        if done:
+                            break
+                    best_scores.append(score)
+            avg_score_v_ant=avg_score_v
+            avg_score_v = sum(best_scores) / len(best_scores)
+            print("Validation Set Score =", avg_score_v)
+            # si validation_score > validation_score_ant incrementa index_t, verifica sus l�mites e imprime
+            if avg_score_v > avg_score_v_ant:
+                if index_t >= len(env_t):
+                    index_t=0
+                else:
+                    index_t=index_t+1
+                print("New highest validation score, rotating training st to: ", index_t)
+                
+                    
             if avg_score < 2000000000:
                 solved = False
 
@@ -466,13 +484,13 @@ def run():
                 # Save the winners.
                 for n, g in enumerate(best_genomes):
                     name = 'winner-{0}'.format(n)
-                    with open(name+'.pickle', 'wb') as f:
+                    with open(name + '.pickle', 'wb') as f:
                         pickle.dump(g, f)
 
-                    visualize.draw_net(config, g, view=False, filename=name+"-net.gv")
-                    visualize.draw_net(config, g, view=False, filename=name+"-net-enabled.gv",
+                    visualize.draw_net(config, g, view=False, filename=name + "-net.gv")
+                    visualize.draw_net(config, g, view=False, filename=name + "-net-enabled.gv",
                                        show_disabled=False)
-                    visualize.draw_net(config, g, view=False, filename=name+"-net-enabled-pruned.gv",
+                    visualize.draw_net(config, g, view=False, filename=name + "-net-enabled-pruned.gv",
                                        show_disabled=False, prune_unused=True)
 
                 break
