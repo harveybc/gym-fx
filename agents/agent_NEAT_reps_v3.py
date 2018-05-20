@@ -308,7 +308,7 @@ def run():
                         accum=accum+pop.population[s.representative.key].fitness
                         countr = countr + 1
                 if countr > 0:    
-                    best_fitness = (avg_score_v+(accum/countr))
+                    best_fitness = (avg_score_v+(accum/countr))/2
                 else:
                     best_fitness = (avg_score_v)
                 #FIN de calculo de real validation        
