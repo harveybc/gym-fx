@@ -119,31 +119,31 @@ class PooledErrorCompute(object):
 
     def simulate(self, nets):
         scores = []
+        sub_scores=[]
         self.test_episodes = []
-        # Evalua cada net en el env actual 
+        gen_index=0
+        # Evalua cada net en todos los env_t excepto el env actual 
         for genome, net in nets:
-            observation = env_t[index_t].reset()
-            step = 0
-            data = []
-            while 1:
-                step += 1
-                output = net.activate(nn_format(observation))
-                #print("output: {0!r}".format(output))
-                action = np.argmax(output)
-                #print("observation: {0!r}".format(self.nn_format(observation)))
-                #print("action: {0!r}".format(action))
-                observation, reward, done, info = env_t[index_t].step(action)
-                data.append(np.hstack((nn_format(observation), action, reward)))
-                if done:
-                    break
-
-            data = np.array(data)
-            score = np.sum(data[:, -1])
-            self.episode_score.append(score)
-            scores.append(score)
-            self.episode_length.append(step)
-
-            self.test_episodes.append((score, data))
+            sub_scores=[]
+            for i in range(0,12):
+                observation = env_t[i].reset()
+                score=0.0
+                while i != index_t:
+                    output = net.activate(nn_format(observation))
+                    #print("output: {0!r}".format(output))
+                    action = np.argmax(output)
+                    #print("observation: {0!r}".format(self.nn_format(observation)))
+                    #print("action: {0!r}".format(action))
+                    observation, reward, done, info = env_t[i].step(action)
+                    score += reward
+                    #env_t[i].render()
+                    if done:
+                        break
+                sub_scores.append(score)
+            
+            # calculate fitness per genome
+            scores[gen_index] = sum(sub_scores) / len(sub_scores)
+            gen_index = gen_index + 1
 
         print("Score range [{:.3f}, {:.3f}]".format(min(scores), max(scores)))
         return scores
@@ -247,11 +247,13 @@ def run():
                 best_genomes = stats.best_unique_genomes(3)
                 solved = True
                 best_scores = []
-                score = 0.0
+                
                 step = 0
                 gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
-                for i in range(0,12):
+                # for WAS left for future changes aside index_t
+                for i in range(index_t,1):
                     observation = env_t[i].reset()
+                    score = 0.0
                     #if i != index_t:
                     while 1:
                         step += 1
