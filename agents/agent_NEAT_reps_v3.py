@@ -124,22 +124,22 @@ class PooledErrorCompute(object):
         # Evalua cada net en todos los env_t excepto el env actual 
         for genome, net in nets:
             sub_scores=[]
-            for i in range(0,12):
+            for i in range(index_t,1):
                 observation = env_t[i].reset()
                 score=0.0
-                while i != index_t:
-                    output = net.activate(nn_format(observation))
-                    #print("output: {0!r}".format(output))
-                    action = np.argmax(output)
-                    #print("observation: {0!r}".format(self.nn_format(observation)))
-                    #print("action: {0!r}".format(action))
-                    observation, reward, done, info = env_t[i].step(action)
-                    score += reward
-                    #env_t[i].render()
-                    if done:
-                        break
-                sub_scores.append(score)
-            
+                if i==index_t:
+                    while 1:
+                        output = net.activate(nn_format(observation))
+                        #print("output: {0!r}".format(output))
+                        action = np.argmax(output)
+                        #print("observation: {0!r}".format(self.nn_format(observation)))
+                        #print("action: {0!r}".format(action))
+                        observation, reward, done, info = env_t[i].step(action)
+                        score += reward
+                        #env_t[i].render()
+                        if done:
+                            break
+                    sub_scores.append(score)
             # calculate fitness per genome
             scores.append(sum(sub_scores) / len(sub_scores))
 
@@ -249,20 +249,20 @@ def run():
                 step = 0
                 gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
                 # for WAS left for future changes aside index_t
-                for i in range(index_t,1):
+                for i in range(0,12):
                     observation = env_t[i].reset()
                     score = 0.0
-                    #if i != index_t:
-                    while 1:
-                        step += 1
-                        output = gen_best_nn.activate(nn_format(observation))
-                        best_action = np.argmax(output)
-                        observation, reward, done, info = env_t[i].step(best_action)
-                        score += reward
-                        #env_t[i].render()
-                        if done:
-                            break
-                    best_scores.append(score)
+                    if i != index_t:
+                        while 1:
+                            step += 1
+                            output = gen_best_nn.activate(nn_format(observation))
+                            best_action = np.argmax(output)
+                            observation, reward, done, info = env_t[i].step(best_action)
+                            score += reward
+                            #env_t[i].render()
+                            if done:
+                                break
+                        best_scores.append(score)
                 #if avg_score_v > avg_score_v_ant:
                 avg_score_v_ant = avg_score_v
                 avg_score_v = sum(best_scores) / len(best_scores)
