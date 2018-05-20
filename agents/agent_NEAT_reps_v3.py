@@ -265,7 +265,7 @@ def run():
                 #if avg_score_v > avg_score_v_ant:
                 avg_score_v_ant = avg_score_v
                 avg_score_v = sum(best_scores) / len(best_scores)
-                print("********************************************************************************************")
+                print("*********************************************************")
                 print("Training-Validation Set Score = ", avg_score_v, " Ant = ", avg_score_v_ant, " i = ", index_t)
                 # si validation_score > validation_score_ant incrementa index_t, verifica sus limites e imprime
                 #if avg_score_v > avg_score_v_ant:
@@ -274,8 +274,8 @@ def run():
                 else:
                     index_t=index_t+1
                         
-                    print("New highest validation score, rotating training st to: ", index_t)
-                print("********************************************************************************************")
+                    print("Rotating training st to: ", index_t)
+                print("*********************************************************")
                 #Calculate the real-validation set score
                 best_genomes = stats.best_unique_genomes(3)
                 solved = True
@@ -295,9 +295,9 @@ def run():
                         break
                 best_scores.append(score)
                 avg_score = sum(best_scores) / len(best_scores)
-                print("********************************************************************************************")
+                print("*********************************************************")
                 print("Real-Validation Set Score = ", avg_score)
-                print("********************************************************************************************")
+                print("*********************************************************")
                 #FIN de calculo de real validation        
                 
             if temp >= 0:
@@ -311,7 +311,7 @@ def run():
                 print('\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
                 last_optimum_id = cont['result'][0]['last_optimum_id']
                 # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness de validation training
-                best_fitness = (avg_score+avg_score_v)/2
+                best_fitness = (avg_score_v)
                 print('\nvalidation_fitness = ',avg_score, " t_validation_fitness =", avg_score_v , "fitness = ",gen_best.fitness, "avg_tv_fitness = ", best_fitness )
                 if cont['result'][0]['current_block_performance'] > best_fitness:
                     # hace request GetParameter(id)
