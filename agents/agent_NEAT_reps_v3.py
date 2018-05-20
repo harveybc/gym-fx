@@ -156,14 +156,14 @@ class PooledErrorCompute(object):
         for gid, g in genomes:
             nets.append((g, neat.nn.FeedForwardNetwork.create(g, config)))
 
-        print("network creation time {0}".format(time.time() - t0))
+        #print("network creation time {0}".format(time.time() - t0))
         t0 = time.time()
 
         # Periodically generate a new set of episodes for comparison.
         #if 1 == self.generation % 10:
         #self.test_episodes = self.test_episodes[-300:]
         scores = self.simulate(nets)
-        print("simulation run time {0}".format(time.time() - t0))
+        #print("simulation run time {0}".format(time.time() - t0))
         t0 = time.time()
 
         # Assign a composite fitness to each genome; genomes can make progress either
@@ -176,7 +176,7 @@ class PooledErrorCompute(object):
             #reward_error = compute_fitness(genome, net, self.test_episodes, self.min_reward, self.max_reward)
             genome.fitness = scores[i]
             i = i + 1
-        print("final fitness compute time {0}\n".format(time.time() - t0))
+        #print("final fitness compute time {0}\n".format(time.time() - t0))
 
 
 def run():
@@ -217,6 +217,89 @@ def run():
     while 1:
         try:
             if temp >= 0:
+                # Calcula training y validation fitness
+                best_genomes = stats.best_unique_genomes(3)
+                solved = True
+                best_scores = []
+                observation = env_t[index_t].reset()
+                score = 0.0
+                step = 0
+                gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
+
+                while 1:
+                    step += 1
+                    output = gen_best_nn.activate(nn_format(observation))
+                    best_action = np.argmax(output)
+                    observation, reward, done, info = env_t[index_t].step(best_action)
+                    score += reward
+                    env_t[index_t].render()
+                    if done:
+                        break
+                ec.episode_score.append(score)
+                ec.episode_length.append(step)
+                best_scores.append(score)
+                avg_score = sum(best_scores) / len(best_scores)
+                print("Training Set Score =", score, " avg_score=", avg_score)
+
+                #Calculate the validation-training set score
+                best_genomes = stats.best_unique_genomes(3)
+                solved = True
+                best_scores = []
+                score = 0.0
+                step = 0
+                gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
+                for i in range(0,12):
+                    observation = env_t[i].reset()
+                    if i != index_t:
+                        while 1:
+                            step += 1
+                            output = gen_best_nn.activate(nn_format(observation))
+                            best_action = np.argmax(output)
+                            observation, reward, done, info = env_t[i].step(best_action)
+                            score += reward
+                            #env_t[i].render()
+                            if done:
+                                break
+                        best_scores.append(score)
+                #if avg_score_v > avg_score_v_ant:
+                avg_score_v_ant = avg_score_v
+                avg_score_v = sum(best_scores) / len(best_scores)
+                print("********************************************************************************************")
+                print("Training-Validation Set Score = ", avg_score_v, " Ant = ", avg_score_v_ant, " i = ", index_t)
+                # si validation_score > validation_score_ant incrementa index_t, verifica sus limites e imprime
+                if avg_score_v > avg_score_v_ant:
+                    if index_t >= len(env_t):
+                        index_t=0
+                    else:
+                        index_t=index_t+1
+                    print("New highest validation score, rotating training st to: ", index_t)
+                print("********************************************************************************************")
+                #Calculate the real-validation set score
+                best_genomes = stats.best_unique_genomes(3)
+                solved = True
+                best_scores = []
+                observation = env_v.reset()
+                score = 0.0
+                step = 0
+                gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
+                while 1:
+                    step += 1
+                    output = gen_best_nn.activate(nn_format(observation))
+                    best_action = np.argmax(output)
+                    observation, reward, done, info = env_v.step(best_action)
+                    score += reward
+                    #env_v.render()
+                    if done:
+                        break
+                best_scores.append(score)
+                avg_score = sum(best_scores) / len(best_scores)
+                print("********************************************************************************************")
+                print("Real-Validation Set Score = ", avg_score)
+                print("********************************************************************************************")
+                #FIN de calculo de real validation        
+
+                
+                
                 # TODO: FUNCION DE SINCRONIZACION CON SINGULARITY
                 # Lee en pop2 el último checkpoint desde syn
                 # Hace request de getLastParam(process_hash,use_current) a syn TODO: HACER PROCESS CONFIGURABLE Y POR HASH no por id
@@ -226,9 +309,9 @@ def run():
                 print('\ncurrent_block_performance =', cont['result'][0]['current_block_performance'])
                 print('\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
                 last_optimum_id = cont['result'][0]['last_optimum_id']
-                # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness
-                best_fitness = gen_best.fitness
-                print('\nbest_fitness =', best_fitness)
+                # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness de validation training
+                best_fitness = avg_score_v
+                print('\nbest_fitness =', gen_best.fitness, " t_validation_fitness =", best_fitness )
                 if cont['result'][0]['current_block_performance'] > best_fitness:
                     # hace request GetParameter(id)
                     res_p = requests.get(
@@ -408,99 +491,21 @@ def run():
             gen_best = pop.run(ec.evaluate_genomes, 5)
 
             #print(gen_best)
-            visualize.plot_stats(stats, ylog=False, view=False, filename="fitness.svg")
-            plt.plot(ec.episode_score, 'g-', label='score')
-            plt.plot(ec.episode_length, 'b-', label='length')
-            plt.grid()
-            plt.legend(loc='best')
-            plt.savefig("scores.svg")
-            plt.close()
+            #visualize.plot_stats(stats, ylog=False, view=False, filename="fitness.svg")
+            #plt.plot(ec.episode_score, 'g-', label='score')
+            #plt.plot(ec.episode_length, 'b-', label='length')
+            #plt.grid()
+            #plt.legend(loc='best')
+            #plt.savefig("scores.svg")
+            #plt.close()
 
             mfs = sum(stats.get_fitness_mean()[-5:]) / 5.0
-            print("Average mean fitness over last 5 generations: {0}".format(mfs))
+            #print("Average mean fitness over last 5 generations: {0}".format(mfs))
 
             mfs = sum(stats.get_fitness_stat(min)[-5:]) / 5.0
-            print("Average min fitness over last 3 generations: {0}".format(mfs))
+            #print("Average min fitness over last 3 generations: {0}".format(mfs))
 
-            # Use the best genome to evaluate an environment.
-            best_genomes = stats.best_unique_genomes(3)
-            solved = True
-            best_scores = []
-            observation = env_t[index_t].reset()
-            score = 0.0
-            step = 0
-            gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
-            
-            while 1:
-                step += 1
-                output = gen_best_nn.activate(nn_format(observation))
-                best_action = np.argmax(output)
-                observation, reward, done, info = env_t[index_t].step(best_action)
-                score += reward
-                env_t[index_t].render()
-                if done:
-                    break
-            ec.episode_score.append(score)
-            ec.episode_length.append(step)
-            best_scores.append(score)
-            avg_score = sum(best_scores) / len(best_scores)
-            print("Training Set Score =", score, " avg_score=", avg_score)
-
-            #Calculate the validation-training set score
-            best_genomes = stats.best_unique_genomes(3)
-            solved = True
-            best_scores = []
-            score = 0.0
-            step = 0
-            gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
-            for i in range(0,12):
-                observation = env_t[i].reset()
-                if i != index_t:
-                    while 1:
-                        step += 1
-                        output = gen_best_nn.activate(nn_format(observation))
-                        best_action = np.argmax(output)
-                        observation, reward, done, info = env_t[i].step(best_action)
-                        score += reward
-                        #env_t[i].render()
-                        if done:
-                            break
-                    best_scores.append(score)
-            #if avg_score_v > avg_score_v_ant:
-            avg_score_v_ant = avg_score_v
-            avg_score_v = sum(best_scores) / len(best_scores)
-            print("********************************************************************************************")
-            print("Training-Validation Set Score = ", avg_score_v, " Ant = ", avg_score_v_ant, " i = ", index_t)
-            # si validation_score > validation_score_ant incrementa index_t, verifica sus limites e imprime
-            if avg_score_v > avg_score_v_ant:
-                if index_t >= len(env_t):
-                    index_t=0
-                else:
-                    index_t=index_t+1
-                print("New highest validation score, rotating training st to: ", index_t)
-            print("********************************************************************************************")
-            #Calculate the real-validation set score
-            best_genomes = stats.best_unique_genomes(3)
-            solved = True
-            best_scores = []
-            observation = env_v.reset()
-            score = 0.0
-            step = 0
-            gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
-            while 1:
-                step += 1
-                output = gen_best_nn.activate(nn_format(observation))
-                best_action = np.argmax(output)
-                observation, reward, done, info = env_v.step(best_action)
-                score += reward
-                #env_v.render()
-                if done:
-                    break
-            best_scores.append(score)
-            avg_score = sum(best_scores) / len(best_scores)
-            print("Real-Validation Set Score = ", avg_score)
-            #FIN de calculo de real validation        
-                    
+                   
             if avg_score < 2000000000:
                 solved = False
 
