@@ -216,8 +216,8 @@ def run():
     temp = 0
     while 1:
         try:
-            if temp >= 0:
-                # Calcula training y validation fitness
+            if temp >0:
+                               # Calcula training y validation fitness
                 best_genomes = stats.best_unique_genomes(3)
                 solved = True
                 best_scores = []
@@ -297,9 +297,8 @@ def run():
                 print("Real-Validation Set Score = ", avg_score)
                 print("********************************************************************************************")
                 #FIN de calculo de real validation        
-
                 
-                
+            if temp >= 0:
                 # TODO: FUNCION DE SINCRONIZACION CON SINGULARITY
                 # Lee en pop2 el último checkpoint desde syn
                 # Hace request de getLastParam(process_hash,use_current) a syn TODO: HACER PROCESS CONFIGURABLE Y POR HASH no por id
@@ -474,6 +473,7 @@ def run():
                     filename = '{0}{1}'.format("reps-", rep.current_generation)
                     with open(filename, 'wb') as f:
                         pickle.dump(reps, f)
+                    #
                     # Hace request de CreateParam a syn
                     form_data = {"process_hash": "ph", "app_hash": "ah",
                         "parameter_link": my_url + "/genoms/" + filename,
