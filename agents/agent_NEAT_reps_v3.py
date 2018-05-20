@@ -121,7 +121,6 @@ class PooledErrorCompute(object):
         scores = []
         sub_scores=[]
         self.test_episodes = []
-        gen_index=0
         # Evalua cada net en todos los env_t excepto el env actual 
         for genome, net in nets:
             sub_scores=[]
@@ -142,8 +141,7 @@ class PooledErrorCompute(object):
                 sub_scores.append(score)
             
             # calculate fitness per genome
-            scores[gen_index] = sum(sub_scores) / len(sub_scores)
-            gen_index = gen_index + 1
+            scores.append(sum(sub_scores) / len(sub_scores))
 
         print("Score range [{:.3f}, {:.3f}]".format(min(scores), max(scores)))
         return scores
