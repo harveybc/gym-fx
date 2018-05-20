@@ -463,7 +463,8 @@ def run():
                         if done:
                             break
                     best_scores.append(score)
-            avg_score_v_ant=avg_score_v
+            if avg_score_v > avg_score_v_ant:
+                avg_score_v_ant = avg_score_v
             avg_score_v = sum(best_scores) / len(best_scores)
             print("Training-Validation Set Score = ", avg_score_v)
             # si validation_score > validation_score_ant incrementa index_t, verifica sus limites e imprime
