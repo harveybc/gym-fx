@@ -443,29 +443,29 @@ def run():
             avg_score = sum(best_scores) / len(best_scores)
             print("Training Set Score =", score, " avg_score=", avg_score)
 
-            #Calculate the validation set score
+            #Calculate the training-validation set score
             best_genomes = stats.best_unique_genomes(3)
             solved = True
             best_scores = []
-            observation = env_v.reset()
             score = 0.0
             step = 0
             gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
             for i in range(0,12):
+                observation = env_t[i].reset()
                 if i != index_t:
                     while 1:
                         step += 1
                         output = gen_best_nn.activate(nn_format(observation))
                         best_action = np.argmax(output)
-                        observation, reward, done, info = env_v.step(best_action)
+                        observation, reward, done, info = env_t[i].step(best_action)
                         score += reward
-                        env_v.render()
+                        env_t[i].render()
                         if done:
                             break
                     best_scores.append(score)
             avg_score_v_ant=avg_score_v
             avg_score_v = sum(best_scores) / len(best_scores)
-            print("Validation Set Score =", avg_score_v)
+            print("Training-Validation Set Score = ", avg_score_v)
             # si validation_score > validation_score_ant incrementa index_t, verifica sus limites e imprime
             if avg_score_v > avg_score_v_ant:
                 if index_t >= len(env_t):
@@ -474,6 +474,27 @@ def run():
                     index_t=index_t+1
                 print("New highest validation score, rotating training st to: ", index_t)
                 
+            #Calculate the real-validation set score
+            best_genomes = stats.best_unique_genomes(3)
+            solved = True
+            best_scores = []
+            observation = env_v.reset()
+            score = 0.0
+            step = 0
+            gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
+            while 1:
+                step += 1
+                output = gen_best_nn.activate(nn_format(observation))
+                best_action = np.argmax(output)
+                observation, reward, done, info = env_v.step(best_action)
+                score += reward
+                env_v.render()
+                if done:
+                    break
+            best_scores.append(score)
+            avg_score = sum(best_scores) / len(best_scores)
+            print("Real-Validation Set Score = ", avg_score)
+            #FIN de calculo de real validation        
                     
             if avg_score < 2000000000:
                 solved = False
