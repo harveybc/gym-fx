@@ -118,7 +118,7 @@ class PooledErrorCompute(object):
     def simulate(self, nets):
         scores = []
         self.test_episodes = []
-        # Evalúa cada net en el env actual 
+        # Evalua cada net en el env actual 
         for genome, net in nets:
             observation = env_t[index_t].reset()
             step = 0
