@@ -251,17 +251,17 @@ def run():
                 gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
                 for i in range(0,12):
                     observation = env_t[i].reset()
-                    if i != index_t:
-                        while 1:
-                            step += 1
-                            output = gen_best_nn.activate(nn_format(observation))
-                            best_action = np.argmax(output)
-                            observation, reward, done, info = env_t[i].step(best_action)
-                            score += reward
-                            #env_t[i].render()
-                            if done:
-                                break
-                        best_scores.append(score)
+                    #if i != index_t:
+                    while 1:
+                        step += 1
+                        output = gen_best_nn.activate(nn_format(observation))
+                        best_action = np.argmax(output)
+                        observation, reward, done, info = env_t[i].step(best_action)
+                        score += reward
+                        #env_t[i].render()
+                        if done:
+                            break
+                    best_scores.append(score)
                 #if avg_score_v > avg_score_v_ant:
                 avg_score_v_ant = avg_score_v
                 avg_score_v = sum(best_scores) / len(best_scores)
@@ -311,7 +311,7 @@ def run():
                 print('\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
                 last_optimum_id = cont['result'][0]['last_optimum_id']
                 # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness de validation training
-                best_fitness = avg_score
+                best_fitness = (avg_score+avg_score_v)/2
                 print('\nvalidation_fitness = ',best_fitness, " t_validation_fitness =", avg_score_v , "fitness = ",gen_best.fitness )
                 if cont['result'][0]['current_block_performance'] > best_fitness:
                     # hace request GetParameter(id)
