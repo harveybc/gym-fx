@@ -30,23 +30,23 @@ bias_init_mean          = 0.0
 bias_init_stdev         = 1.0
 bias_replace_rate       = 0.02
 bias_mutate_rate        = 0.8
-bias_mutate_power       = 0.4
+bias_mutate_power       = 0.2
 bias_max_value          = 30.0
 bias_min_value          = -30.0
 response_init_mean      = 1.0
 response_init_stdev     = 0.0
 response_replace_rate   = 0.0
 response_mutate_rate    = 0.1
-response_mutate_power   = 0.01
+response_mutate_power   = 0.008
 response_max_value      = 30.0
 response_min_value      = -30.0
 weight_max_value        = 30
 weight_min_value        = -30
 weight_init_mean        = 0.0
 weight_init_stdev       = 1.0
-weight_mutate_rate      = 0.8
+weight_mutate_rate      = 0.9
 weight_replace_rate     = 0.02
-weight_mutate_power     = 0.4
+weight_mutate_power     = 0.2
 enabled_default         = True
 enabled_mutate_rate     = 0.01
 
@@ -55,9 +55,9 @@ compatibility_threshold = 3.0
 
 [DefaultStagnation]
 species_fitness_func = mean
-max_stagnation       = 15
-species_elitism      = 4
+max_stagnation       = 12
+species_elitism      = 2
 
 [DefaultReproduction]
-elitism            = 2
+elitism            = 1
 survival_threshold = 0.2
