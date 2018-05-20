@@ -404,8 +404,8 @@ def run():
                                          last_optimum_id) + "?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
                     cont_param = res_p.json()
                     # descarga el checkpoint del link de la respuesta si cont.parameter_link
-                    print('\ncont_param =', cont_param)
-                    print('\nmigrations =')
+                    print('\nNEW OPTIMUM - cont_param =', cont_param)
+                    #print('\nmigrations =')
                     if cont_param['result'][0]['parameter_link'] is not None:
                         genom_data = requests.get(cont_param['result'][0]['parameter_link']).content
                         with open('remote_reps', 'wb') as handler:
