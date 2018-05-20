@@ -301,12 +301,13 @@ def run():
                 # Calcula el best_fitness (PARA SYNC)como el promedio del score de vtraining y el promedio del fitness de los reps. 
                 reps_local = []
                 reps = [gen_best]
-                accum = 0
+                accum = 0.0
                 countr = 0
                 for sid, s in iteritems(pop.species.species):
-                    accum=accum+pop.population[s.representative.key].fitness
-                    countr = countr + 1
-                if contr > 0:    
+                    if pop.population[s.representative.key].fitness is not None:
+                        accum=accum+pop.population[s.representative.key].fitness
+                        countr = countr + 1
+                if countr > 0:    
                     best_fitness = (avg_score_v+(accum/countr))
                 else:
                     best_fitness = (avg_score_v)
