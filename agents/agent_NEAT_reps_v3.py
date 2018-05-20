@@ -443,7 +443,7 @@ def run():
             avg_score = sum(best_scores) / len(best_scores)
             print("Training Set Score =", score, " avg_score=", avg_score)
 
-            #Calculate the training-validation set score
+            #Calculate the validation-training set score
             best_genomes = stats.best_unique_genomes(3)
             solved = True
             best_scores = []
@@ -459,7 +459,7 @@ def run():
                         best_action = np.argmax(output)
                         observation, reward, done, info = env_t[i].step(best_action)
                         score += reward
-                        env_t[i].render()
+                        #env_t[i].render()
                         if done:
                             break
                     best_scores.append(score)
@@ -488,7 +488,7 @@ def run():
                 best_action = np.argmax(output)
                 observation, reward, done, info = env_v.step(best_action)
                 score += reward
-                env_v.render()
+                #env_v.render()
                 if done:
                     break
             best_scores.append(score)
