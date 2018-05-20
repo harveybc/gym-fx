@@ -311,8 +311,8 @@ def run():
                 print('\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
                 last_optimum_id = cont['result'][0]['last_optimum_id']
                 # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness de validation training
-                best_fitness = avg_score_v
-                print('\nbest_fitness =', gen_best.fitness, " t_validation_fitness =", best_fitness )
+                best_fitness = avg_score
+                print('\nvalidation_fitness = ',best_fitness, " t_validation_fitness =", avg_score_v , "fitness = ",gen_best.fitness )
                 if cont['result'][0]['current_block_performance'] > best_fitness:
                     # hace request GetParameter(id)
                     res_p = requests.get(
