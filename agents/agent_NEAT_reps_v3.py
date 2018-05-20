@@ -269,10 +269,11 @@ def run():
                 print("Training-Validation Set Score = ", avg_score_v, " Ant = ", avg_score_v_ant, " i = ", index_t)
                 # si validation_score > validation_score_ant incrementa index_t, verifica sus limites e imprime
                 if avg_score_v > avg_score_v_ant:
-                    if index_t >= len(env_t):
+                    if index_t >= (len(env_t)-1):
                         index_t=0
                     else:
                         index_t=index_t+1
+                        
                     print("New highest validation score, rotating training st to: ", index_t)
                 print("********************************************************************************************")
                 #Calculate the real-validation set score
