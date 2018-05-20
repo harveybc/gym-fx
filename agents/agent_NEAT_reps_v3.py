@@ -351,8 +351,8 @@ def run():
                             closer = None
                             min_dist = None
                             # initialize for less fit search
-                            less_fit = pop.best_genome
-                            less_fitness = less_fit.fitness
+                            less_fit = None
+                            less_fitness = 10000
                             for g in itervalues(pop.population):
                                 if g not in remote_reps:
                                     dist = g.distance(remote_reps[i], config.genome_config)
