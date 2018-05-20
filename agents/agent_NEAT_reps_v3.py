@@ -466,7 +466,7 @@ def run():
             avg_score_v_ant=avg_score_v
             avg_score_v = sum(best_scores) / len(best_scores)
             print("Validation Set Score =", avg_score_v)
-            # si validation_score > validation_score_ant incrementa index_t, verifica sus límites e imprime
+            # si validation_score > validation_score_ant incrementa index_t, verifica sus limites e imprime
             if avg_score_v > avg_score_v_ant:
                 if index_t >= len(env_t):
                     index_t=0
