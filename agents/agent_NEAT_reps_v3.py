@@ -277,7 +277,7 @@ def run():
 
     pop_size=len(pop.population)
     # sets the nuber of continuous iterations 
-    num_iterations = round(400/len(pop.population))+1
+    num_iterations = round(200/len(pop.population))+1
     while 1:
         try:
             if temp >0:
