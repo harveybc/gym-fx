@@ -588,7 +588,7 @@ def run():
             # Re-speciate
             pop.species.speciate(config, pop.population, pop.generation)
             # EVALUATE THE GENOMES WITH THE FULL TRAINING DATASET
-            gen_best = pop.run(ec.evaluate_genomes_full, num_iterations)
+            gen_best = pop.run(ec.evaluate_genomes_full, round(num_iterations/2))
 
             #print(gen_best)
             #visualize.plot_stats(stats, ylog=False, view=False, filename="fitness.svg")
