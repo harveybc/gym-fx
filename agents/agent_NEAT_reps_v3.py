@@ -48,8 +48,7 @@ my_url = sys.argv[2]
 index_t = 0
 # third is the config filename
 my_config = sys.argv[3]
-#fourth parameter is the number of iterations between calculating validation fitness
-num_iterations = sys.argv[4]
+
 
 # LanderGenome class
 class LanderGenome(neat.DefaultGenome):
@@ -216,6 +215,9 @@ def run():
     ec = PooledErrorCompute()
     temp = 0
     best_fitness=-2000.0;
+    
+    # sets the nuber of continuous iterations to 200/pop_size
+    num_iterations = round(200/len(pop.population))
     while 1:
         try:
             if temp >0:
