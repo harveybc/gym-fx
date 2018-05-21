@@ -48,6 +48,8 @@ my_url = sys.argv[2]
 index_t = 0
 # third is the config filename
 my_config = sys.argv[3]
+#fourth parameter is the number of iterations between calculating validation fitness
+num_iterations = sys.argv[4]
 
 # LanderGenome class
 class LanderGenome(neat.DefaultGenome):
@@ -335,7 +337,7 @@ def run():
                                          last_optimum_id) + "?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
                     cont_param = res_p.json()
                     # descarga el checkpoint del link de la respuesta si cont.parameter_link
-                    print('\ncont_param =', cont_param)
+                    print('Parameter Downloaded')
                     print('\nmigrations =')
                     if cont_param['result'][0]['parameter_link'] is not None:
                         genom_data = requests.get(cont_param['result'][0]['parameter_link']).content
@@ -519,7 +521,7 @@ def run():
                 # TODO FIN: FUNCION DE SINCRONIZACION CON SINGULARITY
             temp = temp + 1
 
-            gen_best = pop.run(ec.evaluate_genomes, 15)
+            gen_best = pop.run(ec.evaluate_genomes, num_iterations)
 
             #print(gen_best)
             #visualize.plot_stats(stats, ylog=False, view=False, filename="fitness.svg")
