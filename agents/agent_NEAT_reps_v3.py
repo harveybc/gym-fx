@@ -215,9 +215,10 @@ def run():
     ec = PooledErrorCompute()
     temp = 0
     best_fitness=-2000.0;
-    
-    # sets the nuber of continuous iterations to 200/pop_size
-    num_iterations = round(200/len(pop.population))
+
+    pop_size=len(pop.population)
+    # sets the nuber of continuous iterations 
+    num_iterations = round(400/len(pop.population))+1
     while 1:
         try:
             if temp >0:
@@ -277,9 +278,10 @@ def run():
                 if index_t >= (len(env_t)-1):
                     index_t=0
                 else:
-                    index_t=index_t+1
-                        
-                    print("Rotating training st to: ", index_t)
+                    if 1 == temp % 2:
+                        index_t=index_t+1
+                        print("Rotating training st to: ", index_t)
+                    
                 print("*********************************************************")
                 #Calculate the real-validation set score
                 best_genomes = stats.best_unique_genomes(3)
