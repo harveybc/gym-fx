@@ -126,7 +126,7 @@ class PooledErrorCompute(object):
         # Evalua cada net en todos los env_t excepto el env actual 
         for genome, net in nets:
             sub_scores=[]
-            for i in range(index_0,12):
+            for i in range(0,12):
                 observation = env_t[i].reset()
                 score=0.0
                 #if i==index_t:
@@ -337,7 +337,6 @@ def run():
                 if index_t >= (len(env_t)-1):
                     index_t=0
                 else:
-                    if 1 == temp % 2:
                         index_t=index_t+1
                         print("Rotating training st to: ", index_t)
                     
