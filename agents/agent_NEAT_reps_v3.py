@@ -337,6 +337,7 @@ def run():
                 if index_t >= (len(env_t)-1):
                     index_t=0
                 else:
+                    if 1 == temp % 2:
                         index_t=index_t+1
                         print("Rotating training st to: ", index_t)
                     
@@ -585,10 +586,11 @@ def run():
             
             # EVALUATE THE GENOMES WITH THE SUBSET TRAINING DATASET
             gen_best = pop.run(ec.evaluate_genomes, num_iterations)
-            # Re-speciate
-            pop.species.speciate(config, pop.population, pop.generation)
-            # EVALUATE THE GENOMES WITH THE FULL TRAINING DATASET
-            gen_best = pop.run(ec.evaluate_genomes_full, round(num_iterations/2))
+            if 0 == temp % 10:
+                # Re-speciate
+                pop.species.speciate(config, pop.population, pop.generation)
+                # EVALUATE THE GENOMES WITH THE FULL TRAINING DATASET
+                gen_best = pop.run(ec.evaluate_genomes_full, round(num_iterations))
 
             #print(gen_best)
             #visualize.plot_stats(stats, ylog=False, view=False, filename="fitness.svg")
