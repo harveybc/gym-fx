@@ -71,4 +71,4 @@ chmod 777 res
 
 Access the web interface from a browser in the address and port you configured.  
 Access the Processes menu to monitor your optimization process progress.  
-Also access the Optimization/Parameters menu to see details of individual optima dound.
+Also access the Optimization/Parameters menu to see details of individual optima found.
