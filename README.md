@@ -19,17 +19,56 @@ max_order_time), order_profit and its variation, order_drawdown
 
 ## Action Space
 
-discrete action 0: 0=nop,1=close,2=buy,3=sell
-discrete action 0 parameter: symbol
-(optional) continuous action 0 parameter: percent_tp, percent_sl,percent_max
+discrete action 0: 0=nop,1=close,2=buy,3=sell  
+discrete action 0 parameter: symbol  
+(optional) continuous action 0 parameter: percent_tp, percent_sl,percent_max  
 
 ## Reward Function
 
-TODO: Describe the Reward Function
+The reward function is the average of the area under the curve of equity and the 
+balance variation.
 
 # Installation
-Install openAI gym, tensorflow and keras.
+### Step 1 - Setup Dependencies
 
-Copy as a new directory inside the gym/env and update the __init.py__ on gym/env to include the new wnvironment.
+Install openAI Gym from Github according to [these instructions](https://github.com/harveybc/gym-forex)these instructions.  
+Install Python3, pip3 and other dependencies:  
+sudo apt-get install -y python3-numpy python3-dev cmake zlib1g-dev libjpeg-dev xvfb libav-tools libboost-all-dev libsdl2-dev  
+pip3 install graphviz matplotlib neat-python python-tk
 
-Work In Progress. Proper documentation commming soon.
+### Step 2 - Setup gym-forex from GitHub
+
+git clone https://github.com/harveybc/gym-forex  
+cd gym-forex  
+  
+### Step 3 - Configure the NEAT parameters
+
+nano agents/config  
+
+Configure the population size and other parameters according to your computing 
+capacity or requirements, start with the defaults.
+
+### Step 4 - Configure a startup/restart script
+
+nano res  
+
+For pulling the latest changes and executing the optimizer with a connection to 
+your singularity node Address and Port. For example:  
+
+\#!/bin/bash 
+git pull 
+python agents/agent_NEAT_reps_v3.py ../datasets/ts_1y.csv http://192.168.0.241:3338 config  
+
+After editing, change the permission of the file to be executable:  
+
+chmod 777 res  
+
+### Step 4 - Start your optimizer that uses the gym-forex environment and an agent.
+
+./res  
+
+### Step 5 - Verify its Working
+
+Access the web interface from a browser in the address and port you configured.  
+Access the Processes menu to monitor your optimization process progress.  
+Also access the Optimization/Parameters menu to see details of individual optima dound.
