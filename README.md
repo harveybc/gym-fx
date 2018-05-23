@@ -55,8 +55,8 @@ nano res
 For pulling the latest changes and executing the optimizer with a connection to 
 your singularity node Address and Port. For example:  
 
-\#!/bin/bash 
-git pull 
+\#!/bin/bash  
+git pull  
 python agents/agent_NEAT_reps_v3.py ../datasets/ts_1y.csv http://192.168.0.241:3338 config  
 
 After editing, change the permission of the file to be executable:  
