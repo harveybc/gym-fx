@@ -63,11 +63,11 @@ After editing, change the permission of the file to be executable:
 
 chmod 777 res  
 
-### Step 4 - Start your optimizer that uses the gym-forex environment and an agent.
+### Step 5 - Start your optimizer that uses the gym-forex environment and an agent.
 
 ./res  
 
-### Step 5 - Verify its Working
+### Step 6 - Verify its Working
 
 Access the web interface from a browser in the address and port you configured.  
 Access the Processes menu to monitor your optimization process progress.  
