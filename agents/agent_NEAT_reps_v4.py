@@ -301,34 +301,7 @@ def run():
                 avg_score = sum(best_scores) / len(best_scores)
                 print("Training Set Score =", score, " avg_score=", avg_score)
 
-                #Calculate the validation-training set score
-                best_genomes = stats.best_unique_genomes(3)
-                solved = True
-                best_scores = []
-                
-                step = 0
-                gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
-                # for WAS left for future changes aside index_t
-                observation = env_t.reset()
-                score = 0.0
-                # the if only is needed when using just one validation set for training
-                #if i == index_t:
-                while 1:
-                    step += 1
-                    output = gen_best_nn.activate(nn_format(observation))
-                    best_action = np.argmax(output)
-                    observation, reward, done, info = env_t.step(best_action)
-                    score += reward
-                    #env_t.render()
-                    if done:
-                        break
-                best_scores.append(score)
-                avg_score_v_ant = avg_score_v
-                avg_score_v = sum(best_scores) / len(best_scores)
-                print("*********************************************************")
-                print("Training-Validation Set Score = ", avg_score_v, " Ant = ", avg_score_v_ant, " i = ", index_t)
-                print("*********************************************************")
-                #Calculate the real-validation set score
+                # Calculate the real-validation set score
                 best_genomes = stats.best_unique_genomes(3)
                 solved = True
                 best_scores = []
