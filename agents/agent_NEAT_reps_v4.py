@@ -120,7 +120,7 @@ class PooledErrorCompute(object):
         self.episode_length = []
     
     # simulates a genom in all the training dataset (all the training subsets)
-    def simulate_full(self, nets):
+    def simulate(self, nets):
         scores = []
         sub_scores=[]
         self.test_episodes = []
@@ -147,62 +147,7 @@ class PooledErrorCompute(object):
         print("Score range [{:.3f}, {:.3f}]".format(min(scores), max(scores)))
         return scores
     
-    def simulate(self, nets):
-        scores = []
-        sub_scores=[]
-        self.test_episodes = []
-        # Evalua cada net 
-        for genome, net in nets:
-            sub_scores=[]
-            observation = env_t.reset()
-            score=0.0
-            while 1:
-                output = net.activate(nn_format(observation))
-                #print("output: {0!r}".format(output))
-                action = np.argmax(output)
-                #print("observation: {0!r}".format(self.nn_format(observation)))
-                #print("action: {0!r}".format(action))
-                observation, reward, done, info = env_t.step(action)
-                score += reward
-                #env_t.render()
-                if done:
-                    break
-            sub_scores.append(score)
-            # calculate fitness per genome
-            scores.append(sum(sub_scores) / len(sub_scores))
-
-        print("Score range [{:.3f}, {:.3f}]".format(min(scores), max(scores)))
-        return scores
     
-    def evaluate_genomes_full(self, genomes, config):
-        self.generation += 1
-
-        t0 = time.time()
-        nets = []
-        for gid, g in genomes:
-            nets.append((g, neat.nn.FeedForwardNetwork.create(g, config)))
-
-        #print("network creation time {0}".format(time.time() - t0))
-        t0 = time.time()
-
-        # Periodically generate a new set of episodes for comparison.
-        #if 1 == self.generation % 10:
-        #self.test_episodes = self.test_episodes[-300:]
-        scores = self.simulate_full(nets)
-        #print("simulation run time {0}".format(time.time() - t0))
-        t0 = time.time()
-
-        # Assign a composite fitness to each genome; genomes can make progress either
-        # by improving their total reward or by making more accurate reward estimates.
-
-        print("Evaluating {0} test episodes".format(len(self.test_episodes)))
-
-        i = 0
-        for genome, net in nets:
-            #reward_error = compute_fitness(genome, net, self.test_episodes, self.min_reward, self.max_reward)
-            genome.fitness = scores[i]
-            i = i + 1
-        
     def evaluate_genomes(self, genomes, config):
         self.generation += 1
 
@@ -545,14 +490,6 @@ def run():
             
             # EVALUATE THE GENOMES WITH THE SUBSET TRAINING DATASET
             gen_best = pop.run(ec.evaluate_genomes, num_iterations)
-            if 0 == temp % 10:
-                # Re-speciate
-                pop.species.speciate(config, pop.population, pop.generation)
-                # EVALUATE THE GENOMES WITH THE FULL TRAINING DATASET
-                print("Evaluating FULL Training Dataset for ", round(num_iterations)," iterations")
-                gen_best = pop.run(ec.evaluate_genomes_full, round(num_iterations))
-                print("Done evaluating FULL Training Dataset")
-            
             # TODO:
             # VERIFY IF THERE ARE PENDING EVALUATIONS
             # EVALUATE NUM_EVALUATIONS PENDING EVALUATIONS
