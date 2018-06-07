@@ -25,7 +25,7 @@ class ForexEnv2(gym.Env):
     """
     metadata = {'render.modes': ['human']}
 
-    def __init__(self,dataset='datasets/ts_1y.CSV'):
+    def __init__(self, dataset='datasets/ts_1y.CSV'):
         metadata = {'render.modes': ['human', 'ansi']}
         # initialize initial capital
         self.capital = 10000
@@ -42,8 +42,9 @@ class ForexEnv2(gym.Env):
         num_symbols = 1
         # TODO: Dejar como params
         self.debug = 0  # Show debug msgs
-        #csv_f = 'C:\\Users\\HarveyD\\Anaconda3\\Lib\\site-packages\\gym\\envs\\forex\\ts_4y.CSV'
+        #print("Using dataset :", dataset)
         csv_f = dataset
+        self.dataset = dataset
         self.initial_capital = self.capital
         self.equity = self.capital
         self.balance = self.capital
@@ -322,11 +323,12 @@ class ForexEnv2(gym.Env):
         #    equity_increment = self.balance - self.balance_ant
         #else:
         equity_increment = self.equity - self.equity_ant
+        balance_increment =  self.balance - self.balance_ant
         if self.reward_function == 0:
             # TODO: REWARD FUNCTION:  1=Tabla
             bonus=((self.equity - self.initial_capital) / self.num_ticks)
             # reward = reward + bonus
-            reward = (equity_increment + bonus)/2
+            reward = (balance_increment + bonus)/2
             # penaliza inactividad hasta alcanzar total de ticks con 5 para que tenga menos que los de balance positivo con mal comportamiento
             #if equity_increment == 0.0:
             #    reward = reward - (2*self.initial_capital / self.num_ticks)
@@ -395,7 +397,7 @@ class ForexEnv2(gym.Env):
         # Episode over es TRUE cuando se termina el juego, es decir cuando tick_count=self.num_ticks
         if self.tick_count >= (self.num_ticks - 1):
             episode_over = bool(1)
-            print('Done - Balance =', self.equity, ',  Reward =', self.reward, 'Time=', self.tick_count)
+            # print('Done - Balance =', self.equity, ',  Reward =', self.reward, 'Time=', self.tick_count)
             # self._reset()
             # self.__init__()
             # TODO: IMPRIMIR ESTADiSTICAS DE METATRADER
@@ -425,7 +427,7 @@ class ForexEnv2(gym.Env):
         self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         self.state = self.state_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         ob = numpy.concatenate([self.obs_matrix, self.state])
-        self.__init__()
+        self.__init__(self.dataset)
         return ob
 
     """
