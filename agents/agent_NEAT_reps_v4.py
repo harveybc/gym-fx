@@ -45,8 +45,8 @@ env_t = gym.make('ForexTrainingSet-v1')
 env_v = gym.make('ForexValidationSet-v1')
 # Shows the action and observation space from the forex_env, its observation space is
 # bidimentional, so it has to be converted to an array with nn_format() for direct ANN feed. (Not if evaluating with external DQN)
-print("action space: {0!r}".format(env_t[0].action_space))
-print("observation space: {0!r}".format(env_t[0].observation_space))
+print("action space: {0!r}".format(env_t.action_space))
+print("observation space: {0!r}".format(env_t.observation_space))
 env_v = gym.wrappers.Monitor(env_v, 'results', force=True)
 # for cross-validation like training set
 index_t = 0
@@ -127,25 +127,23 @@ class PooledErrorCompute(object):
         # Evalua cada net en todos los env_t excepto el env actual 
         for genome, net in nets:
             sub_scores=[]
-            for i in range(0,12):
-                observation = env_t[i].reset()
-                score=0.0
-                #if i==index_t:
-                while 1:
-                    output = net.activate(nn_format(observation))
-                    #print("output: {0!r}".format(output))
-                    action = np.argmax(output)
-                    #print("observation: {0!r}".format(self.nn_format(observation)))
-                    #print("action: {0!r}".format(action))
-                    observation, reward, done, info = env_t[i].step(action)
-                    score += reward
-                    #env_t[i].render()
-                    if done:
-                        break
-                sub_scores.append(score)
+            observation = env_t.reset()
+            score=0.0
+            #if i==index_t:
+            while 1:
+                output = net.activate(nn_format(observation))
+                #print("output: {0!r}".format(output))
+                action = np.argmax(output)
+                #print("observation: {0!r}".format(self.nn_format(observation)))
+                #print("action: {0!r}".format(action))
+                observation, reward, done, info = env_t.step(action)
+                score += reward
+                #env_t.render()
+                if done:
+                    break
+            sub_scores.append(score)
             # calculate fitness per genome
             scores.append(sum(sub_scores) / len(sub_scores))
-
         print("Score range [{:.3f}, {:.3f}]".format(min(scores), max(scores)))
         return scores
     
@@ -156,22 +154,21 @@ class PooledErrorCompute(object):
         # Evalua cada net en todos los env_t excepto el env actual 
         for genome, net in nets:
             sub_scores=[]
-            for i in range(index_t,1):
-                observation = env_t[i].reset()
-                score=0.0
-                if i==index_t:
-                    while 1:
-                        output = net.activate(nn_format(observation))
-                        #print("output: {0!r}".format(output))
-                        action = np.argmax(output)
-                        #print("observation: {0!r}".format(self.nn_format(observation)))
-                        #print("action: {0!r}".format(action))
-                        observation, reward, done, info = env_t[i].step(action)
-                        score += reward
-                        #env_t[i].render()
-                        if done:
-                            break
-                    sub_scores.append(score)
+            observation = env_t.reset()
+            score=0.0
+            if i==index_t:
+                while 1:
+                    output = net.activate(nn_format(observation))
+                    #print("output: {0!r}".format(output))
+                    action = np.argmax(output)
+                    #print("observation: {0!r}".format(self.nn_format(observation)))
+                    #print("action: {0!r}".format(action))
+                    observation, reward, done, info = env_t.step(action)
+                    score += reward
+                    #env_t.render()
+                    if done:
+                        break
+                sub_scores.append(score)
             # calculate fitness per genome
             scores.append(sum(sub_scores) / len(sub_scores))
 
@@ -286,7 +283,7 @@ def run():
                 best_genomes = stats.best_unique_genomes(3)
                 solved = True
                 best_scores = []
-                observation = env_t[index_t].reset()
+                observation = env_t.reset()
                 score = 0.0
                 step = 0
                 gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
@@ -295,9 +292,9 @@ def run():
                     step += 1
                     output = gen_best_nn.activate(nn_format(observation))
                     best_action = np.argmax(output)
-                    observation, reward, done, info = env_t[index_t].step(best_action)
+                    observation, reward, done, info = env_t.step(best_action)
                     score += reward
-                    env_t[index_t].render()
+                    env_t.render()
                     if done:
                         break
                 ec.episode_score.append(score)
@@ -314,21 +311,20 @@ def run():
                 step = 0
                 gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
                 # for WAS left for future changes aside index_t
-                for i in range(0,12):
-                    observation = env_t[i].reset()
-                    score = 0.
-                    # the if only is needed when using just one validation set for training
-                    #if i == index_t:
-                    while 1:
-                        step += 1
-                        output = gen_best_nn.activate(nn_format(observation))
-                        best_action = np.argmax(output)
-                        observation, reward, done, info = env_t[i].step(best_action)
-                        score += reward
-                        #env_t[i].render()
-                        if done:
-                            break
-                    best_scores.append(score)
+                observation = env_t.reset()
+                score = 0.0
+                # the if only is needed when using just one validation set for training
+                #if i == index_t:
+                while 1:
+                    step += 1
+                    output = gen_best_nn.activate(nn_format(observation))
+                    best_action = np.argmax(output)
+                    observation, reward, done, info = env_t.step(best_action)
+                    score += reward
+                    #env_t.render()
+                    if done:
+                        break
+                best_scores.append(score)
                 avg_score_v_ant = avg_score_v
                 avg_score_v = sum(best_scores) / len(best_scores)
                 print("*********************************************************")
