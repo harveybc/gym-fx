@@ -129,8 +129,11 @@ class ForexEnv2(gym.Env):
         self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         self.state = self.state_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
 
-        # action space = nop,buy,sell
-        self.action_space = spaces.Discrete(3)
+        # action space = discrete(nop,buy,sell),box(volume, take_profit, stop_loss)
+        self.action_space = spaces.Tuple((
+            spaces.Discrete(3),  # nop, buy, sell
+            spaces.Box(low=-1.0, high=1.0, shape=3, dtype=np.float32), # vol,tp,sl
+        ))
         # observation_space=(16 columns + 3 state variables)* obs_ticks, shape=(width,height, channels?)
         self.observation_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(self.obs_ticks, 1, 19), dtype=np.float32)
         self.order_time = 0
