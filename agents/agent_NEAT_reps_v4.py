@@ -151,24 +151,23 @@ class PooledErrorCompute(object):
         scores = []
         sub_scores=[]
         self.test_episodes = []
-        # Evalua cada net en todos los env_t excepto el env actual 
+        # Evalua cada net 
         for genome, net in nets:
             sub_scores=[]
             observation = env_t.reset()
             score=0.0
-            if i==index_t:
-                while 1:
-                    output = net.activate(nn_format(observation))
-                    #print("output: {0!r}".format(output))
-                    action = np.argmax(output)
-                    #print("observation: {0!r}".format(self.nn_format(observation)))
-                    #print("action: {0!r}".format(action))
-                    observation, reward, done, info = env_t.step(action)
-                    score += reward
-                    #env_t.render()
-                    if done:
-                        break
-                sub_scores.append(score)
+            while 1:
+                output = net.activate(nn_format(observation))
+                #print("output: {0!r}".format(output))
+                action = np.argmax(output)
+                #print("observation: {0!r}".format(self.nn_format(observation)))
+                #print("action: {0!r}".format(action))
+                observation, reward, done, info = env_t.step(action)
+                score += reward
+                #env_t.render()
+                if done:
+                    break
+            sub_scores.append(score)
             # calculate fitness per genome
             scores.append(sum(sub_scores) / len(sub_scores))
 
