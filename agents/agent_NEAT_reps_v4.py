@@ -31,18 +31,18 @@ my_url = sys.argv[3]
 my_config = sys.argv[4]
 # Register the gym-forex environment
 register(
-    id='ForexTrainingSet2-v0',
+    id='ForexTrainingSet-v1',
     entry_point='gym_forex.envs:ForexEnv2',
     kwargs={'dataset': ts_f}
 )
 register(
-    id='ForexValidationSet2-v0',
+    id='ForexValidationSet-v1',
     entry_point='gym_forex.envs:ForexEnv2',
     kwargs={'dataset': vs_f}
 )
 # Make environments
-env_t = gym.make('ForexTrainingSe2t-v0')
-env_v = gym.make('ForexValidationSet2-v0')
+env_t = gym.make('ForexTrainingSet-v1')
+env_v = gym.make('ForexValidationSet-v1')
 # Shows the action and observation space from the forex_env, its observation space is
 # bidimentional, so it has to be converted to an array with nn_format() for direct ANN feed. (Not if evaluating with external DQN)
 print("action space: {0!r}".format(env_t[0].action_space))
