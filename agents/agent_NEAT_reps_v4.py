@@ -200,7 +200,6 @@ def run():
     rep = neat.Checkpointer(25, 900)
     pop.add_reporter(rep)
     # Training set index 
-    index_t = 0
     avg_score_v = -10000000.0
     avg_score_v_ant = avg_score_v
     avg_score = avg_score_v
@@ -264,8 +263,8 @@ def run():
                     if done:
                         break
                 best_scores.append(score)
-                avg_score = sum(best_scores) / len(best_scores)
-                print("Real-Validation Set Score = ", avg_score)
+                avg_score_v = sum(best_scores) / len(best_scores)
+                print("Validation Set Score = ", avg_score_v)
                 print("*********************************************************")
                 # Calcula el best_fitness (PARA SYNC)como el promedio del score de vtraining y el promedio del fitness de los reps. 
                 reps_local = []
