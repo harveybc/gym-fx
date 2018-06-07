@@ -1,8 +1,7 @@
-# Simplified version of the modified version of the Lander example included with neat-python for forex_env
+# This agent uses the forex_env_v2 that uses continuous and binary controls
 from __future__ import print_function
 from copy import deepcopy
 import gym
-from gym.envs.registration import register
 import gym.wrappers
 import gym_forex
 import json
@@ -19,36 +18,38 @@ import requests
 import sys
 import time
 import visualize
+from gym.envs.registration import register
 # Multi-core machine support
 NUM_CORES = 1
-# Make with the Name of the environments defined in gym_forex/__init__.py
-env_t = []
-env_t.append(gym.make('ForexTrainingSet1-v0'))
-env_t.append(gym.make('ForexTrainingSet2-v0'))
-env_t.append(gym.make('ForexTrainingSet3-v0'))
-env_t.append(gym.make('ForexTrainingSet4-v0'))
-env_t.append(gym.make('ForexTrainingSet5-v0'))
-env_t.append(gym.make('ForexTrainingSet6-v0'))
-env_t.append(gym.make('ForexTrainingSet7-v0'))
-env_t.append(gym.make('ForexTrainingSet8-v0'))
-env_t.append(gym.make('ForexTrainingSet9-v0'))
-env_t.append(gym.make('ForexTrainingSet10-v0'))
-env_t.append(gym.make('ForexTrainingSet11-v0'))
-env_t.append(gym.make('ForexTrainingSet12-v0'))
-
+# First argument is the training dataset
+ts_f = sys.argv[1]
+# Second is validation dataset 
+vs_f = sys.argv[2]
+# Third argument is the  url 
+my_url = sys.argv[3]
+# fourth is the config filename
+my_config = sys.argv[4]
+# Register the gym-forex environment
+register(
+    id='ForexTrainingSet-v0',
+    entry_point='gym_forex.envs:ForexEnv2',
+    kwargs={'dataset': ts_f}
+)
+register(
+    id='ForexValidationSet-v0',
+    entry_point='gym_forex.envs:ForexEnv2',
+    kwargs={'dataset': vs_f}
+)
+# Make environments
+env_t = gym.make('ForexTrainingSet-v0')
 env_v = gym.make('ForexValidationSet-v0')
 # Shows the action and observation space from the forex_env, its observation space is
 # bidimentional, so it has to be converted to an array with nn_format() for direct ANN feed. (Not if evaluating with external DQN)
 print("action space: {0!r}".format(env_t[0].action_space))
 print("observation space: {0!r}".format(env_t[0].observation_space))
 env_v = gym.wrappers.Monitor(env_v, 'results', force=True)
-# First argument is the dataset, second is the  url, 
-my_url = sys.argv[2]
 # for cross-validation like training set
 index_t = 0
-# third is the config filename
-my_config = sys.argv[3]
-
 
 # LanderGenome class
 class LanderGenome(neat.DefaultGenome):

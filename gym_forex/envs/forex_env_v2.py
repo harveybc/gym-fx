@@ -8,7 +8,7 @@ from gym import utils
 from gym import spaces
 import numpy as np
 
-class ForexEnv22(gym.Env):
+class ForexEnv2(gym.Env):
     """
     This environment simulates a Forex trading account with only one open order 
     at any time.
