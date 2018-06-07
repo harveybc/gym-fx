@@ -222,7 +222,7 @@ def run():
     while 1:
         try:
             if temp >0:
-                               # Calcula training y validation fitness
+                # Calcula training y validation fitness
                 best_genomes = stats.best_unique_genomes(3)
                 solved = True
                 best_scores = []
