@@ -257,6 +257,9 @@ class ForexEnv2(gym.Env):
                 # open price = Ask (Close_bid+Spread)
                 self.open_price = Close + spread
                 # order_volume = lo que alcanza con rel_volume de equity
+                
+                # TODO: ADICIONAR VOLUME DESDE ACTION SPACE 
+                # a=Tuple((Discrete(3),  Box(low=-1.0, high=1.0, shape=3, dtype=np.float32)) # nop, buy, sell vol,tp,sl
                 self.order_volume = self.equity * self.rel_volume * self.leverage / 100000
                 # redondear a volumenes minimos de 0.01
                 self.order_volume = math.trunc(self.order_volume * 100) / 100.0
