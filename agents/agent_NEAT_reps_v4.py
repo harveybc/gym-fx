@@ -79,25 +79,6 @@ class LanderGenome(neat.DefaultGenome):
         return "Reward discount: {0}\n{1}".format(self.discount,
                                                   super().__str__())
 
-    def compute_fitness(genome, net, episodes, min_reward, max_reward):
-        m = int(round(np.log(0.01) / np.log(genome.discount)))
-        discount_function = [genome.discount ** (m - i) for i in range(m + 1)]
-
-        reward_error = []
-        for score, data in episodes:
-            # Compute normalized discounted reward.
-            dr = np.convolve(data[:, -1], discount_function)[m:]
-            dr = 2 * (dr - min_reward) / (max_reward - min_reward) - 1.0
-            dr = np.clip(dr, -1.0, 1.0)
-
-            for row, dr in zip(data, dr):
-                observation = row[:8]
-                action = int(row[8])
-                output = net.activate(observation)
-                reward_error.append(float((output[action] - dr) ** 2))
-
-        return reward_error
-
 
 # converts a bidimentional matrix to an one-dimention array
 def nn_format(obs):
@@ -123,6 +104,7 @@ class PooledErrorCompute(object):
     def simulate(self, nets):
         scores = []
         sub_scores=[]
+        action = (0,0.0,0.0,0.0)
         self.test_episodes = []
         # Evalua cada net en todos los env_t excepto el env actual 
         for genome, net in nets:
@@ -133,9 +115,12 @@ class PooledErrorCompute(object):
             while 1:
                 output = net.activate(nn_format(observation))
                 #print("output: {0!r}".format(output))
-                action = np.argmax(output)
+                action[0] = np.argmax(output[0:2]) # buy,sell or 
+                action[1] = output[3]
+                action[2] = output[4]
+                action[3] = output[5]
                 #print("observation: {0!r}".format(self.nn_format(observation)))
-                #print("action: {0!r}".format(action))
+                #print("action: {0!r}".format(action[]))
                 observation, reward, done, info = env_t.step(action)
                 score += reward
                 #env_t.render()
@@ -173,7 +158,6 @@ class PooledErrorCompute(object):
 
         i = 0
         for genome, net in nets:
-            #reward_error = compute_fitness(genome, net, self.test_episodes, self.min_reward, self.max_reward)
             genome.fitness = scores[i]
             i = i + 1
         #print("final fitness compute time {0}\n".format(time.time() - t0))
