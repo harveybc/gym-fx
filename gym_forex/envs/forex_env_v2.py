@@ -131,7 +131,7 @@ class ForexEnv2(gym.Env):
 
         # action space = discrete(nop,buy,sell),box(volume, take_profit, stop_loss)
         self.action_space = spaces.Tuple([
-            spaces.Discrete(3), spaces.Discrete(3),  # nop, buy, sell
+            spaces.Discrete(3), # nop, buy, sell
             spaces.Box(low=float(-1.0), high=float(1.0), shape=(3,), dtype=np.float32), # vol,tp,sl
         ])
         # observation_space=(16 columns + 3 state variables)* obs_ticks, shape=(width,height, channels?)
