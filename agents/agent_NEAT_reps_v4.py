@@ -235,7 +235,7 @@ def run():
                     step += 1
                     output = gen_best_nn.activate(nn_format(observation))
                     action = (np.argmax(output[0:2]), output[3],output[4],output[5])# buy,sell or 
-                    observation, reward, done, info = env_t.step(action)
+                    observation, reward, done, info = env_v.step(action)
                     score += reward
                     #env_v.render()
                     if done:
@@ -254,7 +254,7 @@ def run():
                         accum=accum+pop.population[s.representative.key].fitness
                         countr = countr + 1
                 if countr > 0:    
-                    best_fitness = (avg_score+(accum/countr))/2
+                    best_fitness = (3*avg_score+(accum/countr))/4
                 else:
                     best_fitness = (avg_score)
                 #FIN de calculo de real validation        
