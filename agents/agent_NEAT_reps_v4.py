@@ -244,7 +244,7 @@ def run():
                 avg_score_v = sum(best_scores) / len(best_scores)
                 print("Validation Set Score = ", avg_score_v)
                 print("*********************************************************")
-                # Calcula el best_fitness (PARA SYNC)como el promedio del score de vtraining y el promedio del fitness de los reps. 
+                # Calcula el best_fitness (PARA SYNC)como el promedio del score de training y el promedio del fitness de los reps. 
                 reps_local = []
                 reps = [gen_best]
                 accum = 0.0
@@ -254,9 +254,9 @@ def run():
                         accum=accum+pop.population[s.representative.key].fitness
                         countr = countr + 1
                 if countr > 0:    
-                    best_fitness = (avg_score_v+(accum/countr))/2
+                    best_fitness = (avg_score+(accum/countr))/2
                 else:
-                    best_fitness = (avg_score_v)
+                    best_fitness = (avg_score)
                 #FIN de calculo de real validation        
                 
             if temp >= 0:
