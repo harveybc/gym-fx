@@ -104,7 +104,6 @@ class PooledErrorCompute(object):
     def simulate(self, nets):
         scores = []
         sub_scores=[]
-        action = (0,0.0,0.0,0.0)
         self.test_episodes = []
         # Evalua cada net en todos los env_t excepto el env actual 
         for genome, net in nets:
@@ -115,10 +114,7 @@ class PooledErrorCompute(object):
             while 1:
                 output = net.activate(nn_format(observation))
                 #print("output: {0!r}".format(output))
-                action[0] = np.argmax(output[0:2]) # buy,sell or 
-                action[1] = output[3]
-                action[2] = output[4]
-                action[3] = output[5]
+                action = (np.argmax(output[0:2]), output[3],output[4],output[5])# buy,sell or 
                 #print("observation: {0!r}".format(self.nn_format(observation)))
                 #print("action: {0!r}".format(action[]))
                 observation, reward, done, info = env_t.step(action)
