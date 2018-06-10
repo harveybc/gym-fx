@@ -259,7 +259,7 @@ class ForexEnv2(gym.Env):
                 # order_volume = lo que alcanza con rel_volume de equity
                 
                 # Calcula sl y tp desde action space
-                print("\naction=",action[0]);
+                #print("\naction=",action[0]);
                 self.sl = self.min_sl + ((self.max_sl-self.min_sl)*((action[2]+1)/2))
                 self.tp = self.min_tp + ((self.max_tp-self.min_tp)*((action[3]+1)/2))
                 # TODO: ADICIONAR VOLUME DESDE ACTION SPACE 
