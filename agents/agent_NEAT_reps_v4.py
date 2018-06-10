@@ -2,7 +2,6 @@
 from __future__ import print_function
 from copy import deepcopy
 import gym
-from gym.envs.registration import register
 import gym.wrappers
 import gym_forex
 import json
@@ -19,6 +18,7 @@ import requests
 import sys
 import time
 import visualize
+from gym.envs.registration import register
 # Multi-core machine support
 NUM_CORES = 1
 # First argument is the training dataset
@@ -31,15 +31,15 @@ my_url = sys.argv[3]
 my_config = sys.argv[4]
 # Register the gym-forex environment
 register(
-         id='ForexTrainingSet-v1',
-         entry_point='gym_forex.envs:ForexEnv2',
-         kwargs={'dataset': ts_f}
-         )
+    id='ForexTrainingSet-v1',
+    entry_point='gym_forex.envs:ForexEnv2',
+    kwargs={'dataset': ts_f}
+)
 register(
-         id='ForexValidationSet-v1',
-         entry_point='gym_forex.envs:ForexEnv2',
-         kwargs={'dataset': vs_f}
-         )
+    id='ForexValidationSet-v1',
+    entry_point='gym_forex.envs:ForexEnv2',
+    kwargs={'dataset': vs_f}
+)
 # Make environments
 env_t = gym.make('ForexTrainingSet-v1')
 env_v = gym.make('ForexValidationSet-v1')
@@ -103,17 +103,17 @@ class PooledErrorCompute(object):
     # simulates a genom in all the training dataset (all the training subsets)
     def simulate(self, nets):
         scores = []
-        sub_scores = []
+        sub_scores=[]
         self.test_episodes = []
         # Evalua cada net en todos los env_t excepto el env actual 
         for genome, net in nets:
-            sub_scores = []
+            sub_scores=[]
             observation = env_t.reset()
-            score = 0.0
+            score=0.0
             #if i==index_t:
             while 1:
                 output = net.activate(nn_format(observation))
-                action = (np.argmax(output[0:2]), output[3], output[4], output[5])# buy,sell or 
+                action = (np.argmax(output[0:2]), output[3],output[4],output[5])# buy,sell or 
                 observation, reward, done, info = env_t.step(action)
                 score += reward
                 #env_t.render()
@@ -190,14 +190,14 @@ def run():
     # or the user interrupts the process.
     ec = PooledErrorCompute()
     temp = 0
-    best_fitness = -2000.0;
+    best_fitness=-2000.0;
 
-    pop_size = len(pop.population)
+    pop_size=len(pop.population)
     # sets the nuber of continuous iterations 
-    num_iterations = round(200 / len(pop.population)) + 1
+    num_iterations = round(200/len(pop.population))+1
     while 1:
         try:
-            if temp > 0:
+            if temp >0:
                 # Calcula training y validation fitness
                 best_genomes = stats.best_unique_genomes(3)
                 solved = True
@@ -210,9 +210,10 @@ def run():
                 while 1:
                     step += 1
                     output = net.activate(nn_format(observation))
-                    action = (np.argmax(output[0:2]), output[3], output[4], output[5])# buy,sell or 
+                    action = (np.argmax(output[0:2]), output[3],output[4],output[5])# buy,sell or 
                     observation, reward, done, info = env_t.step(action)
                     score += reward
+
                     env_t.render()
                     if done:
                         break
@@ -236,7 +237,6 @@ def run():
                     action = (np.argmax(output[0:2]), output[3],output[4],output[5])# buy,sell or 
                     observation, reward, done, info = env_t.step(action)
                     score += reward
-
                     #env_v.render()
                     if done:
                         break
@@ -251,10 +251,10 @@ def run():
                 countr = 0
                 for sid, s in iteritems(pop.species.species):
                     if pop.population[s.representative.key].fitness is not None:
-                        accum = accum + pop.population[s.representative.key].fitness
+                        accum=accum+pop.population[s.representative.key].fitness
                         countr = countr + 1
                 if countr > 0:    
-                    best_fitness = (avg_score_v + (accum / countr)) / 2
+                    best_fitness = (avg_score_v+(accum/countr))/2
                 else:
                     best_fitness = (avg_score_v)
                 #FIN de calculo de real validation        
@@ -303,7 +303,7 @@ def run():
                                 if g not in remote_reps:
                                     dist = g.distance(remote_reps[i], config.genome_config)
                                     if dist is None:
-                                        dist = 100000000 
+                                       dist = 100000000 
                                 else:
                                     dist = 100000000
                                 # do not count already migrated remote_reps
@@ -423,30 +423,30 @@ def run():
                                     if dist < min_dist:
                                         closer = deepcopy(g)
                                         min_dist = dist
-                #           si closer is in reps
-                    if closer in reps:
-                #               adiciona l a reps si ya no estaba en reps
-                    if l not in reps:
-                        reps.append(l)
-                        reps[len(reps) - 1] = deepcopy(l)
-                #           sino
-                    else:
-                #               si l tiene más fitness que closer,
-                    if closer.fitness is not None and l.fitness is not None:
-                        if l.fitness > pop.population[closer.key].fitness:
-                #                       adiciona l a reps si ya no estaba en reps
-                    if l not in reps:
-                        reps.append(l)
-                        reps[len(reps) - 1] = deepcopy(l)
-                #               sino
-                    else:
-                #                      adiciona closer a reps si ya no estaba en reps
-                    if l not in reps:
-                        reps.append(pop.population[closer.key])
-                        reps[len(reps) - 1] = deepcopy(pop.population[closer.key])
-                        # Guarda checkpoint de los representatives de cada especie y lo copia a ubicación para servir vía syn.
-                        # rep.save_checkpoint(config,pop,neat.DefaultSpeciesSet,rep.current_generation)
-                print("\nreps=", reps)
+                 #           si closer is in reps
+                            if closer in reps:
+                 #               adiciona l a reps si ya no estaba en reps
+                                if l not in reps:
+                                    reps.append(l)
+                                    reps[len(reps) - 1] = deepcopy(l)
+                 #           sino
+                            else:
+                 #               si l tiene más fitness que closer,
+                                if closer.fitness is not None and l.fitness is not None:
+                                    if l.fitness>pop.population[closer.key].fitness:
+                 #                       adiciona l a reps si ya no estaba en reps
+                                        if l not in reps:
+                                            reps.append(l)
+                                            reps[len(reps) - 1] = deepcopy(l)
+                 #               sino
+                                    else:
+                 #                      adiciona closer a reps si ya no estaba en reps
+                                        if l not in reps:
+                                            reps.append(pop.population[closer.key])
+                                            reps[len(reps) - 1] = deepcopy(pop.population[closer.key])
+                                            # Guarda checkpoint de los representatives de cada especie y lo copia a ubicación para servir vía syn.
+                                            # rep.save_checkpoint(config,pop,neat.DefaultSpeciesSet,rep.current_generation)
+                    print("\nreps=",reps)
                     filename = '{0}{1}'.format("reps-", rep.current_generation)
                     with open(filename, 'wb') as f:
                         pickle.dump(reps, f)
