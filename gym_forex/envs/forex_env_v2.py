@@ -130,10 +130,10 @@ class ForexEnv2(gym.Env):
         self.state = self.state_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
 
         # action space = discrete(nop,buy,sell),box(volume, take_profit, stop_loss)
-        self.action_space = spaces.Tuple((
+        self.action_space = spaces.Tuple([
             spaces.Discrete(3),  # nop, buy, sell
             spaces.Box(low=-1.0, high=1.0, shape=3, dtype=np.float32), # vol,tp,sl
-        ))
+        ])
         # observation_space=(16 columns + 3 state variables)* obs_ticks, shape=(width,height, channels?)
         self.observation_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(self.obs_ticks, 1, 19), dtype=np.float32)
         self.order_time = 0
@@ -258,6 +258,10 @@ class ForexEnv2(gym.Env):
                 self.open_price = Close + spread
                 # order_volume = lo que alcanza con rel_volume de equity
                 
+                # Calcula sl y tp desde action space
+                print("\naction=",action);
+                #self.sl = self.min_sl + ((self.max_sl-self.min_sl)*action[2][2])
+                
                 # TODO: ADICIONAR VOLUME DESDE ACTION SPACE 
                 # a=Tuple((Discrete(3),  Box(low=-1.0, high=1.0, shape=3, dtype=np.float32)) # nop, buy, sell vol,tp,sl
                 self.order_volume = self.equity * self.rel_volume * self.leverage / 100000
@@ -268,6 +272,7 @@ class ForexEnv2(gym.Env):
                     # close existing order
                     self.order_volume = 0.01
                     self.margin = 0
+                    
                 # set the new margin
                 self.margin = self.margin + (self.order_volume * 100000 / self.leverage)
                 # TODO: Colocar accion para tamano de lote con rel_volume como maximo al abrir una orden
@@ -293,6 +298,7 @@ class ForexEnv2(gym.Env):
                 # set the new margin
                 self.margin = self.margin + (self.order_volume * 100000 / self.leverage)
                 self.order_time = self.tick_count
+                
                 # TODO: Hacer version con controles para abrir y cerrar para buy y sell independientes,comparar
                 # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                 if self.debug == 1:
