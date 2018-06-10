@@ -233,7 +233,7 @@ def run():
                 gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
                 while 1:
                     step += 1
-                    output = net.activate(nn_format(observation))
+                    output = gen_best_nn.activate(nn_format(observation))
                     action = (np.argmax(output[0:2]), output[3],output[4],output[5])# buy,sell or 
                     observation, reward, done, info = env_t.step(action)
                     score += reward
