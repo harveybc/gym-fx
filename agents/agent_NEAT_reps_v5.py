@@ -1,3 +1,6 @@
+# Multilevel optimization of DCN for automated forex trading
+# Each NEAT network is decodified as a DCN and trained with class DQNAgent (
+# Q-Learing with action replay and 1D DCN for value function estimation)
 # This agent uses the forex_env_v2 that uses continuous and binary controls
 from __future__ import print_function
 from copy import deepcopy
@@ -25,7 +28,8 @@ NUM_CORES = 1
 ts_f = sys.argv[1]
 # Second is validation dataset 
 vs_f = sys.argv[2]
-# Third argument is the  url 
+# Third is validation dataset 
+vs_f = sys.argv[2]# Third argument is the  url 
 my_url = sys.argv[3]
 # fourth is the config filename
 my_config = sys.argv[4]
@@ -101,13 +105,13 @@ class PooledErrorCompute(object):
         self.episode_length = []
     
     # simulates a genom in all the training dataset (all the training subsets)
-    def simulate(self, nets):
+    def simulate(self, nets_ann):
         # convert nets to DCN
-        
+        nets = ann2dcn(nets_ann)
+        # evalua cada net en el vtrain_set 
         scores = []
         sub_scores=[]
         self.test_episodes = []
-        # Evalua cada net en todos los env_t excepto el env actual 
         for genome, net in nets:
             sub_scores=[]
             observation = env_t.reset()
