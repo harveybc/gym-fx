@@ -22,6 +22,8 @@ import sys
 import time
 import visualize
 from gym.envs.registration import register
+from keras.models import Sequential
+from keras.layers import Conv2D,Conv1D, MaxPooling2D, MaxPooling1D
 # Multi-core machine support
 NUM_CORES = 1
 # First argument is the training dataset
@@ -83,7 +85,39 @@ class LanderGenome(neat.DefaultGenome):
         return "Reward discount: {0}\n{1}".format(self.discount,
                                                   super().__str__())
 
+def ann2dcn(self, nets_ann):
+        # esta función debe retornar un modelo 
+        # Deep Conv Neural Net for Deep-Q learning Model
+        # LeNet model for 1D
+        model = Sequential()
+        # for observation[19][48], 19 vectors of 128-dimensional vectors,input_shape = (19, 48)
+        # first set of CONV => RELU => POOL
+        model.add(Conv1D(512, 5, input_shape=(self.num_vectors,self.vector_size)))
+        model.add(Activation('relu'))
+        model.add(MaxPooling1D(pool_size=2, strides=2))
+        # second set of CONV => RELU => POOL
+        model.add(Conv1D(32, 5))
+        model.add(Activation('relu'))
+        model.add(MaxPooling1D(pool_size=2, strides=2))
+        # set of FC => RELU layers
+        model.add(Flatten())  # this converts our 3D feature maps to 1D feature vectors
+        model.add(Dense(64)) # valor óptimo:64 @400k
+        model.add(Activation('relu'))
 
+        # Softmax activation since we neet to chose only one of athe available actions
+        model.add(Dense(self.action_size))
+        model.add(Activation('softmax'))
+        # multi-GPU support
+        #model = to_multi_gpu(model)
+        # use SGD optimizer
+        opt = SGD(lr=self.learning_rate)
+        model.compile(loss="categorical_crossentropy", optimizer=opt,
+                      metrics=["accuracy"])
+        #model.compile(loss='binary_crossentropy',
+        #              optimizer='rmsprop',
+        #              metrics=['accuracy'])
+        return model
+    
 # converts a bidimentional matrix to an one-dimention array
 def nn_format(obs):
     output = []
@@ -103,6 +137,7 @@ class PooledErrorCompute(object):
 
         self.episode_score = []
         self.episode_length = []
+    
     
     # simulates a genom in all the training dataset (all the training subsets)
     def simulate(self, nets_ann):
