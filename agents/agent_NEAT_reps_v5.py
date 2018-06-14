@@ -92,7 +92,7 @@ def ann2dcn(self, nets_ann):
         model = Sequential()
         # for observation[19][48], 19 vectors of 128-dimensional vectors,input_shape = (19, 48)
         # first set of CONV => RELU => POOL
-        model.add(Conv1D(512, 5, input_shape=(self.num_vectors,self.vector_size)))
+        model.add(Conv1D(512, 12, input_shape=(self.num_vectors,self.vector_size)))
         model.add(Activation('relu'))
         model.add(MaxPooling1D(pool_size=2, strides=2))
         # second set of CONV => RELU => POOL
@@ -106,7 +106,7 @@ def ann2dcn(self, nets_ann):
 
         # Softmax activation since we neet to chose only one of athe available actions
         model.add(Dense(self.action_size))
-        model.add(Activation('softmax'))
+        model.add(Activation('hard_sigmoid'))
         # multi-GPU support
         #model = to_multi_gpu(model)
         # use SGD optimizer
