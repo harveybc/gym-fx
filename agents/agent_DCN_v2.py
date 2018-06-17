@@ -153,7 +153,7 @@ if __name__ == "__main__":
             if time>state_size:
                 action = agent.act(state)
             else:
-                action=0
+                action=[0,0,0,0]
             next_state, reward, done, info = env.step(action)
             reward = reward if not done else 0
             next_state = np.reshape(next_state, [agent.num_vectors,state_size])
