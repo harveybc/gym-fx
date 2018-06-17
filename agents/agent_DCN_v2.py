@@ -92,7 +92,7 @@ class DQNAgent:
         if np.random.rand() <= self.epsilon:
             return random.randrange(self.action_size)
         act_values = self.model.predict(state)
-        return np.argmax(act_values[0])  # returns action
+        return [np.argmax(act_values[0,0:2]),act_values[0,3],act_values[0,4],act_values[0,5]]  # returns action vector
 
     def replay(self, batch_size):
         minibatch = random.sample(self.memory, batch_size)
@@ -129,9 +129,9 @@ if __name__ == "__main__":
     # Make environments
     env = gym.make('ForexTrainingSet-v1')
     state_size = env.observation_space.shape[0]
-    # action size = 6 in total. 3 actions (0=nop,1=buy/close,2=sell/close) 
-    # and 3 order parameters: 3=order_volume, 4=order_sl and 5=order_tp
-    action_size = 6
+    # action size = 4 in total. 1 actions (0=nop,1=buy/close,2=sell/close) 
+    # and 3 order parameters (-1,1): 3=order_volume, 4=order_sl and 5=order_tp
+    action_size = 4
     agent = DQNAgent(state_size, action_size)
     # agent.load("./save/cartpole-ddqn.h5")
     done = False
