@@ -85,38 +85,82 @@ class LanderGenome(neat.DefaultGenome):
         return "Reward discount: {0}\n{1}".format(self.discount,
                                                   super().__str__())
 
-def ann2dcn(self, nets_ann):
-        # esta función debe retornar un modelo 
-        # Deep Conv Neural Net for Deep-Q learning Model
-        # LeNet model for 1D
+def ann2dcn(self, nets_ann, num_vectors, vector_size):
+    # esta función debe retornar un arreglo de modelos 
+    # Deep Conv Neural Net for Deep-Q learning Model
+    models = []
+    # for each net generate a dnn model
+    for net in nets_ann:
+        # creates a new model
         model = Sequential()
-        # for observation[19][48], 19 vectors of 128-dimensional vectors,input_shape = (19, 48)
-        # first set of CONV => RELU => POOL
-        model.add(Conv1D(512, 12, input_shape=(self.num_vectors,self.vector_size)))
-        model.add(Activation('relu'))
-        model.add(MaxPooling1D(pool_size=2, strides=2))
-        # second set of CONV => RELU => POOL
-        model.add(Conv1D(32, 5))
-        model.add(Activation('relu'))
-        model.add(MaxPooling1D(pool_size=2, strides=2))
-        # set of FC => RELU layers
+        # node counter
+        c_node = 0
+        # initialize values from input node
+        node, act_func, agg_func, bias, response, links = net.node_evals[net.input_nodes[0]]
+        # repeat until next_node != output (add layers)
+        while true:
+            # add the layer depending on the conection to the next node:
+            # act_funct of the next node    = core layer
+            # bias of the next neuron (0.1,1) = kernel size
+            kernel_size = round(bias * max_kernel_size)
+            # response of the next node(0.1,1)= pool_size, stride
+            pool_size = round(response * max_pool_size)
+            # link.w to the next node(0,1)  = number of filters
+            filters = links[0].w
+            ##########################################################
+            # Encoding:
+            # agg_funct = min -> adds dropout, else adds conv1D
+            # agg_funct = sum -> add pooling layer
+            # agg_funct = product -> does nothing(add it as option in NEAT config)
+            # act:funct = relu -> adds relu layer
+            # act_funct = sigmoid -> adds hard-sigmoid layer
+            ##########################################################
+            # si agg_funct = min: adiciona capa dropout
+            if agg_funct == 'min':
+                # if its the first node:
+                if c_node==0:
+                    model.add(Dropout(0.1, input_shape=(num_vectors, vector_size)))
+                else:
+                    model.add(Dropout(0.1))
+            # sino es dropout adiciona una capa Conv1D
+            else:
+                if c_node==0:
+                    model.add(Conv1D(filters, kernel_size, input_shape=(num_vectors, vector_size)))
+                else:
+                    model.add(Conv1D(filters, kernel_size))
+            # act_funct = sigmoid: relu 
+            if act_funct == 'relu': 
+                    model.add(Activation('relu'))
+            # act_funct = tanh: hard_sigmoid
+            if act_funct == 'sigmoid': 
+                model.add(Activation('hard_sigmoid'))
+            # agg_funct = sum:pooling, product:no-pooling
+            if agg_funct == 'sum':
+                model.add(MaxPooling1D(pool_size=pool_size, strides=pool_size))
+            # TODO: DROPOUT SOLO SE DEBE USAR EN TRAINING, NO EN EVAL
+            # stop condition for while: until next node = output
+            if links[0].i==net.output_nodes[0]:
+                break
+            # read values from next node
+            node, act_func, agg_func, bias, response, links = net.node_evals[links[0].i]    
+            # increment node counter
+            c_node += 1
+        # adds a dense layer with the parameters of the output node with response attribute
         model.add(Flatten())  # this converts our 3D feature maps to 1D feature vectors
-        model.add(Dense(64)) # valor óptimo:64 @400k
+        model.add(Dense(response*max_dense)) # valor óptimo:64 @400k
         model.add(Activation('relu'))
-
-        # Softmax activation since we neet to chose only one of athe available actions
+        # TODO: Probar con Hard sigmoid(pq controls requieren  -1,1) y relu(0,1)-> mod. controls para prueba
         model.add(Dense(self.action_size))
         model.add(Activation('hard_sigmoid'))
         # multi-GPU support
         #model = to_multi_gpu(model)
         # use SGD optimizer
         opt = SGD(lr=self.learning_rate)
-        model.compile(loss="categorical_crossentropy", optimizer=opt,
+        model.compile(loss="mean_squared_error", optimizer=opt,
                       metrics=["accuracy"])
-        #model.compile(loss='binary_crossentropy',
-        #              optimizer='rmsprop',
-        #              metrics=['accuracy'])
-        return model
+        # append model to models
+        models.append(model)
+    return models
     
 # converts a bidimentional matrix to an one-dimention array
 def nn_format(obs):
@@ -147,12 +191,14 @@ class PooledErrorCompute(object):
         scores = []
         sub_scores=[]
         self.test_episodes = []
-        for genome, net in nets:
+        for net in nets:
             sub_scores=[]
             observation = env_t.reset()
             score=0.0
             #if i==index_t:
             while 1:
+                # TODO: CAMBIAR ACTIVATE POR EVALUACION DE DCN
+                
                 output = net.activate(nn_format(observation))
                 action = (np.argmax(output[0:2]), output[3],output[4],output[5])# buy,sell or 
                 observation, reward, done, info = env_t.step(action)

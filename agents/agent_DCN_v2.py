@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# DQN Agent with a DCN for action estimation. 
 #  For importing new environment in ubuntu run, export PYTHONPATH=${PYTHONPATH}:/home/[your username]/gym-forex/
 import random
 import gym
