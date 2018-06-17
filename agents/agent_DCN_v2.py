@@ -12,6 +12,7 @@ from keras.models import Sequential
 from keras.layers import Conv2D,Conv1D, MaxPooling2D, MaxPooling1D
 from keras.layers import Activation, Dropout, Flatten, Dense
 from keras.optimizers import SGD
+from gym.envs.registration import register
 #from pastalog import Log
 
 # Allows to run multiple simultaneous GPU precesses
@@ -116,7 +117,16 @@ class DQNAgent:
 
 
 if __name__ == "__main__":
-    env = gym.make('Forex-v0')
+    # First argument is the training dataset
+    ts_f = sys.argv[1]
+    
+    register(
+        id='ForexTrainingSet-v1',
+        entry_point='gym_forex.envs:ForexEnv2',
+        kwargs={'dataset': ts_f}
+    )
+    # Make environments
+    env = gym.make('ForexTrainingSet-v1')
     state_size = env.observation_space.shape[0]
     action_size = env.action_space.n
     agent = DQNAgent(state_size, action_size)
