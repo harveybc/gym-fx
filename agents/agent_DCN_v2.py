@@ -68,7 +68,7 @@ class DQNAgent:
 
         # Softmax activation since we neet to chose only one of athe available actions
         model.add(Dense(self.action_size))
-        model.add(Activation('hard_sigmois'))
+        model.add(Activation('hard_sigmoid'))
         # multi-GPU support
         #model = to_multi_gpu(model)
         # use SGD optimizer
