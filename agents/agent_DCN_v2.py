@@ -132,7 +132,7 @@ if __name__ == "__main__":
     state_size = env.observation_space.shape[0]
     # action size = 4 in total. 1 actions (0=nop,1=buy/close,2=sell/close) 
     # and 3 order parameters (-1,1): 3=order_volume, 4=order_sl and 5=order_tp
-    action_size = 4
+    action_size = 6
     agent = DQNAgent(state_size, action_size)
     # agent.load("./save/cartpole-ddqn.h5")
     done = False
