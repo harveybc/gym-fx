@@ -68,12 +68,12 @@ class DQNAgent:
 
         # Softmax activation since we neet to chose only one of athe available actions
         model.add(Dense(self.action_size))
-        model.add(Activation('softmax'))
+        model.add(Activation('hard_sigmois'))
         # multi-GPU support
         #model = to_multi_gpu(model)
         # use SGD optimizer
         opt = SGD(lr=self.learning_rate)
-        model.compile(loss="categorical_crossentropy", optimizer=opt,
+        model.compile(loss="mean_squared_error", optimizer=opt,
                       metrics=["accuracy"])
         #model.compile(loss='binary_crossentropy',
         #              optimizer='rmsprop',
