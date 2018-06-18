@@ -101,11 +101,12 @@ class DQNAgent:
             #next_state = np.expand_dims(next_state, axis=0)
             target = self.model.predict(state)
             if done:
-                target[0][action] = reward
+                target[0][action[0]] = reward
             else:
-                a = self.model.predict(next_state)[0]
+               # a = self.model.predict(next_state)[0]
                 t = self.target_model.predict(next_state)[0]
-                target[0][action] = reward + self.gamma * t[np.argmax(a)]
+                #target[0][action[0]] = reward + self.gamma * t[np.argmax(a)]
+                target[0][action[0]] = reward + self.gamma * np.amax(t[0:2])
             self.model.fit(state, target, epochs=1, verbose=0)
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
