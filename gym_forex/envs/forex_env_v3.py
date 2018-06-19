@@ -28,12 +28,12 @@ class ForexEnv3(gym.Env):
     def __init__(self, **kwargs):
         metadata = {'render.modes': ['human', 'ansi']}
         # initialize initial capital
-        self.capital = capital
+        self.capital = kwargs['capital']
         self.min_sl = sl
         self.min_tp = tp
         self.max_sl = sl
         self.max_tp = tp
-        self.leverage = leverage
+        self.leverage = kwargs['leverage']
         # Closing cause
         self.c_c = 0
         self.episode_over=bool(0)
