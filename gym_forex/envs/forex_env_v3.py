@@ -25,8 +25,8 @@ class ForexEnv3(gym.Env):
     """
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, dataset='datasets/ts_1y.CSV', volume=0.2, sl=500, tp=500, 
-                 obs_ticks=2, capital=875, leverage=100):
+    def __init__(self, dataset='datasets/ts_11y.CSV', volume=0.2, sl=500, tp=500, 
+                 obs_ticks=48, capital=875, leverage=100):
         metadata = {'render.modes': ['human', 'ansi']}
         # initialize initial capital
         self.capital = capital

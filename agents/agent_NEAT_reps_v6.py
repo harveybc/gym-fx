@@ -35,7 +35,7 @@ register(
     entry_point='gym_forex.envs:ForexEnv3',
     kwargs={
             'dataset': ts_f, 'volume':0.2, 'sl':500, 'tp':500, 
-            'obs_ticks':2, 'capital':10000, 'leverage':100
+            'obsticks':2, 'capital':10000, 'leverage':100
     }
 )
 register(
@@ -43,7 +43,7 @@ register(
     entry_point='gym_forex.envs:ForexEnv3',
     kwargs={
         'dataset': vs_f,'volume':0.2, 'sl':500, 'tp':500, 
-        'obs_ticks':2, 'capital':10000, 'leverage':100
+        'obsticks':2, 'capital':10000, 'leverage':100
     }
 )
 # Make environments
