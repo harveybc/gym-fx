@@ -62,7 +62,7 @@ class ForexEnv3(gym.Env):
         # margin acumulativo = open_price*volume*100000/leverage TODO: Hacer uno para cada orden y recalcular total
         self.margin = 0.0
         # Minimum order time in ticks
-        self.min_order_time = 1
+        self.min_order_time = 2
         # Order Volume relative to Equity
         self.rel_volume = volume
         # spread calculus: 0=from last csv column in pips, 1=lineal from volatility, 2=quadratic, 3=exponential
