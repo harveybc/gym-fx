@@ -33,18 +33,12 @@ my_config = sys.argv[4]
 register(
     id='ForexTrainingSet-v1',
     entry_point='gym_forex.envs:ForexEnv3',
-    kwargs={
-            'dataset': ts_f, 'volume':0.2, 'sl':500, 'tp':500, 
-            'obsticks':2, 'capital':10000, 'leverage':100
-    }
+    kwargs={'dataset': ts_f, 'volume':0.2, 'sl':500, 'tp':500,'obsticks':2, 'capital':10000, 'leverage':100}
 )
 register(
     id='ForexValidationSet-v1',
     entry_point='gym_forex.envs:ForexEnv3',
-    kwargs={
-        'dataset': vs_f,'volume':0.2, 'sl':500, 'tp':500, 
-        'obsticks':2, 'capital':10000, 'leverage':100
-    }
+    kwargs={'dataset': vs_f,'volume':0.2, 'sl':500, 'tp':500,'obsticks':2, 'capital':10000, 'leverage':100}
 )
 # Make environments
 env_t = gym.make('ForexTrainingSet-v1')
