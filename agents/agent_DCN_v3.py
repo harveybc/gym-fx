@@ -12,6 +12,7 @@ from keras.layers import Conv2D,Conv1D, MaxPooling2D, MaxPooling1D
 from keras.layers import Activation, Dropout, Flatten, Dense
 from keras.optimizers import SGD
 from gym.envs.registration import register
+import sys
 #from pastalog import Log
 
 # Allows to run multiple simultaneous GPU precesses
