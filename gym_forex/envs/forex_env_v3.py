@@ -26,7 +26,7 @@ class ForexEnv3(gym.Env):
     metadata = {'render.modes': ['human']}
 
     def __init__(self, dataset='datasets/ts_11y.CSV', volume=0.2, sl=500, tp=500, 
-                 obs_ticks=48, capital=875, leverage=100):
+                 obsticks=48, capital=875, leverage=100):
         metadata = {'render.modes': ['human', 'ansi']}
         # initialize initial capital
         self.capital = capital
@@ -39,7 +39,7 @@ class ForexEnv3(gym.Env):
         self.c_c = 0
         self.episode_over=bool(0)
         # Number of past ticks per feature to be used as observations (1440min=1day, 10080=1Week, 43200=1month, )
-        self.obs_ticks = obs_ticks # best 48@ 700k
+        self.obs_ticks = obsticks # best 48@ 700k
         num_symbols = 1
         self.debug = 0  # Show debug msgs
         csv_f = dataset
