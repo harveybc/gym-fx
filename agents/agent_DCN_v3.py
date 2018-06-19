@@ -122,7 +122,7 @@ if __name__ == "__main__":
     
     register(
             id = 'ForexTrainingSet-v1',
-            entry_point = 'gym_forex.envs:ForexEnv3',
+            entry_point = 'gym_forex.envs:ForexEnv',
             kwargs = {
             'dataset': ts_f, 'volume':0.2, 'sl':500, 'tp':500, 
             'obs_ticks':48, 'capital':875, 'leverage':100
@@ -168,7 +168,7 @@ if __name__ == "__main__":
             if done:
                 agent.update_target_model()
                 #print("Done: Episodes{}/{} Balance={:.2}, reward: {:.7}, points: {} epsilon:{:.2}  ,".format(e, EPISODES, points,agent.epsilon))
-                print("Done: Episodes{}/{} Balance={:.2}, reward: {} , step:{}".format(e, EPISODES, info["balance"],reward, info["tick_count"]))
+                print("Done: Episodes{}/{} Balance={:.2}, reward: {} , step:{}".format(e, EPISODES, info["balance"],points, info["tick_count"]))
                 #logs the reward
                 #log_a.post('Reward', value=points, step=e)
                 # logs the reward
