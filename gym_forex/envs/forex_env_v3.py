@@ -8,7 +8,7 @@ import numpy as np
 import numpy
 from numpy import genfromtxt
 
-class ForexEnv2(gym.Env):
+class ForexEnv3(gym.Env):
     """
     This environment simulates a Forex trading account with only one open order 
     at any time.
@@ -25,25 +25,22 @@ class ForexEnv2(gym.Env):
     """
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, dataset='datasets/ts_1y.CSV', volume=0.2, sl=500,
-                 tp=500, obs_ticks=48):
+    def __init__(self, dataset='datasets/ts_1y.CSV', volume=0.2, sl=500, tp=500, 
+                 obs_ticks=48, capital=875, leverage=100):
         metadata = {'render.modes': ['human', 'ansi']}
         # initialize initial capital
-        self.capital = 10000
+        self.capital = capital
         self.min_sl = sl
         self.min_tp = tp
         self.max_sl = sl
         self.max_tp = tp
-        self.leverage = 100
+        self.leverage = leverage
         # Closing cause
         self.c_c = 0
-            # Number of past ticks per feature to be used as observations (1440min=1day, 10080=1Week, 43200=1month, )
-        # TODO: Colocar como parámetro
+        # Number of past ticks per feature to be used as observations (1440min=1day, 10080=1Week, 43200=1month, )
         self.obs_ticks = obs_ticks # best 48@ 700k
         num_symbols = 1
-        # TODO: Dejar como params
         self.debug = 0  # Show debug msgs
-        #print("Using dataset :", dataset)
         csv_f = dataset
         self.dataset = dataset
         self.initial_capital = self.capital
@@ -55,8 +52,6 @@ class ForexEnv2(gym.Env):
         # order status: -1=sell, 1=buy, 00=nop
         self.order_status = 0
         self.order_profit = 0.0
-        # bonus_type selecciona si usar blance(0)o equity (1) en el cálculo del reward
-        self.bonus_type = 1
         # symbor of active order (from symbol list)
         self.order_symbol = 0
         # initialize reward value
@@ -78,7 +73,6 @@ class ForexEnv2(gym.Env):
         self.num_symbols = 1
         # initialize tick counter
         self.tick_count = 0
-
         # flag para representacion de observaciones 0=valores raw, 1=return
         self.use_return = 0
         # load csv file, The file must contain 16 cols: the 0 = HighBid, 1 = Low, 2 = Close, 3 = NextOpen, 4 = v, 5 = MoY, 6 = DoM, 7 = DoW, 8 = HoD, 9 = MoH, ..<6 indicators>
@@ -129,12 +123,7 @@ class ForexEnv2(gym.Env):
         # Serial data - to - parallel observation matrix and state matrix
         self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         self.state = self.state_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
-
-        # action space = discrete(nop,buy,sell),box(volume, take_profit, stop_loss)
-        self.action_space = spaces.Tuple([
-                                         spaces.Discrete(3), # nop, buy, sell
-                                         spaces.Box(low=float(-1.0), high=float(1.0), shape=(3,), dtype=np.float32), # vol,tp,sl
-                                         ])
+        self.action_space = spaces.Discrete(3)
         # observation_space=(16 columns + 3 state variables)* obs_ticks, shape=(width,height, channels?)
         self.observation_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(self.obs_ticks, 1, 19), dtype=np.float32)
         self.order_time = 0
@@ -248,7 +237,7 @@ class ForexEnv2(gym.Env):
             # TODO: Hacer opcion realista de ordenes que se ABREN Y CIERRAN solo si durante el siguiente minuto
             #       el precio de la orden(close) no es high o low del siguiente candle.
             # Executes action, NewState = Previous * TableOfActionsPerState :)
-            if (self.order_status == 0 or self.order_status == -1) and action[0] == 1:
+            if (self.order_status == 0 or self.order_status == -1) and action == 1:
                 if self.order_status == -1:
                     self.balance = self.equity
                     self.margin = 0
@@ -261,11 +250,14 @@ class ForexEnv2(gym.Env):
                 
                 # Calcula sl y tp desde action space
                 #print("\naction=",action[0]);
-                self.sl = self.min_sl + ((self.max_sl-self.min_sl) * ((action[2] + 1) / 2))
-                self.tp = self.min_tp + ((self.max_tp-self.min_tp) * ((action[3] + 1) / 2))
+                #self.sl = self.min_sl + ((self.max_sl-self.min_sl) * ((action[2] + 1) / 2))
+                #self.tp = self.min_tp + ((self.max_tp-self.min_tp) * ((action[3] + 1) / 2))
+                self.sl = self.max_sl
+                self.tp = self.max_tp
                 # TODO: ADICIONAR VOLUME DESDE ACTION SPACE 
                 # a=Tuple((Discrete(3),  Box(low=-1.0, high=1.0, shape=3, dtype=np.float32)) # nop, buy, sell vol,tp,sl
-                self.order_volume = self.equity * self.rel_volume * self.leverage * ((action[1] + 1) / 2) / 100000
+                #self.order_volume = self.equity * self.rel_volume * self.leverage * ((action[1] + 1) / 2) / 100000
+                self.order_volume = self.equity * self.rel_volume * self.leverage / 100000
                 # redondear a volumenes minimos de 0.01
                 self.order_volume = math.trunc(self.order_volume * 100) / 100.0
                 # si volume menos del mínimo, hace volumen= mínimo TODO: QUITAR? CUANDO SE CALCULE VOLUME
@@ -282,7 +274,7 @@ class ForexEnv2(gym.Env):
                 if self.debug == 1:
                     print(self.tick_count, ',buy, o', self.open_price, ',v', self.order_volume, ',m', self.margin, ',e',
                           self.equity, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
-            if (self.order_status == 0 or self.order_status == 1) and action[0] == 2:
+            if (self.order_status == 0 or self.order_status == 1) and action == 2:
                 if self.order_status == 1:
                     # close existing order
                     self.balance = self.equity
@@ -293,12 +285,12 @@ class ForexEnv2(gym.Env):
                 # open_price = Bid
                 self.open_price = Close
                 # Calcula sl y tp desde action space
-                print("\naction=", action[0]);
-                self.sl = self.min_sl + ((self.max_sl-self.min_sl) * ((action[2] + 1) / 2))
-                self.tp = self.min_tp + ((self.max_tp-self.min_tp) * ((action[3] + 1) / 2))
+                # print("\naction=", action[0]);
+                self.sl = self.max_sl 
+                self.tp = self.max_tp
                 # TODO: ADICIONAR VOLUME DESDE ACTION SPACE 
                 # a=Tuple((Discrete(3),  Box(low=-1.0, high=1.0, shape=3, dtype=np.float32)) # nop, buy, sell vol,tp,sl
-                self.order_volume = self.equity * self.rel_volume * self.leverage * ((action[1] + 1) / 2) / 100000
+                self.order_volume = self.equity * self.rel_volume * self.leverage/ 100000
                 # redondear a volumenes minimos de 0.01
                 self.order_volume = math.trunc(self.order_volume * 100) / 100.0
                 # set the new margin
@@ -312,7 +304,7 @@ class ForexEnv2(gym.Env):
                           self.equity, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
                     # TODO: Verificar si ha pasado el min_order_time desde que se abrieron antes de cerrar
             if ((self.tick_count - self.order_time) > self.min_order_time):
-                if self.order_status == 1 and action[0] == 1:
+                if self.order_status == 1 and action == 1:
                     self.order_status = 0
                     self.ant_c_c = self.c_c
                     self.c_c = 0
@@ -323,7 +315,7 @@ class ForexEnv2(gym.Env):
                         print(self.tick_count, ',close_buy, o', self.open_price, ',p', self.profit_pips, ',v',
                               self.order_volume, ',e', self.equity, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':',
                               MoH)
-                if self.order_status == -1 and action[0] == 2:
+                if self.order_status == -1 and action == 2:
                     self.order_status = 0
                     self.ant_c_c = self.c_c
                     self.c_c = 0
@@ -335,11 +327,6 @@ class ForexEnv2(gym.Env):
                               self.order_volume, ',e', self.equity, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':',
                               MoH)
         # Calculates reward from RewardFunctionTable
-        # reward = 0.0
-        # Bonus_type selecciona si usar Balance=0 o Equity=1
-        #if self.bonus_type == 0:
-        #    equity_increment = self.balance - self.balance_ant
-        #else:
         equity_increment = self.equity - self.equity_ant
         balance_increment = self.balance - self.balance_ant
         if self.reward_function == 0:
