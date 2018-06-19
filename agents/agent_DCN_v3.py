@@ -122,10 +122,10 @@ if __name__ == "__main__":
     
     register(
             id = 'ForexTrainingSet-v1',
-            entry_point = 'gym_forex.envs:ForexEnv',
+            entry_point = 'gym_forex.envs:ForexEnv3',
             kwargs = {
             'dataset': ts_f, 'volume':0.2, 'sl':500, 'tp':500, 
-            'obs_ticks':48, 'capital':875, 'leverage':100
+            'obs_ticks':48, 'capital':10000, 'leverage':100
         }
     )
     # Make environments
