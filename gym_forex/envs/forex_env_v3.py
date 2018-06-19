@@ -37,6 +37,7 @@ class ForexEnv3(gym.Env):
         self.leverage = leverage
         # Closing cause
         self.c_c = 0
+        self.episode_over=bool(0)
         # Number of past ticks per feature to be used as observations (1440min=1day, 10080=1Week, 43200=1month, )
         self.obs_ticks = obs_ticks # best 48@ 700k
         num_symbols = 1
@@ -151,7 +152,7 @@ class ForexEnv3(gym.Env):
 
     reward: Ver archivo Reward2.xlsx tab Short-Term
             TODO: Perf_total=Perf*reward_acum?
-    episode_over: Imprime statistics
+    self.episode_over: Imprime statistics
 
     """
 
@@ -185,7 +186,7 @@ class ForexEnv3(gym.Env):
         # Calculates equity
         self.equity = self.balance + self.real_profit
         # Verify if Margin Call
-        episode_over = bool(0)
+       # self.episode_over = bool(0)
         if self.equity < self.margin:
             # Close order
             self.order_status = 0
@@ -199,11 +200,11 @@ class ForexEnv3(gym.Env):
             self.ant_c_c = self.c_c
             self.c_c = 1
             # End episode
-            episode_over = bool(1)
+            self.episode_over = bool(1)
             # TODO: ADICIONAR CONTROLES PARA SL Y TP ENTRE MAX_SL Y TP
             # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
             #print('MARGIN CALL - Balance =', self.equity, ',  Reward =', self.reward-5, 'Time=', self.tick_count)
-        if (episode_over == False):
+        if (self.episode_over == False):
             # Verify if close by SL
             if self.profit_pips <= (-1 * self.sl):
                 # Close order
@@ -378,14 +379,14 @@ class ForexEnv3(gym.Env):
         self.reward = self.reward + reward
         # Episode over es TRUE cuando se termina el juego, es decir cuando tick_count=self.num_ticks
         if self.tick_count >= (self.num_ticks - 1):
-            episode_over = bool(1)
+            self.episode_over = bool(1)
             # print('Done - Balance =', self.equity, ',  Reward =', self.reward, 'Time=', self.tick_count)
             # self._reset()
             # self.__init__()
             # TODO: IMPRIMIR ESTADiSTICAS DE METATRADER
         # end of step function.
         info = {"balance":self.balance, "tick_count":self.tick_count}
-        return ob, reward, episode_over, info
+        return ob, reward, self.episode_over, info
 
     """
     _reset: coloca todas las variables en valores iniciales
@@ -410,11 +411,12 @@ class ForexEnv3(gym.Env):
         self.state = self.state_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         ob = numpy.concatenate([self.obs_matrix, self.state])
         self.__init__(self.dataset)
+        self.episode_over = bool(0)
         return ob
 
     """
     _render: muestra performance de ultima orden, performance general y OPCIONALMENTE actualiza un grafico del equity
-     con tabla de orders y el balance por tick cuando se termine la simulacion (episode_over?) similar a
+     con tabla de orders y el balance por tick cuando se termine la simulacion (self.episode_over?) similar a
     https://www.metatrader4.com/en/trading-platform/help/autotrading/tester/tester_results
     def _render(self, mode='human', close=False):
         print 'Eq=', self.equity
