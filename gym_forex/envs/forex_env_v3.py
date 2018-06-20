@@ -409,7 +409,7 @@ class ForexEnv3(gym.Env):
         self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         self.state = self.state_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         ob = numpy.concatenate([self.obs_matrix, self.state])
-        self.__init__(self.dataset)
+        #self.__init__(self.dataset)
         self.episode_over = bool(0)
         return ob
 
