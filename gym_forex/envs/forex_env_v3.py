@@ -29,20 +29,20 @@ class ForexEnv3(gym.Env):
         metadata = {'render.modes': ['human', 'ansi']}
         # initialize initial capital
         self.capital = kwargs['capital']
-        self.min_sl = sl
-        self.min_tp = tp
-        self.max_sl = sl
-        self.max_tp = tp
+        self.min_sl = kwargs['sl']
+        self.min_tp = kwargs['tp']
+        self.max_sl = kwargs['sl']
+        self.max_tp = kwargs['tp']
         self.leverage = kwargs['leverage']
         # Closing cause
         self.c_c = 0
         self.episode_over=bool(0)
         # Number of past ticks per feature to be used as observations (1440min=1day, 10080=1Week, 43200=1month, )
-        self.obs_ticks = obsticks # best 48@ 700k
+        self.obs_ticks = kwargs['obsticks'] # best 48@ 700k
         num_symbols = 1
         self.debug = 0  # Show debug msgs
-        csv_f = dataset
-        self.dataset = dataset
+        csv_f = kwargs['dataset']
+        self.dataset = kwargs['dataset']
         self.initial_capital = self.capital
         self.equity = self.capital
         self.balance = self.capital
