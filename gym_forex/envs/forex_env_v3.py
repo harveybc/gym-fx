@@ -63,7 +63,7 @@ class ForexEnv3(gym.Env):
         # Minimum order time in ticks
         self.min_order_time = 2
         # Order Volume relative to Equity
-        self.rel_volume = volume
+        self.rel_volume = kwargs['volume']
         # spread calculus: 0=from last csv column in pips, 1=lineal from volatility, 2=quadratic, 3=exponential
         self.spread_funct = 0
         # using spread=20 sinse its above the average plus the stddev in alpari but on
