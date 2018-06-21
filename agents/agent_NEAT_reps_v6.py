@@ -201,7 +201,6 @@ def run():
         try:
             if temp >0:
                 # Calcula training y validation fitness
-                best_genomes = stats.best_unique_genomes(3)
                 solved = True
                 best_scores = []
                 observation = env_t.reset()
@@ -212,10 +211,10 @@ def run():
                 while 1:
                     step += 1
                     output = gen_best_nn.activate(nn_format(observation))
+
                     action = np.argmax(output)# buy,sell or 
                     observation, reward, done, info = env_t.step(action)
                     score += reward
-
                     env_t.render()
                     if done:
                         break
@@ -226,7 +225,6 @@ def run():
                 print("Training Set Score =", score, " avg_score=", avg_score)
 
                 # Calculate the real-validation set score
-                best_genomes = stats.best_unique_genomes(3)
                 solved = True
                 best_scores = []
                 observation = env_v.reset()
@@ -247,13 +245,14 @@ def run():
                 print("Validation Set Score = ", avg_score_v)
                 print("*********************************************************")
                 # Calcula el best_fitness (PARA SYNC)como el promedio del score de training y el promedio del fitness de los reps. 
+                best_genomes = stats.best_unique_genomes(3)
                 reps_local = []
                 reps = [gen_best]
                 accum = 0.0
                 countr = 0
-                for sid, s in iteritems(pop.species.species):
-                    if pop.population[s.representative.key].fitness is not None:
-                        accum=accum+pop.population[s.representative.key].fitness
+                for g in iteritems(best_genomes):
+                    if g.fitness is not None:
+                        accum = accum + g.fitness
                         countr = countr + 1
                 if countr > 0:    
                     best_fitness = (3*avg_score+(accum/countr))/4
@@ -326,9 +325,9 @@ def run():
                             # Hack: overwrites original genome key with the replacing one
                                 tmp_genom.key = closer.key
                                 pop.population[closer.key] = deepcopy(tmp_genom)
-                                print(" gen_best=", closer.key)
+                                print("gen_best=", closer.key)
                                 pop.best_genome = deepcopy(tmp_genom)
-                                gen_best = deepcopy(tmp_genom)
+                                #gen_best = deepcopy(tmp_genom)
                             else:
                                 # si el remote fitness>local, reemplazar el remote de pop2 en pop1
                                 if closer is None:
@@ -347,7 +346,7 @@ def run():
                                                 print("Replaced=", closer.key)
                                                 # actualiza gen_best y best_genome al remoto
                                                 pop.best_genome = deepcopy(tmp_genom)
-                                                gen_best = deepcopy(tmp_genom)
+                                                #gen_best = deepcopy(tmp_genom)
                                         if closer.fitness is None:
                                             tmp_genom = deepcopy(remote_reps[i])
                                             # Hack: overwrites original genome key with the replacing one
@@ -356,7 +355,7 @@ def run():
                                             print("Created Por closer.fitness=NONE : ", tmp_genom.key)
                                             # actualiza gen_best y best_genome al remoto
                                             pop.best_genome = deepcopy(tmp_genom)
-                                            gen_best = deepcopy(tmp_genom)
+                                            #gen_best = deepcopy(tmp_genom)
                                     else:
                                         #si closer está en remote_reps es porque no hay ningun otro cercano así que lo adiciona
                                         tmp_genom = deepcopy(remote_reps[i])
@@ -366,8 +365,7 @@ def run():
                                         print("Created por Closer in rempte_reps=", tmp_genom.key)
                                         # actualiza gen_best y best_genome al remoto
                                         pop.best_genome = deepcopy(tmp_genom)
-                                        gen_best = deepcopy(tmp_genom)
-
+                                        #gen_best = deepcopy(tmp_genom)
 
                         #ejecuta speciate
                         pop.species.speciate(config, pop.population, pop.generation)
@@ -395,12 +393,13 @@ def run():
                 #Guarda los mejores reps
                     reps_local = []
                     reps = [gen_best]
-                    # Para cada especie, adiciona su representative a reps
-                    for sid, s in iteritems(pop.species.species):
+                    # Para los mejores genes
+                    best_genomes = stats.best_unique_genomes(3)
+                    for g in best_genomes:
                         #print("\ns=",s)
-                        if s.representative not in reps_local:
-                            reps_local.append(pop.population[s.representative.key])
-                            reps_local[len(reps_local)-1] = deepcopy(pop.population[s.representative.key])
+                        if g not in reps_local:
+                            reps_local.append(g)
+                            reps_local[len(reps_local)-1] = deepcopy(g)
                     # TODO: Conservar los mejores reps, solo reemplazarlos por los mas cercanos
                     if remote_reps is None:
                         for l in reps_local:
@@ -425,27 +424,27 @@ def run():
                                     if dist < min_dist:
                                         closer = deepcopy(g)
                                         min_dist = dist
-                 #           si closer is in reps
+                #           si closer is in reps
                             if closer in reps:
-                 #               adiciona l a reps si ya no estaba en reps
+                #               adiciona l a reps si ya no estaba en reps
                                 if l not in reps:
                                     reps.append(l)
                                     reps[len(reps) - 1] = deepcopy(l)
-                 #           sino
+                #           sino
                             else:
-                 #               si l tiene más fitness que closer,
+                #               si l tiene más fitness que closer,
                                 if closer.fitness is not None and l.fitness is not None:
-                                    if l.fitness>pop.population[closer.key].fitness:
-                 #                       adiciona l a reps si ya no estaba en reps
+                                    if l.fitness>closer.fitness:
+                #                       adiciona l a reps si ya no estaba en reps
                                         if l not in reps:
                                             reps.append(l)
                                             reps[len(reps) - 1] = deepcopy(l)
-                 #               sino
+                #               sino
                                     else:
-                 #                      adiciona closer a reps si ya no estaba en reps
+                #                      adiciona closer a reps si ya no estaba en reps
                                         if l not in reps:
                                             reps.append(pop.population[closer.key])
-                                            reps[len(reps) - 1] = deepcopy(pop.population[closer.key])
+                                            reps[len(reps) - 1] = deepcopy(closer)
                                             # Guarda checkpoint de los representatives de cada especie y lo copia a ubicación para servir vía syn.
                                             # rep.save_checkpoint(config,pop,neat.DefaultSpeciesSet,rep.current_generation)
                     print("\nreps=",reps)
