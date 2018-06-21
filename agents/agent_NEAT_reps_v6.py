@@ -250,7 +250,7 @@ def run():
                 reps = [gen_best]
                 accum = 0.0
                 countr = 0
-                for g in iteritems(best_genomes):
+                for g in best_genomes:
                     if g.fitness is not None:
                         accum = accum + g.fitness
                         countr = countr + 1
