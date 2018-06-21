@@ -320,7 +320,10 @@ def run():
                                     less_fitness = g.fitness
                                     less_fit = deepcopy(g)
                             # For the best genom in position 0
-                            if i == 0:
+                            if i == 0 and remote_reps[0].fitness>gen_best.fitness:
+                                if closer is None:
+                                    # busca el pop con el menor fitness
+                                    closer = less_fit
                                 tmp_genom = deepcopy(remote_reps[i])
                             # Hack: overwrites original genome key with the replacing one
                                 tmp_genom.key = closer.key
@@ -443,7 +446,7 @@ def run():
                                     else:
                 #                      adiciona closer a reps si ya no estaba en reps
                                         if l not in reps:
-                                            reps.append(pop.population[closer.key])
+                                            reps.append(closer)
                                             reps[len(reps) - 1] = deepcopy(closer)
                                             # Guarda checkpoint de los representatives de cada especie y lo copia a ubicación para servir vía syn.
                                             # rep.save_checkpoint(config,pop,neat.DefaultSpeciesSet,rep.current_generation)
