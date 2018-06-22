@@ -2,6 +2,8 @@ import requests
 from neat import Population
 from copy import deepcopy 
 import pickle
+from neat.six_util import iteritems
+from neat.six_util import itervalues
 # PopulationSyn class for synchronizing optimization states with the singularity p2p optimzation network
 
 # PopulationSyn extends Population
