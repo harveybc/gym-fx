@@ -10,7 +10,7 @@ class PopulationSyn(Population):
     #       my_url = url of the singularity API
     #       stats = neat.StatisticsReporter
     # returns: best_genoms selected between the remote and local
-    def syn_singularity(self, num_replacements, my_url, stats, gen_best, avg_score):
+    def syn_singularity(self, num_replacements, my_url, stats, gen_best, avg_score, rep):
         # requests the last optimization state TODO: HACER PROCESS CONFIGURABLE Y POR HASH no por id for multi-process
         res = requests.get(my_url + "/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
         cont = res.json()
