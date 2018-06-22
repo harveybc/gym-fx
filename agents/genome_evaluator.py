@@ -49,8 +49,8 @@ class GenomeEvaluator(object):
         self.env_v = gym.make('ForexValidationSet-v1')
         # Shows the action and observation space from the forex_env, its observation space is
         # bidimentional, so it has to be converted to an array with nn_format() for direct ANN feed. (Not if evaluating with external DQN)
-        print("action space: {0!r}".format(env_t.action_space))
-        print("observation space: {0!r}".format(env_t.observation_space))
+        print("action space: {0!r}".format(self.env_t.action_space))
+        print("observation space: {0!r}".format(self.env_t.observation_space))
         #self.env_t = gym.wrappers.Monitor(env_t, 'results', force=True)
     
     # converts a bidimentional matrix to an one-dimention array
