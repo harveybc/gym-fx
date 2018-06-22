@@ -2,7 +2,7 @@
 from __future__ import print_function
 from copy import deepcopy
 from gym.envs.registration import register
-from population_syn import PopulationSyn # extended neat population for synchronizing witn singularity p2p network
+from population_syn import PopulationSyn # extended neat population for synchronizing with singularity p2p network
 from genome_evaluator import GenomeEvaluator
 import gym
 import sys
@@ -88,7 +88,7 @@ def run():
         try:
             # if it is not the  first iteration calculate training and validation scores
             if iteration_counter >0:
-                avg_score=pop.training_validation_score(gen_best)
+                avg_score=ec.training_validation_score(gen_best)
             # if it is not the first iteration
             if iteration_counter >= 0:
                 # synchronizes with singularity migrating maximum 3 specimens
