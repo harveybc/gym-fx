@@ -14,7 +14,7 @@ import numpy as np
 import os
 import pickle
 import random
-import requests
+
 import sys
 import time
 import visualize

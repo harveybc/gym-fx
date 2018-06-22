@@ -1,3 +1,4 @@
+import requests
 from neat import Population
 # PopulationSyn class for synchronizing optimization states with the singularity p2p optimzation network
 
