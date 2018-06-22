@@ -1,5 +1,6 @@
 import requests
 from neat import Population
+from copy import deepcopy 
 # PopulationSyn class for synchronizing optimization states with the singularity p2p optimzation network
 
 # PopulationSyn extends Population
