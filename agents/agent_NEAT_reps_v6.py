@@ -179,7 +179,7 @@ def run():
                 avg_score=TrainingValidationScore(gen_best)
             # if it is not the first iteration
             if iteration_counter >= 0:
-                # synchronizes with singularity migrating máximum 3 specimens
+                # synchronizes with singularity migrating maximum 3 specimens
                 pop.synSingularity(3)
                 # perform pending evaluations on the singularity network, max 2
                 evaluatePending(2)
