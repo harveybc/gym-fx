@@ -119,8 +119,8 @@ class GenomeEvaluator(object):
             self.env_t.render()
             if done:
                 break
-        ec.episode_score.append(score)
-        ec.episode_length.append(step)
+        self.episode_score.append(score)
+        self.episode_length.append(step)
         best_scores.append(score)
         avg_score = sum(best_scores) / len(best_scores)
         print("Training Set Score =", score, " avg_score=", avg_score)
