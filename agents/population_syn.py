@@ -9,7 +9,7 @@ class PopulationSyn(Population):
     #       my_url = url of the singularity API
     #       stats = neat.StatisticsReporter
     # returns: best_genoms selected between the remote and local
-    def synSingularity(self, num_replacements, my_url, stats, gen_best, avg_score):
+    def syn_singularity(self, num_replacements, my_url, stats, gen_best, avg_score):
         # requests the last optimization state TODO: HACER PROCESS CONFIGURABLE Y POR HASH no por id for multi-process
         res = requests.get(my_url + "/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
         cont = res.json()
@@ -229,7 +229,7 @@ class PopulationSyn(Population):
         # TODO FIN: FUNCION DE SINCRONIZACION CON SINGULARITY
         return 0
     
-    def trainingValidationScore(self,gen_best):
+    def training_validation_score(self,gen_best):
         # calculate training and validation fitness
         best_scores = []
         observation = env_t.reset()
@@ -273,7 +273,7 @@ class PopulationSyn(Population):
         print("*********************************************************")
         return avg_score
     
-    def evaluatePending(self,max_pending):
+    def evaluate_pending(self,max_pending):
         # TODO:
         # VERIFY IF THERE ARE PENDING EVALUATIONS IN SINGULARITY
         # EVALUATE NUM_EVALUATIONS PENDING EVALUATIONS

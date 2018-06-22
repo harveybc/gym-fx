@@ -20,6 +20,7 @@ import time
 import visualize
 from gym.envs.registration import register
 from population_syn import PopulationSyn # extended neat population for synchronizing witn singularity p2p network
+from genome_evaluator import GenomeEvaluator
 # Multi-core machine support
 NUM_CORES = 1
 # First argument is the training dataset
@@ -52,8 +53,8 @@ env_v = gym.wrappers.Monitor(env_v, 'results', force=True)
 # for cross-validation like training set
 index_t = 0
 
-# LanderGenome class
-class LanderGenome(neat.DefaultGenome):
+# AgentGenome class
+class AgentGenome(neat.DefaultGenome):
     def __init__(self, key):
         super().__init__(key)
         self.discount = None
@@ -77,74 +78,13 @@ class LanderGenome(neat.DefaultGenome):
         return dist + disc_diff
     
     def __str__(self):
-        return "Reward discount: {0}\n{1}".format(self.discount,
-                                                  super().__str__())
-
-# converts a bidimentional matrix to an one-dimention array
-def nn_format(obs):
-    output = []
-    for arr in obs:
-        for val in arr:
-            output.append(val)
-    return output
-
-# class for training the agent
-class PooledErrorCompute(object):
-    def __init__(self):
-        self.pool = None if NUM_CORES < 2 else multiprocessing.Pool(NUM_CORES)
-        self.test_episodes = []
-        self.generation = 0
-        self.min_reward = -15
-        self.max_reward = 15
-        self.episode_score = []
-        self.episode_length = []
+        return "Reward discount: {0}\n{1}".format(self.discount, super().__str__())
     
-    # simulates a genom in all the training dataset (all the training subsets)
-    def simulate(self, nets):
-        # convert nets to D   
-        scores = []
-        sub_scores=[]
-        self.test_episodes = []
-        # Evalua cada net en todos los env_t excepto el env actual 
-        for genome, net in nets:
-            sub_scores=[]
-            observation = env_t.reset()
-            score=0.0
-            #if i==index_t:
-            while 1:
-                output = net.activate(nn_format(observation))
-                action = np.argmax(output)# buy, sell or nop
-                observation, reward, done, info = env_t.step(action)
-                score += reward
-                #env_t.render()
-                if done:
-                    break
-            sub_scores.append(score)
-            # calculate fitness per genome
-            scores.append(sum(sub_scores) / len(sub_scores))
-        print("Score range [{:.3f}, {:.3f}]".format(min(scores), max(scores)))
-        return scores
-    
-    def evaluate_genomes(self, genomes, config):
-        self.generation += 1
-        t0 = time.time()
-        nets = []
-        for gid, g in genomes:
-            nets.append((g, neat.nn.FeedForwardNetwork.create(g, config)))
-        t0 = time.time()
-        scores = self.simulate(nets)
-        t0 = time.time()
-        print("Evaluating {0} test episodes".format(len(self.test_episodes)))
-        i = 0
-        for genome, net in nets:
-            genome.fitness = scores[i]
-            i = i + 1
-
 def run():
     # load the config file
     local_dir = os.path.dirname(__file__)
     config_path = os.path.join(local_dir, my_config)
-    config = neat.Config(LanderGenome, neat.DefaultReproduction,
+    config = neat.Config(AgentGenome, neat.DefaultReproduction,
                          neat.DefaultSpeciesSet, neat.DefaultStagnation,
                          config_path)
     # uses the extended NEAT population PopulationSyn that synchronizes with singularity
@@ -156,8 +96,8 @@ def run():
     # save a checkpoint every 100 generations or 900 seconds.
     rep = neat.Checkpointer(100, 900)
     pop.add_reporter(rep)
-    # class for trainign the agent
-    ec = PooledErrorCompute()
+    # class for evaluating the population
+    ec = GenomeEvaluator()
     # initializes genomes fitness and gen_best just for the first time
     for g in itervalues(pop.population):
         g.fitness = -10000000.0
