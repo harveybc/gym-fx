@@ -7,6 +7,7 @@ from genome_evaluator import GenomeEvaluator
 import gym
 import sys
 import neat
+import os
 # Multi-core machine support
 NUM_CORES = 1
 # First argument is the training dataset
