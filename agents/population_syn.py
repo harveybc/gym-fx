@@ -228,51 +228,51 @@ class PopulationSyn(Population):
     
     def TrainingValidationScore(gen_best):
         # calculate training and validation fitness
-                best_scores = []
-                observation = env_t.reset()
-                score = 0.0
-                step = 0
-                gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
-                # calculate the training set score
-                while 1:
-                    step += 1
-                    output = gen_best_nn.activate(nn_format(observation))
+        best_scores = []
+        observation = env_t.reset()
+        score = 0.0
+        step = 0
+        gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
+        # calculate the training set score
+        while 1:
+            step += 1
+            output = gen_best_nn.activate(nn_format(observation))
 
-                    action = np.argmax(output)# buy,sell or 
-                    observation, reward, done, info = env_t.step(action)
-                    score += reward
-                    env_t.render()
-                    if done:
-                        break
-                ec.episode_score.append(score)
-                ec.episode_length.append(step)
-                best_scores.append(score)
-                avg_score = sum(best_scores) / len(best_scores)
-                print("Training Set Score =", score, " avg_score=", avg_score)
-                # calculate the validation set score
-                best_scores = []
-                observation = env_v.reset()
-                score = 0.0
-                step = 0
-                gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
-                while 1:
-                    step += 1
-                    output = gen_best_nn.activate(nn_format(observation))
-                    action = np.argmax(output)# buy,sell or 
-                    observation, reward, done, info = env_v.step(action)
-                    score += reward
-                    #env_v.render()
-                    if done:
-                        break
-                best_scores.append(score)
-                avg_score_v = sum(best_scores) / len(best_scores)
-                print("Validation Set Score = ", avg_score_v)
-                print("*********************************************************")
+            action = np.argmax(output)# buy,sell or 
+            observation, reward, done, info = env_t.step(action)
+            score += reward
+            env_t.render()
+            if done:
+                break
+        ec.episode_score.append(score)
+        ec.episode_length.append(step)
+        best_scores.append(score)
+        avg_score = sum(best_scores) / len(best_scores)
+        print("Training Set Score =", score, " avg_score=", avg_score)
+        # calculate the validation set score
+        best_scores = []
+        observation = env_v.reset()
+        score = 0.0
+        step = 0
+        gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
+        while 1:
+            step += 1
+            output = gen_best_nn.activate(nn_format(observation))
+            action = np.argmax(output)# buy,sell or 
+            observation, reward, done, info = env_v.step(action)
+            score += reward
+            #env_v.render()
+            if done:
+                break
+        best_scores.append(score)
+        avg_score_v = sum(best_scores) / len(best_scores)
+        print("Validation Set Score = ", avg_score_v)
+        print("*********************************************************")
         return avg_score
     
     def evaluatePending(max_pending):
-            # TODO:
-            # VERIFY IF THERE ARE PENDING EVALUATIONS IN SINGULARITY
-            # EVALUATE NUM_EVALUATIONS PENDING EVALUATIONS
+        # TODO:
+        # VERIFY IF THERE ARE PENDING EVALUATIONS IN SINGULARITY
+        # EVALUATE NUM_EVALUATIONS PENDING EVALUATIONS
         return 0
     
