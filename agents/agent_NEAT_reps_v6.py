@@ -69,7 +69,7 @@ def run():
     rep = neat.Checkpointer(100, 900)
     pop.add_reporter(rep)
     # class for evaluating the population
-    ec = GenomeEvaluator()
+    ec = GenomeEvaluator(ts_f,vs_f)
     # initializes genomes fitness and gen_best just for the first time
     for g in itervalues(pop.population):
         g.fitness = -10000000.0
