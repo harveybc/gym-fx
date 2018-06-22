@@ -9,7 +9,7 @@ import sys
 import neat
 import os
 import pickle
-import randoma
+import random
 from neat.six_util import iteritems
 from neat.six_util import itervalues
 # Multi-core machine support
