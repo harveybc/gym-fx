@@ -6,7 +6,7 @@ class PopulationSyn(Population):
     # synSingularity method for synchronizing NEAT optimization states with singularity 
     # args: best_genoms array of best genomes
     # returns: best_genoms selected between the remote and local
-    def synSingularity(num_replacements):
+    def synSingularity(self, num_replacements):
         # requests the last optimization state TODO: HACER PROCESS CONFIGURABLE Y POR HASH no por id for multi-process
         res = requests.get(my_url + "/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
         cont = res.json()
@@ -15,7 +15,7 @@ class PopulationSyn(Population):
         print('\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
         last_optimum_id = cont['result'][0]['last_optimum_id']
         # calcualte the best fitness as the weitgthed average of the best performers
-        best_genomes = stats.best_unique_genomes(3)
+        best_genomes = stats.best_unique_genomes(num_replacements)
         reps_local = []
         reps = [gen_best]
         accum = 0.0
@@ -154,7 +154,7 @@ class PopulationSyn(Population):
             reps_local = []
             reps = [gen_best]
             # Para los mejores genes
-            best_genomes = stats.best_unique_genomes(3)
+            best_genomes = stats.best_unique_genomes(num_replacements)
             for g in best_genomes:
                 #print("\ns=",s)
                 if g not in reps_local:
@@ -226,7 +226,7 @@ class PopulationSyn(Population):
         # TODO FIN: FUNCION DE SINCRONIZACION CON SINGULARITY
         return 0
     
-    def TrainingValidationScore(gen_best):
+    def TrainingValidationScore(self,gen_best):
         # calculate training and validation fitness
         best_scores = []
         observation = env_t.reset()
@@ -270,7 +270,7 @@ class PopulationSyn(Population):
         print("*********************************************************")
         return avg_score
     
-    def evaluatePending(max_pending):
+    def evaluatePending(self,max_pending):
         # TODO:
         # VERIFY IF THERE ARE PENDING EVALUATIONS IN SINGULARITY
         # EVALUATE NUM_EVALUATIONS PENDING EVALUATIONS
