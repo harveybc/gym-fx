@@ -229,7 +229,7 @@ class PopulationSyn(Population):
         # TODO FIN: FUNCION DE SINCRONIZACION CON SINGULARITY
         return 0
     
-    def TrainingValidationScore(self,gen_best):
+    def trainingValidationScore(self,gen_best):
         # calculate training and validation fitness
         best_scores = []
         observation = env_t.reset()

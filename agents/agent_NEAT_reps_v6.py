@@ -176,13 +176,13 @@ def run():
         try:
             # if it is not the  first iteration calculate training and validation scores
             if iteration_counter >0:
-                avg_score=TrainingValidationScore(gen_best)
+                avg_score=pop.trainingValidationScore(gen_best)
             # if it is not the first iteration
             if iteration_counter >= 0:
                 # synchronizes with singularity migrating maximum 3 specimens
                 pop.synSingularity(3, my_url, stats, gen_best,avg_score)
                 # perform pending evaluations on the singularity network, max 2
-                evaluatePending(2)
+                pop.evaluatePending(2)
                 #increment iteration counter
                 iteration_counter = iteration_counter + 1
             # execute num_iterations consecutive iterations of the NEAT algorithm
