@@ -19,6 +19,7 @@ import sys
 import time
 import visualize
 from gym.envs.registration import register
+from population_syn import PopulationSyn # extended neat population for synchronizing witn singularity p2p network
 # Multi-core machine support
 NUM_CORES = 1
 # First argument is the training dataset
@@ -74,11 +75,10 @@ class LanderGenome(neat.DefaultGenome):
         dist = super().distance(other, config)
         disc_diff = abs(self.discount - other.discount)
         return dist + disc_diff
-
+    
     def __str__(self):
         return "Reward discount: {0}\n{1}".format(self.discount,
                                                   super().__str__())
-
 
 # converts a bidimentional matrix to an one-dimention array
 def nn_format(obs):
@@ -88,22 +88,20 @@ def nn_format(obs):
             output.append(val)
     return output
 
+# class for training the agent
 class PooledErrorCompute(object):
     def __init__(self):
         self.pool = None if NUM_CORES < 2 else multiprocessing.Pool(NUM_CORES)
         self.test_episodes = []
         self.generation = 0
-
         self.min_reward = -15
         self.max_reward = 15
-
         self.episode_score = []
         self.episode_length = []
     
     # simulates a genom in all the training dataset (all the training subsets)
     def simulate(self, nets):
-        # convert nets to DCN
-        
+        # convert nets to D   
         scores = []
         sub_scores=[]
         self.test_episodes = []
@@ -127,393 +125,83 @@ class PooledErrorCompute(object):
         print("Score range [{:.3f}, {:.3f}]".format(min(scores), max(scores)))
         return scores
     
-    
     def evaluate_genomes(self, genomes, config):
         self.generation += 1
-
         t0 = time.time()
         nets = []
         for gid, g in genomes:
             nets.append((g, neat.nn.FeedForwardNetwork.create(g, config)))
-
-        #print("network creation time {0}".format(time.time() - t0))
         t0 = time.time()
-
-        # Periodically generate a new set of episodes for comparison.
-        #if 1 == self.generation % 10:
-        #self.test_episodes = self.test_episodes[-300:]
         scores = self.simulate(nets)
-        #print("simulation run time {0}".format(time.time() - t0))
         t0 = time.time()
-
-        # Assign a composite fitness to each genome; genomes can make progress either
-        # by improving their total reward or by making more accurate reward estimates.
-
         print("Evaluating {0} test episodes".format(len(self.test_episodes)))
-
         i = 0
         for genome, net in nets:
             genome.fitness = scores[i]
             i = i + 1
-        #print("final fitness compute time {0}\n".format(time.time() - t0))
-
 
 def run():
-    # Load the config file, which is assumed to live in
-    # the same directory as this script.
+    # load the config file
     local_dir = os.path.dirname(__file__)
     config_path = os.path.join(local_dir, my_config)
     config = neat.Config(LanderGenome, neat.DefaultReproduction,
                          neat.DefaultSpeciesSet, neat.DefaultStagnation,
                          config_path)
-
-    pop = neat.Population(config)
+    # uses the extended NEAT population PopulationSyn that synchronizes with singularity
+    pop = neat.PopulationSyn(config)
+    # add reporters
     stats = neat.StatisticsReporter()
     pop.add_reporter(stats)
-    pop2 = neat.Population(config)
-    stats2 = neat.StatisticsReporter()
-    pop.add_reporter(stats)
-    pop2.add_reporter(stats2)
     pop.add_reporter(neat.StdOutReporter(True))
-    # Checkpoint every 25 generations or 900 seconds.
-    rep = neat.Checkpointer(25, 900)
+    # save a checkpoint every 100 generations or 900 seconds.
+    rep = neat.Checkpointer(100, 900)
     pop.add_reporter(rep)
-    # Training set index 
+    # class for trainign the agent
+    ec = PooledErrorCompute()
+    # initializes genomes fitness and gen_best just for the first time
+    for g in itervalues(pop.population):
+        g.fitness = -10000000.0
+    gen_best = g
+    # initializations
     avg_score_v = -10000000.0
     avg_score_v_ant = avg_score_v
     avg_score = avg_score_v
-
-    # asigna un gen_best para poder cargar los demás desde syn
-    for g in itervalues(pop.population):
-        gen_best = g
-        g.fitness = -10000000.0
-
-    # Run until the winner from a generation is able to solve the environment
-    # or the user interrupts the process.
-    ec = PooledErrorCompute()
-    temp = 0
+    iteration_counter = 0
     best_fitness=-2000.0;
-
     pop_size=len(pop.population)
     # sets the nuber of continuous iterations 
     num_iterations = round(200/len(pop.population))+1
+    # repeat NEAT iterations until solved or keyboard interrupt
     while 1:
         try:
-            if temp >0:
-                # Calcula training y validation fitness
-                solved = True
-                best_scores = []
-                observation = env_t.reset()
-                score = 0.0
-                step = 0
-                gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
-
-                while 1:
-                    step += 1
-                    output = gen_best_nn.activate(nn_format(observation))
-
-                    action = np.argmax(output)# buy,sell or 
-                    observation, reward, done, info = env_t.step(action)
-                    score += reward
-                    env_t.render()
-                    if done:
-                        break
-                ec.episode_score.append(score)
-                ec.episode_length.append(step)
-                best_scores.append(score)
-                avg_score = sum(best_scores) / len(best_scores)
-                print("Training Set Score =", score, " avg_score=", avg_score)
-
-                # Calculate the real-validation set score
-                solved = True
-                best_scores = []
-                observation = env_v.reset()
-                score = 0.0
-                step = 0
-                gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
-                while 1:
-                    step += 1
-                    output = gen_best_nn.activate(nn_format(observation))
-                    action = np.argmax(output)# buy,sell or 
-                    observation, reward, done, info = env_v.step(action)
-                    score += reward
-                    #env_v.render()
-                    if done:
-                        break
-                best_scores.append(score)
-                avg_score_v = sum(best_scores) / len(best_scores)
-                print("Validation Set Score = ", avg_score_v)
-                print("*********************************************************")
-                # Calcula el best_fitness (PARA SYNC)como el promedio del score de training y el promedio del fitness de los reps. 
-                best_genomes = stats.best_unique_genomes(3)
-                reps_local = []
-                reps = [gen_best]
-                accum = 0.0
-                countr = 0
-                for g in best_genomes:
-                    if g.fitness is not None:
-                        accum = accum + g.fitness
-                        countr = countr + 1
-                if countr > 0:    
-                    best_fitness = (3*avg_score+(accum/countr))/4
-                else:
-                    best_fitness = (avg_score)
-                #FIN de calculo de real validation        
-                
-            if temp >= 0:
-                # TODO: FUNCION DE SINCRONIZACION CON SINGULARITY
-                # Lee en pop2 el último checkpoint desde syn
-                # Hace request de getLastParam(process_hash,use_current) a syn TODO: HACER PROCESS CONFIGURABLE Y POR HASH no por id
-                res = requests.get(
-                                   my_url + "/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
-                cont = res.json()
-                print('\ncurrent_block_performance =', cont['result'][0]['current_block_performance'])
-                print('\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
-                last_optimum_id = cont['result'][0]['last_optimum_id']
-
-                
-                # Si el perf reportado pop2_champion_fitness > pop1_champion_fitness de validation training        
-                print("\nPerformance = ", best_fitness)
-                print("*********************************************************")
-                if cont['result'][0]['current_block_performance'] > best_fitness:
-                    # hace request GetParameter(id)
-                    res_p = requests.get(
-                                         my_url + "/parameters/" + str(
-                                         last_optimum_id) + "?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
-                    cont_param = res_p.json()
-                    # descarga el checkpoint del link de la respuesta si cont.parameter_link
-                    print('Parameter Downloaded')
-                    print('\nmigrations =')
-                    if cont_param['result'][0]['parameter_link'] is not None:
-                        genom_data = requests.get(cont_param['result'][0]['parameter_link']).content
-                        with open('remote_reps', 'wb') as handler:
-                            handler.write(genom_data)
-                            handler.close()
-                        # carga genom descargado en nueva población pop2
-                        with open('remote_reps', 'rb') as f:
-                            remote_reps = pickle.load(f)
-                        # OP.MIGRATION: Reemplaza el peor de la especie pop1 más cercana por el nuevo chmpion de pop2 como http://neo.lcc.uma.es/Articles/WRH98.pdf
-                        # para cada elemento de remote_reps, busca el closer, si remote fitness > local, lo reemplaza
-                        for i in range(len(remote_reps)):
-                            closer = None
-                            min_dist = None
-                            # initialize for less fit search
-                            less_fit = None
-                            less_fitness = 10000
-                            for g in itervalues(pop.population):
-                                if g not in remote_reps:
-                                    dist = g.distance(remote_reps[i], config.genome_config)
-                                    if dist is None:
-                                       dist = 100000000 
-                                else:
-                                    dist = 100000000
-                                # do not count already migrated remote_reps
-                                if closer is None or min_dist is None:
-                                    closer = deepcopy(g)
-                                    min_dist = dist
-                                if dist < min_dist:
-                                    closer = deepcopy(g)
-                                    min_dist = dist
-                                if g.fitness is None:
-                                    g.fitness = -10
-                                if g.fitness < less_fitness:
-                                    less_fitness = g.fitness
-                                    less_fit = deepcopy(g)
-                            # For the best genom in position 0
-                            if i == 0 and remote_reps[0].fitness>gen_best.fitness:
-                                if closer is None:
-                                    # busca el pop con el menor fitness
-                                    closer = less_fit
-                                tmp_genom = deepcopy(remote_reps[i])
-                            # Hack: overwrites original genome key with the replacing one
-                                tmp_genom.key = closer.key
-                                pop.population[closer.key] = deepcopy(tmp_genom)
-                                print("gen_best=", closer.key)
-                                pop.best_genome = deepcopy(tmp_genom)
-                                #gen_best = deepcopy(tmp_genom)
-                            else:
-                                # si el remote fitness>local, reemplazar el remote de pop2 en pop1
-                                if closer is None:
-                                    # busca el pop con el menor fitness
-                                    closer = less_fit
-                                if closer is not None:
-                                    if closer not in remote_reps:
-                                        if closer.fitness is None:
-                                            closer.fitness = less_fitness
-                                        if closer.fitness is not None and remote_reps[i].fitness is not None:
-                                            if remote_reps[i].fitness > closer.fitness:
-                                                tmp_genom = deepcopy(remote_reps[i])
-                                                # Hack: overwrites original genome key with the replacing one
-                                                tmp_genom.key = closer.key
-                                                pop.population[closer.key] = deepcopy(tmp_genom)
-                                                print("Replaced=", closer.key)
-                                                # actualiza gen_best y best_genome al remoto
-                                                pop.best_genome = deepcopy(tmp_genom)
-                                                #gen_best = deepcopy(tmp_genom)
-                                        if closer.fitness is None:
-                                            tmp_genom = deepcopy(remote_reps[i])
-                                            # Hack: overwrites original genome key with the replacing one
-                                            tmp_genom.key = len(pop.population) + 1
-                                            pop.population[tmp_genom.key] = tmp_genom
-                                            print("Created Por closer.fitness=NONE : ", tmp_genom.key)
-                                            # actualiza gen_best y best_genome al remoto
-                                            pop.best_genome = deepcopy(tmp_genom)
-                                            #gen_best = deepcopy(tmp_genom)
-                                    else:
-                                        #si closer está en remote_reps es porque no hay ningun otro cercano así que lo adiciona
-                                        tmp_genom = deepcopy(remote_reps[i])
-                                        # Hack: overwrites original genome key with the replacing one
-                                        tmp_genom.key = len(pop.population) + 1
-                                        pop.population[tmp_genom.key] = tmp_genom
-                                        print("Created por Closer in rempte_reps=", tmp_genom.key)
-                                        # actualiza gen_best y best_genome al remoto
-                                        pop.best_genome = deepcopy(tmp_genom)
-                                        #gen_best = deepcopy(tmp_genom)
-
-                        #ejecuta speciate
-                        pop.species.speciate(config, pop.population, pop.generation)
-                        print("\nSpeciation after migration done")
-                # Si el perf reportado es menor pero no igual al de pop1
-                if cont['result'][0]['current_block_performance'] < best_fitness:
-                    # Obtiene remote_reps
-                    # hace request GetParameter(id)
-                    remote_reps = None
-                    res_p = requests.get(
-                                         my_url + "/parameters/" + str(
-                                         last_optimum_id) + "?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
-                    cont_param = res_p.json()
-                    # descarga el checkpoint del link de la respuesta si cont.parameter_link
-                    print('\nNEW OPTIMUM - cont_param =', cont_param)
-                    #print('\nmigrations =')
-                    if cont_param['result'][0]['parameter_link'] is not None:
-                        genom_data = requests.get(cont_param['result'][0]['parameter_link']).content
-                        with open('remote_reps', 'wb') as handler:
-                            handler.write(genom_data)
-                            handler.close()
-                        # carga genom descargado en nueva población pop2
-                        with open('remote_reps', 'rb') as f:
-                            remote_reps = pickle.load(f)
-                #Guarda los mejores reps
-                    reps_local = []
-                    reps = [gen_best]
-                    # Para los mejores genes
-                    best_genomes = stats.best_unique_genomes(3)
-                    for g in best_genomes:
-                        #print("\ns=",s)
-                        if g not in reps_local:
-                            reps_local.append(g)
-                            reps_local[len(reps_local)-1] = deepcopy(g)
-                    # TODO: Conservar los mejores reps, solo reemplazarlos por los mas cercanos
-                    if remote_reps is None:
-                        for l in reps_local:
-                            reps.append(l)
-                            reps[len(reps)-1] = deepcopy(l)
-                    else:
-                        # para cada reps_local l
-                        for l in reps_local:
-                            # busca el closer a l en reps_remote
-                            for i in range(len(remote_reps)):
-                                closer = None
-                                min_dist = None
-                                for g in reps_local:
-                                    if g not in remote_reps:
-                                        dist = g.distance(remote_reps[i], config.genome_config)
-                                    else:
-                                        dist = 100000000
-                                    # do not count already migrated remote_reps
-                                    if closer is None or min_dist is None:
-                                        closer = deepcopy(g)
-                                        min_dist = dist
-                                    if dist < min_dist:
-                                        closer = deepcopy(g)
-                                        min_dist = dist
-                #           si closer is in reps
-                            if closer in reps:
-                #               adiciona l a reps si ya no estaba en reps
-                                if l not in reps:
-                                    reps.append(l)
-                                    reps[len(reps) - 1] = deepcopy(l)
-                #           sino
-                            else:
-                #               si l tiene más fitness que closer,
-                                if closer.fitness is not None and l.fitness is not None:
-                                    if l.fitness>closer.fitness:
-                #                       adiciona l a reps si ya no estaba en reps
-                                        if l not in reps:
-                                            reps.append(l)
-                                            reps[len(reps) - 1] = deepcopy(l)
-                #               sino
-                                    else:
-                #                      adiciona closer a reps si ya no estaba en reps
-                                        if l not in reps:
-                                            reps.append(closer)
-                                            reps[len(reps) - 1] = deepcopy(closer)
-                                            # Guarda checkpoint de los representatives de cada especie y lo copia a ubicación para servir vía syn.
-                                            # rep.save_checkpoint(config,pop,neat.DefaultSpeciesSet,rep.current_generation)
-                    print("\nreps=",reps)
-                    filename = '{0}{1}'.format("reps-", rep.current_generation)
-                    with open(filename, 'wb') as f:
-                        pickle.dump(reps, f)
-                    #
-                    # Hace request de CreateParam a syn
-                    form_data = {"process_hash": "ph", "app_hash": "ah",
-                        "parameter_link": my_url + "/genoms/" + filename,
-                        "parameter_text": pop.best_genome.key, "parameter_blob": "", "validation_hash": "",
-                        "hash": "h", "performance": best_fitness, "redir": "1", "username": "harveybc",
-                        "pass_hash": "$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q"}
-                    # TODO: COLOCAR DIRECCION CONFIGURABLE
-                    res = requests.post(
-                                        my_url + "/parameters?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph",
-                                        data=form_data)
-                    res_json = res.json()
-                # TODO FIN: FUNCION DE SINCRONIZACION CON SINGULARITY
-            temp = temp + 1
-            
-            # EVALUATE THE GENOMES WITH THE SUBSET TRAINING DATASET
+            # if it is not the  first iteration calculate training and validation scores
+            if iteration_counter >0:
+                avg_score=TrainingValidationScore(gen_best)
+            # if it is not the first iteration
+            if iteration_counter >= 0:
+                # synchronizes with singularity migrating m�ximum 3 specimens
+                pop.synSingularity(3)
+                # perform pending evaluations on the singularity network, max 2
+                evaluatePending(2)
+                #increment iteration counter
+                iteration_counter = iteration_counter + 1
+            # execute num_iterations consecutive iterations of the NEAT algorithm
             gen_best = pop.run(ec.evaluate_genomes, num_iterations)
-            # TODO:
-            # VERIFY IF THERE ARE PENDING EVALUATIONS
-            # EVALUATE NUM_EVALUATIONS PENDING EVALUATIONS
-                
-            #print(gen_best)
-            #visualize.plot_stats(stats, ylog=False, view=False, filename="fitness.svg")
-            #plt.plot(ec.episode_score, 'g-', label='score')
-            #plt.plot(ec.episode_length, 'b-', label='length')
-            #plt.grid()
-            #plt.legend(loc='best')
-            #plt.savefig("scores.svg")
-            #plt.close()
-
-            #mfs = sum(stats.get_fitness_mean()[-5:]) / 5.0
-            #print("Average mean fitness over last 5 generations: {0}".format(mfs))
-
-            #mfs = sum(stats.get_fitness_stat(min)[-5:]) / 5.0
-            #print("Average min fitness over last 3 generations: {0}".format(mfs))
+            # verify the training score is enough to stop the NEAT algorithm: TODO change to validation score when generalization is ok 
             if avg_score < 2000000000:
                 solved = False
-
             if solved:
                 print("Solved.")
-
-                # Save the winners.
+                # save the winners.
                 for n, g in enumerate(best_genomes):
                     name = 'winner-{0}'.format(n)
                     with open(name + '.pickle', 'wb') as f:
                         pickle.dump(g, f)
-
-                    visualize.draw_net(config, g, view=False, filename=name + "-net.gv")
-                    visualize.draw_net(config, g, view=False, filename=name + "-net-enabled.gv",
-                                       show_disabled=False)
-                    visualize.draw_net(config, g, view=False, filename=name + "-net-enabled-pruned.gv",
-                                       show_disabled=False, prune_unused=True)
-
                 break
         except KeyboardInterrupt:
             print("User break.")
             break
-
     env.close()
-
 
 if __name__ == '__main__':
     run()
