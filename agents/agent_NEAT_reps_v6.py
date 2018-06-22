@@ -6,6 +6,7 @@ from population_syn import PopulationSyn # extended neat population for synchron
 from genome_evaluator import GenomeEvaluator
 import gym
 import sys
+import neat
 # Multi-core machine support
 NUM_CORES = 1
 # First argument is the training dataset
