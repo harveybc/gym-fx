@@ -111,7 +111,7 @@ class GenomeEvaluator(object):
         # calculate the training set score
         while 1:
             step += 1
-            output = gen_best_nn.activate(nn_format(observation))
+            output = gen_best_nn.activate(self.nn_format(observation))
 
             action = np.argmax(output)# buy,sell or 
             observation, reward, done, info = self.env_t.step(action)
@@ -132,7 +132,7 @@ class GenomeEvaluator(object):
         gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
         while 1:
             step += 1
-            output = gen_best_nn.activate(nn_format(observation))
+            output = gen_best_nn.activate(self.nn_format(observation))
             action = np.argmax(output)# buy,sell or 
             observation, reward, done, info = self.env_v.step(action)
             score += reward
