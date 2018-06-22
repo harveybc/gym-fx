@@ -232,7 +232,7 @@ class PopulationSyn(Population):
     def training_validation_score(self,gen_best):
         # calculate training and validation fitness
         best_scores = []
-        observation = env_t.reset()
+        observation = self.env_t.reset()
         score = 0.0
         step = 0
         gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
@@ -242,9 +242,9 @@ class PopulationSyn(Population):
             output = gen_best_nn.activate(nn_format(observation))
 
             action = np.argmax(output)# buy,sell or 
-            observation, reward, done, info = env_t.step(action)
+            observation, reward, done, info = self.env_t.step(action)
             score += reward
-            env_t.render()
+            self.env_t.render()
             if done:
                 break
         ec.episode_score.append(score)
@@ -254,7 +254,7 @@ class PopulationSyn(Population):
         print("Training Set Score =", score, " avg_score=", avg_score)
         # calculate the validation set score
         best_scores = []
-        observation = env_v.reset()
+        observation = self.env_v.reset()
         score = 0.0
         step = 0
         gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
@@ -262,7 +262,7 @@ class PopulationSyn(Population):
             step += 1
             output = gen_best_nn.activate(nn_format(observation))
             action = np.argmax(output)# buy,sell or 
-            observation, reward, done, info = env_v.step(action)
+            observation, reward, done, info = self.env_v.step(action)
             score += reward
             #env_v.render()
             if done:
