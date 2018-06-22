@@ -1,6 +1,7 @@
 import requests
 from neat import Population
 from copy import deepcopy 
+import pickle
 # PopulationSyn class for synchronizing optimization states with the singularity p2p optimzation network
 
 # PopulationSyn extends Population
@@ -61,7 +62,7 @@ class PopulationSyn(Population):
                     # initialize for less fit search
                     less_fit = None
                     less_fitness = 10000
-                    for g in itervalues(pop.population):
+                    for g in itervalues(self.population):
                         if g not in remote_reps:
                             dist = g.distance(remote_reps[i], config.genome_config)
                             if dist is None:
@@ -88,9 +89,9 @@ class PopulationSyn(Population):
                         tmp_genom = deepcopy(remote_reps[i])
                     # Hack: overwrites original genome key with the replacing one
                         tmp_genom.key = closer.key
-                        pop.population[closer.key] = deepcopy(tmp_genom)
+                        self.population[closer.key] = deepcopy(tmp_genom)
                         print("gen_best=", closer.key)
-                        pop.best_genome = deepcopy(tmp_genom)
+                        self.best_genome = deepcopy(tmp_genom)
                         #gen_best = deepcopy(tmp_genom)
                     else:
                         # si el remote fitness>local, reemplazar el remote de pop2 en pop1
@@ -106,33 +107,33 @@ class PopulationSyn(Population):
                                         tmp_genom = deepcopy(remote_reps[i])
                                         # Hack: overwrites original genome key with the replacing one
                                         tmp_genom.key = closer.key
-                                        pop.population[closer.key] = deepcopy(tmp_genom)
+                                        self.population[closer.key] = deepcopy(tmp_genom)
                                         print("Replaced=", closer.key)
                                         # actualiza gen_best y best_genome al remoto
-                                        pop.best_genome = deepcopy(tmp_genom)
+                                        self.best_genome = deepcopy(tmp_genom)
                                         #gen_best = deepcopy(tmp_genom)
                                 if closer.fitness is None:
                                     tmp_genom = deepcopy(remote_reps[i])
                                     # Hack: overwrites original genome key with the replacing one
-                                    tmp_genom.key = len(pop.population) + 1
-                                    pop.population[tmp_genom.key] = tmp_genom
+                                    tmp_genom.key = len(self.population) + 1
+                                    self.population[tmp_genom.key] = tmp_genom
                                     print("Created Por closer.fitness=NONE : ", tmp_genom.key)
                                     # actualiza gen_best y best_genome al remoto
-                                    pop.best_genome = deepcopy(tmp_genom)
+                                    self.best_genome = deepcopy(tmp_genom)
                                     #gen_best = deepcopy(tmp_genom)
                             else:
                                 #si closer está en remote_reps es porque no hay ningun otro cercano así que lo adiciona
                                 tmp_genom = deepcopy(remote_reps[i])
                                 # Hack: overwrites original genome key with the replacing one
-                                tmp_genom.key = len(pop.population) + 1
-                                pop.population[tmp_genom.key] = tmp_genom
+                                tmp_genom.key = len(self.population) + 1
+                                self.population[tmp_genom.key] = tmp_genom
                                 print("Created por Closer in rempte_reps=", tmp_genom.key)
                                 # actualiza gen_best y best_genome al remoto
-                                pop.best_genome = deepcopy(tmp_genom)
+                                self.best_genome = deepcopy(tmp_genom)
                                 #gen_best = deepcopy(tmp_genom)
 
                 #ejecuta speciate
-                pop.species.speciate(config, pop.population, pop.generation)
+                self.species.speciate(config, self.population, self.generation)
                 print("\nSpeciation after migration done")
         # Si el perf reportado es menor pero no igual al de pop1
         if cont['result'][0]['current_block_performance'] < best_fitness:
@@ -219,7 +220,7 @@ class PopulationSyn(Population):
             # Hace request de CreateParam a syn
             form_data = {"process_hash": "ph", "app_hash": "ah",
                 "parameter_link": my_url + "/genoms/" + filename,
-                "parameter_text": pop.best_genome.key, "parameter_blob": "", "validation_hash": "",
+                "parameter_text": self.best_genome.key, "parameter_blob": "", "validation_hash": "",
                 "hash": "h", "performance": best_fitness, "redir": "1", "username": "harveybc",
                 "pass_hash": "$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q"}
             # TODO: COLOCAR DIRECCION CONFIGURABLE
