@@ -1,23 +1,6 @@
 # This agent uses the forex_env_v2 that uses continuous and binary controls
 from __future__ import print_function
 from copy import deepcopy
-import gym
-import gym.wrappers
-import gym_forex
-import json
-import matplotlib.pyplot as plt
-import multiprocessing
-import neat
-from neat.six_util import iteritems
-from neat.six_util import itervalues
-import numpy as np
-import os
-import pickle
-import random
-
-import sys
-import time
-import visualize
 from gym.envs.registration import register
 from population_syn import PopulationSyn # extended neat population for synchronizing witn singularity p2p network
 from genome_evaluator import GenomeEvaluator
@@ -116,13 +99,13 @@ def run():
         try:
             # if it is not the  first iteration calculate training and validation scores
             if iteration_counter >0:
-                avg_score=pop.trainingValidationScore(gen_best)
+                avg_score=pop.training_validation_score(gen_best)
             # if it is not the first iteration
             if iteration_counter >= 0:
                 # synchronizes with singularity migrating maximum 3 specimens
-                pop.synSingularity(3, my_url, stats, gen_best,avg_score)
+                pop.syn_singularity(3, my_url, stats, gen_best,avg_score)
                 # perform pending evaluations on the singularity network, max 2
-                pop.evaluatePending(2)
+                pop.evaluate_pending(2)
                 #increment iteration counter
                 iteration_counter = iteration_counter + 1
             # execute num_iterations consecutive iterations of the NEAT algorithm
