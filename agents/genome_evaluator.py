@@ -101,7 +101,7 @@ class GenomeEvaluator(object):
             genome.fitness = scores[i]
             i = i + 1
             
-    def training_validation_score(self,gen_best):
+    def training_validation_score(self,gen_best,config):
         # calculate training and validation fitness
         best_scores = []
         observation = self.env_t.reset()

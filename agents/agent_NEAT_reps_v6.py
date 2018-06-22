@@ -88,7 +88,7 @@ def run():
         try:
             # if it is not the  first iteration calculate training and validation scores
             if iteration_counter >0:
-                avg_score=ec.training_validation_score(gen_best)
+                avg_score=ec.training_validation_score(gen_best, config)
             # if it is not the first iteration
             if iteration_counter >= 0:
                 # synchronizes with singularity migrating maximum 3 specimens
