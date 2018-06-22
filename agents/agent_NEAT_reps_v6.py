@@ -8,6 +8,8 @@ import gym
 import sys
 import neat
 import os
+import pickle
+import random
 # Multi-core machine support
 NUM_CORES = 1
 # First argument is the training dataset
