@@ -5,9 +5,11 @@ from neat import Population
 # PopulationSyn extends Population
 class PopulationSyn(Population):
     # synSingularity method for synchronizing NEAT optimization states with singularity 
-    # args: best_genoms array of best genomes
+    # args: num_replacements = number of specimens to be migrated to/from singularity
+    #       my_url = url of the singularity API
+    #       stats = neat.StatisticsReporter
     # returns: best_genoms selected between the remote and local
-    def synSingularity(self, num_replacements, my_url):
+    def synSingularity(self, num_replacements, my_url, stats):
         # requests the last optimization state TODO: HACER PROCESS CONFIGURABLE Y POR HASH no por id for multi-process
         res = requests.get(my_url + "/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
         cont = res.json()
