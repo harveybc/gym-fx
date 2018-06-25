@@ -34,7 +34,7 @@ class PopulationSyn(Population):
         less_fit = None
         min_fitness = 100000000
         
-        for g in items(self.population):
+        for g in self.population.items():
             print('\nmin_fitness=',min_fitness,'\n')
             print('\ng.fitness=',g.fitness)
             if g.fitness < min_fitness:
