@@ -83,8 +83,11 @@ class PopulationSyn(Population):
         # if local_perf > remote_perf
         if (local_perf >remote_perf):
             # upload local_reps
-            # Hace request de CreateParam a syn
+            print("\nreps=",reps)
             filename = '{0}{1}'.format("reps-", rep.current_generation)
+            with open(filename, 'wb') as f:
+                pickle.dump(reps, f)        
+            # Hace request de CreateParam a syn
             form_data = {"process_hash": "ph", "app_hash": "ah",
                 "parameter_link": my_url + "/genoms/" + filename,
                 "parameter_text": 0, "parameter_blob": "", "validation_hash": "",
