@@ -14,9 +14,13 @@ class PopulationSyn(Population):
         accum=0
         best=None
         max_fitness=-100000
+        print('\n*****************************************************')
+        print('\nbest_genoms ')
+        
         for n, g in enumerate(best_genomes):
             accum=accum+g.fitness
             countr = countr + 1
+            print(' fit'+n+'='+g.fitness)
             if (g.fitness > max_fitness):
                 max_fitness = g.fitness
                 best=g
@@ -43,6 +47,9 @@ class PopulationSyn(Population):
     # returns: best_genoms selected between the remote and local
     def syn_singularity(self, num_replacements, my_url, stats, gen_best, avg_score, current_generation, config):
         # downloads process from singualrity to find last optimum
+        print('num_rep=', num_replacements,'my_url=',  my_url,'stats=',  stats,
+            'gen_best=', gen_best,'avg_score=',  avg_score,
+            'current_generation=',  current_generation)
         res = requests.get(my_url + "/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
         cont = res.json()
         # print results of request
