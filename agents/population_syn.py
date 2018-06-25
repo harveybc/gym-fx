@@ -9,7 +9,7 @@ from neat.six_util import itervalues
 # PopulationSyn extends Population
 class PopulationSyn(Population):
     # calculateFitness(best_genomes)
-    def calculateFitness(best_genomes):
+    def calculateFitness(self, best_genomes):
         countr=0
         for n, g in enumerate(best_genomes):
             accum=accum+g.fitness
@@ -21,7 +21,7 @@ class PopulationSyn(Population):
         return best_fitness
     
     # searchLessFit()
-    def searchLessFit():
+    def searchLessFit(self):
         less_fit = None
         min_fitness = 100000000
         for g in itervalues(self.population):
