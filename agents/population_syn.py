@@ -9,9 +9,27 @@ from neat.six_util import itervalues
 # PopulationSyn extends Population
 class PopulationSyn(Population):
     # calculateFitness(best_genomes)
+    def calculateFitness(best_genomes):
+        countr=0
+        for n, g in enumerate(best_genomes):
+            accum=accum+g.fitness
+            countr = countr + 1
+        if countr > 0:    
+            best_fitness = (3*avg_score+(accum/countr))/4
+        else:
+            best_fitness = 0
+        return best_fitness
     
     # searchLessFit()
-    
+    def searchLessFit():
+        less_fit = None
+        min_fitness = 100000000
+        for g in itervalues(self.population):
+            if g.fitness < min_fitness:
+                min_fitness = g.fitness
+                less_fit = deepcopy(g)
+        return less_fit                
+
     # synSingularity method for synchronizing NEAT optimization states with singularity 
     # args: num_replacements = number of specimens to be migrated to/from singularity
     #       my_url = url of the singularity API
