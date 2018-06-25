@@ -44,7 +44,7 @@ class PopulationSyn(Population):
         last_optimum_id = cont['result'][0]['last_optimum_id']
         # calcualte local_perf as the weitgthed average of the best performers
         best_genomes = stats.best_unique_genomes(num_replacements)
-        local_perf = self.calculateFitness(best_genomes)
+        local_perf = self.calculateFitness(self,best_genomes)
         # remote performance from results of request
         remote_perf = cont['result'][0]['current_block_performance']
         print('\nremote_performance =', cont['result'][0]['current_block_performance'], '\nlocal_performance =', local_perf, '\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
@@ -61,7 +61,7 @@ class PopulationSyn(Population):
             # for each remote_reps as remote
             for remote in remote_reps:
                 # search the less_fit in pop
-                less_fit = self.searchLessFit()
+                less_fit = self.searchLessFit(self)
                 # replaces less_fit with remote
                 less_fit_key = less_fit.key
                 print(less_fit_key)
