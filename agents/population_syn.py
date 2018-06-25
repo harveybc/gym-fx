@@ -33,10 +33,10 @@ class PopulationSyn(Population):
     def searchLessFit(self):
         less_fit = None
         min_fitness = 100000000
-        for g in itervalues(self.population):
-            print('\ng.fitness=',g.fitness)
+        
+        for g in items(self.population):
             print('\nmin_fitness=',min_fitness,'\n')
-            
+            print('\ng.fitness=',g.fitness)
             if g.fitness < min_fitness:
                 min_fitness = g.fitness
                 less_fit = deepcopy(g)
@@ -83,7 +83,7 @@ class PopulationSyn(Population):
             # for each remote_reps as remote
             print('\nlocal_perf < remote_perf =')
             for remote in remote_reps:
-                print(' fit=', remote.fitness)
+                print(' remote_fitness=', remote.fitness)
                 # search the less_fit in pop
                 less_fit = self.searchLessFit()
                 # replaces less_fit with remote
