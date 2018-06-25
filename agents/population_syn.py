@@ -8,12 +8,63 @@ from neat.six_util import itervalues
 
 # PopulationSyn extends Population
 class PopulationSyn(Population):
+    # calculateFitness(best_genomes)
+    
+    # searchLessFit()
+    
     # synSingularity method for synchronizing NEAT optimization states with singularity 
     # args: num_replacements = number of specimens to be migrated to/from singularity
     #       my_url = url of the singularity API
     #       stats = neat.StatisticsReporter
     # returns: best_genoms selected between the remote and local
     def syn_singularity(self, num_replacements, my_url, stats, gen_best, avg_score, rep, config):
+        # downloads process from singualrity to find last optimum
+        res = requests.get(my_url + "/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
+        cont = res.json()
+        # print results of request
+        print('\nremote_performance =', cont['result'][0]['current_block_performance'])
+        last_optimum_id = cont['result'][0]['last_optimum_id']
+        # calcualte local_perf as the weitgthed average of the best performers
+        best_genomes = stats.best_unique_genomes(num_replacements)
+        local_perf = self.calculateFitness(best_genomes)
+        # remote performance from results of request
+        remote_perf = cont['result'][0]['current_block_performance']
+        print('\nremote_performance =', cont['result'][0]['current_block_performance'], '\nlocal_performance =', local_perf, '\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
+        # if remote_performance is not equal to local_performance, download remote_reps
+        if (local_perf != remote_perf):
+            # hace request GetParameter(id)
+            res_p = requests.get(my_url + "/parameters/" + str(last_optimum_id) + "?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
+            cont_param = res_p.json()
+            # descarga el checkpoint del link de la respuesta si cont.parameter_link
+            print('Parameter Downloaded')
+            print('\nMigrations =')
+        # if local_perf < remote_perf
+        if (local_perf < remote_perf):
+            # for each remote_reps as remote
+            for remote in remote_reps:
+                # search the less_fit in pop
+                less_fit = self.searchLessFit()
+                # replaces less_fit with remote
+                less_fit_key = less_fit.key
+                print(less_fit_key)
+                self.population[less_fit_key] = less_fit
+        # if local_perf > remote_perf
+        if (local_perf >remote_perf):
+            # upload local_reps
+            # Hace request de CreateParam a syn
+            form_data = {"process_hash": "ph", "app_hash": "ah",
+                "parameter_link": my_url + "/genoms/" + filename,
+                "parameter_text": 0, "parameter_blob": "", "validation_hash": "",
+                "hash": "h", "performance": local_perf, "redir": "1", "username": "harveybc",
+                "pass_hash": "$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q"}
+            # TODO: COLOCAR DIRECCION CONFIGURABLE
+            res = requests.post(
+                                my_url + "/parameters?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph",
+                                data=form_data)
+            res_json = res.json()
+        return 0
+    
+    def syn_singularity2(self, num_replacements, my_url, stats, gen_best, avg_score, rep, config):
         # requests the last optimization state TODO: HACER PROCESS CONFIGURABLE Y POR HASH no por id for multi-process
         res = requests.get(my_url + "/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
         cont = res.json()
