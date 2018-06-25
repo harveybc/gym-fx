@@ -89,12 +89,12 @@ class PopulationSyn(Population):
                 self.population[less_fit_key] = less_fit
         # if local_perf > remote_perf
         if (local_perf >remote_perf):
-            # upload local_reps
+            # upload best_genomes
             print('***********************************************************')
             print("\nNEW OPTIMUM = ",best_genomes) 
             filename = '{0}{1}'.format("reps-", current_generation)
             with open(filename, 'wb') as f:
-                pickle.dump(reps, f)        
+                pickle.dump(best_genomes, f)        
             # Hace request de CreateParam a syn
             form_data = {"process_hash": "ph", "app_hash": "ah",
                 "parameter_link": my_url + "/genoms/" + filename,
