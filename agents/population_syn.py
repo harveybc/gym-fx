@@ -90,7 +90,8 @@ class PopulationSyn(Population):
         # if local_perf > remote_perf
         if (local_perf >remote_perf):
             # upload local_reps
-            print("\nreps=",reps)
+            print('***********************************************************')
+            print("\nNEW OPTIMUM = ",best_genomes)
             filename = '{0}{1}'.format("reps-", current_generation)
             with open(filename, 'wb') as f:
                 pickle.dump(reps, f)        
@@ -100,7 +101,6 @@ class PopulationSyn(Population):
                 "parameter_text": 0, "parameter_blob": "", "validation_hash": "",
                 "hash": "h", "performance": local_perf, "redir": "1", "username": "harveybc",
                 "pass_hash": "$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q"}
-            # TODO: COLOCAR DIRECCION CONFIGURABLE
             res = requests.post(
                                 my_url + "/parameters?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph",
                                 data=form_data)
