@@ -60,8 +60,16 @@ class PopulationSyn(Population):
             res_p = requests.get(my_url + "/parameters/" + str(last_optimum_id) + "?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
             cont_param = res_p.json()
             # descarga el checkpoint del link de la respuesta si cont.parameter_link
-            print('Parameter Downloaded')
-            print('\nMigrations =')
+            print('\nNEW OPTIMUM - cont_param =', cont_param)
+            #print('\nmigrations =')
+            if cont_param['result'][0]['parameter_link'] is not None:
+                genom_data = requests.get(cont_param['result'][0]['parameter_link']).content
+                with open('remote_reps', 'wb') as handler:
+                    handler.write(genom_data)
+                    handler.close()
+                # carga genom descargado en nueva población pop2
+                with open('remote_reps', 'rb') as f:
+                    remote_reps = pickle.load(f)
         # if local_perf < remote_perf
         if (local_perf < remote_perf):
             # for each remote_reps as remote
