@@ -34,6 +34,9 @@ class PopulationSyn(Population):
         less_fit = None
         min_fitness = 100000000
         for g in itervalues(self.population):
+            print('\ng.fitness=',g.fitness)
+            print('\nmin_fitness=',min_fitness,'\n')
+            
             if g.fitness < min_fitness:
                 min_fitness = g.fitness
                 less_fit = deepcopy(g)
