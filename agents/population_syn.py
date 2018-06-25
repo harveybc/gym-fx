@@ -12,11 +12,16 @@ class PopulationSyn(Population):
     def calculateFitness(self, best_genomes):
         countr=0
         accum=0
+        best=none
+        max_fitness=-100000
         for n, g in enumerate(best_genomes):
             accum=accum+g.fitness
             countr = countr + 1
+            if (g.fitness > max_fitness):
+                max_fitness = g.fitness
+                best=g
         if countr > 0:    
-            best_fitness = (3*avg_score+(accum/countr))/4
+            best_fitness = ((len(best_genomes)-1)*g.fitness+(accum/countr))/len(best_genomes)
         else:
             best_fitness = 0
         return best_fitness
