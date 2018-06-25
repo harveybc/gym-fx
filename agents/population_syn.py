@@ -91,7 +91,7 @@ class PopulationSyn(Population):
         if (local_perf >remote_perf):
             # upload local_reps
             print('***********************************************************')
-            print("\nNEW OPTIMUM = ",best_genomes)
+            print("\nNEW OPTIMUM = ",best_genomes) 
             filename = '{0}{1}'.format("reps-", current_generation)
             with open(filename, 'wb') as f:
                 pickle.dump(reps, f)        
