@@ -70,6 +70,7 @@ class PopulationSyn(Population):
         if (local_perf >remote_perf):
             # upload local_reps
             # Hace request de CreateParam a syn
+            filename = '{0}{1}'.format("reps-", rep.current_generation)
             form_data = {"process_hash": "ph", "app_hash": "ah",
                 "parameter_link": my_url + "/genoms/" + filename,
                 "parameter_text": 0, "parameter_blob": "", "validation_hash": "",
