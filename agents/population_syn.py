@@ -59,6 +59,7 @@ class PopulationSyn(Population):
             # hace request GetParameter(id)
             res_p = requests.get(my_url + "/parameters/" + str(last_optimum_id) + "?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
             cont_param = res_p.json()
+            print('\ncont_param =', cont_param)
             # descarga el checkpoint del link de la respuesta si cont.parameter_link
             if cont_param['result'][0]['parameter_link'] is not None:
                 genom_data = requests.get(cont_param['result'][0]['parameter_link']).content

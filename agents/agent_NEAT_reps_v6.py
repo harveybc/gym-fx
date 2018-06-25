@@ -98,7 +98,9 @@ def run():
                 #increment iteration counter
                 iteration_counter = iteration_counter + 1
             # execute num_iterations consecutive iterations of the NEAT algorithm
-            gen_best = pop.run(ec.evaluate_genomes, num_iterations)
+            #gen_best = pop.run(ec.evaluate_genomes, num_iterations)
+            gen_best = pop.run(ec.evaluate_genomes, 2)
+            
             # verify the training score is enough to stop the NEAT algorithm: TODO change to validation score when generalization is ok 
             if avg_score < 2000000000:
                 solved = False
