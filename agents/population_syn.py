@@ -38,7 +38,7 @@ class PopulationSyn(Population):
             print('\nmin_fitness=',min_fitness,'\n')
             print('\ng = ',g[1])
             print('\ng.key = ',g[1].key)
-            print('\ng.fitness=',g[1]['Fitness'])
+            print('\ng.fitness=',g[1].fitness)
             if g[1]['Fitness'] < min_fitness:
                 min_fitness = g[1]['Fitness']
                 less_fit = deepcopy(g)
