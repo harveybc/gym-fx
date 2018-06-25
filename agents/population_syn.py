@@ -12,7 +12,7 @@ class PopulationSyn(Population):
     def calculateFitness(self, best_genomes):
         countr=0
         accum=0
-        best=none
+        best=None
         max_fitness=-100000
         for n, g in enumerate(best_genomes):
             accum=accum+g.fitness
