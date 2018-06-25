@@ -79,7 +79,7 @@ class PopulationSyn(Population):
             # for each remote_reps as remote
             print('\nlocal_perf < remote_perf =')
             for remote in remote_reps:
-                print(' fit=', remote.fitnees)
+                print(' fit=', remote.fitness)
                 # search the less_fit in pop
                 less_fit = self.searchLessFit(self)
                 # replaces less_fit with remote
