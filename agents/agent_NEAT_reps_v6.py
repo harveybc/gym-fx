@@ -101,13 +101,13 @@ def run():
             #gen_best = pop.run(ec.evaluate_genomes, num_iterations)
             print("\nBEFORE")
             for g in pop.population.items():
-                print("\nbefore.key=",g.key,"   before.fitness",g.fitness)
+                print("\nbefore.key=",g[1].key,"   before.fitness",g[1].fitness)
             
             gen_best = pop.run(ec.evaluate_genomes, 2)
             
             print("\AFTER")
             for g in pop.population.items():
-                print("\nafter.key=",g.key,"   after.fitness",g.fitness)
+                print("\nafter.key=",g[1].key,"   after.fitness",g[1].fitness)
             # verify the training score is enough to stop the NEAT algorithm: TODO change to validation score when generalization is ok 
             if avg_score < 2000000000:
                 solved = False
