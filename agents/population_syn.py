@@ -80,6 +80,8 @@ class PopulationSyn(Population):
                 # carga genom descargado en nueva población pop2
                 with open('remote_reps', 'rb') as f:
                     remote_reps = pickle.load(f)
+            print('\nPARAMETERS DOWNLOADED: remote_reps=', remote_reps)
+                    
         # if local_perf < remote_perf
         if (local_perf < remote_perf):
             # for each remote_reps as remote
