@@ -41,9 +41,10 @@ class PopulationSyn(Population):
             if g[1].fitness is None:
                 min_fitness = -1000
                 less_fit = g[1]
-            if g[1].fitness < min_fitness:
-                min_fitness = g[1].fitness
-                less_fit = g[1]
+            else:
+                if g[1].fitness < min_fitness:
+                    min_fitness = g[1].fitness
+                    less_fit = g[1]
         return less_fit
 
     # synSingularity method for synchronizing NEAT optimization states with singularity 
