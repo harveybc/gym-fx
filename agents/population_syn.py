@@ -34,7 +34,6 @@ class PopulationSyn(Population):
         less_fit = None
         min_fitness = 10000
         for g in self.population.items():
-            print('\n****************************************',min_fitness,'\n')
             # print('\ng[1] = ',g[1])
             #print('\ng[1].key = ',g[1].key)
             #print('\ng[1].fitness=',g[1].fitness)
