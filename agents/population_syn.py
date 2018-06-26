@@ -88,7 +88,7 @@ class PopulationSyn(Population):
                 # search the less_fit in pop
                 less_fit = self.searchLessFit()
                 # replaces less_fit with remote
-                less_fit_key = less_fit[1].key
+                less_fit_key = less_fit.key
                 print(less_fit_key)
                 self.population[less_fit_key] = less_fit
         # if local_perf > remote_perf
