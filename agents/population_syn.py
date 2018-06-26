@@ -32,19 +32,19 @@ class PopulationSyn(Population):
     # searchLessFit()
     def searchLessFit(self):
         less_fit = None
-        min_fitness = 100000000
+        min_fitness = 10000
         for g in self.population.items():
             print('\n****************************************',min_fitness,'\n')
             # print('\ng[1] = ',g[1])
             #print('\ng[1].key = ',g[1].key)
             #print('\ng[1].fitness=',g[1].fitness)
             if g[1].fitness is None:
-                min_fitness = -100000
+                min_fitness = -1000
                 less_fit = g[1]
             if g[1].fitness < min_fitness:
                 min_fitness = g[1].fitness
                 less_fit = g[1]
-        return less_fit                
+        return less_fit
 
     # synSingularity method for synchronizing NEAT optimization states with singularity 
     # args: num_replacements = number of specimens to be migrated to/from singularity
