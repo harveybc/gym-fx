@@ -36,7 +36,7 @@ class PopulationSyn(Population):
         for g in self.population.items():
             print('\nmin_fitness=',min_fitness,'\n')
             print('\ng = ',g[1])
-            print('\ng.key = ',g[1].Key)
+            print('\ng.key = ',g[1].key)
             print('\ng.fitness=',g[1].fitness)
             if g[1].fitness < min_fitness:
                 min_fitness = g[1].fitness
