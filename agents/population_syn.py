@@ -84,8 +84,7 @@ class PopulationSyn(Population):
         if (local_perf < remote_perf):
             print("\nPARAMETERS DOWNLOADED = ",best_genomes) 
             # for each remote_reps as remote
-            print('\nlocal_perf < remote_perf =')
-            print('\nremote_fitness=', remote.fitness)
+            print('\nremote_fitness = ', remote_perf, 'local_fitness = ', local_perf)
             for remote in remote_reps:
                 # search the less_fit in pop
                 less_fit = self.searchLessFit()
