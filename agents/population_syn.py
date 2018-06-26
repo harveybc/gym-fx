@@ -40,7 +40,7 @@ class PopulationSyn(Population):
             print('\ng[1].fitness=',g[1].fitness)
             if g[1].fitness < min_fitness:
                 min_fitness = g[1].fitness
-                less_fit = deepcopy(g)
+                less_fit = g[1]
         return less_fit                
 
     # synSingularity method for synchronizing NEAT optimization states with singularity 
