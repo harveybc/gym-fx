@@ -82,7 +82,6 @@ class PopulationSyn(Population):
                     remote_reps = pickle.load(f)
         # if local_perf < remote_perf
         if (local_perf < remote_perf):
-            print("\nPARAMETERS DOWNLOADED = ",best_genomes) 
             # for each remote_reps as remote
             print('\nremote_fitness = ', remote_perf, 'local_fitness = ', local_perf)
             for remote in remote_reps:
@@ -96,7 +95,9 @@ class PopulationSyn(Population):
         if (local_perf >remote_perf):
             # upload best_genomes
             print('***********************************************************')
-            print("\nNEW OPTIMUM = ",best_genomes) 
+            print("\nNEW OPTIMUM") 
+            for g in best_genomes:
+                print("\nbest_genomes[i]=") 
             filename = '{0}{1}'.format("reps-", current_generation)
             with open(filename, 'wb') as f:
                 pickle.dump(best_genomes, f)        
