@@ -26,7 +26,7 @@ class PopulationSyn(Population):
         if countr > 0:    
             best_fitness = ((len(best_genomes)-1)*g.fitness+(accum/countr))/len(best_genomes)
         else:
-            best_fitness = 0
+            best_fitness = -100000
         return best_fitness
     
     # searchLessFit()
@@ -39,7 +39,8 @@ class PopulationSyn(Population):
             #print('\ng[1].key = ',g[1].key)
             #print('\ng[1].fitness=',g[1].fitness)
             if g[1].fitness is None:
-                print(g[1])
+                min_fitness = -100000
+                less_fit = g[1]
             if g[1].fitness < min_fitness:
                 min_fitness = g[1].fitness
                 less_fit = g[1]
