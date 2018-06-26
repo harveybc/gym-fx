@@ -15,7 +15,7 @@ class PopulationSyn(Population):
         best=None
         max_fitness=-100000
         print('\n*************************************************************')
-        print('\nbest_genoms ')
+        print('\nbest_genomes ')
         for n, g in enumerate(best_genomes):
             accum=accum+g.fitness
             countr = countr + 1
