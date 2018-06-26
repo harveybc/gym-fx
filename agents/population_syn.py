@@ -33,11 +33,10 @@ class PopulationSyn(Population):
     def searchLessFit(self):
         less_fit = None
         min_fitness = 100000000
-        
         for g in self.population.items():
             print('\nmin_fitness=',min_fitness,'\n')
             print('\ng = ',g[1])
-            print('\ng.key = ',g[1].key)
+            print('\ng.key = ',g[1][0])
             print('\ng.fitness=',g[1].fitness)
             if g[1].fitness < min_fitness:
                 min_fitness = g[1].fitness
