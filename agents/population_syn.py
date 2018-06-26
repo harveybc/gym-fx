@@ -67,6 +67,7 @@ class PopulationSyn(Population):
         remote_perf = cont['result'][0]['current_block_performance']
         print('\nremote_performance =', cont['result'][0]['current_block_performance'], '\nlocal_performance =', local_perf, '\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
         # if remote_performance is not equal to local_performance, download remote_reps
+        parameter_downloaded = 0
         if (local_perf != remote_perf):
             # hace request GetParameter(id)
             res_p = requests.get(my_url + "/parameters/" + str(last_optimum_id) + "?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
@@ -82,9 +83,10 @@ class PopulationSyn(Population):
                 with open('remote_reps', 'rb') as f:
                     remote_reps = pickle.load(f)
                 print('\nPARAMETERS DOWNLOADED: remote_reps=', remote_reps)
+                parameter_downloaded = 1
                     
         # if local_perf < remote_perf
-        if (local_perf < remote_perf):
+        if (local_perf < remote_perf) and (parameter_downloaded):
             # for each remote_reps as remote
             print('\nremote_fitness = ', remote_perf, 'local_fitness = ', local_perf)
             for remote in remote_reps:
