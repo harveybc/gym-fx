@@ -99,7 +99,7 @@ class PopulationSyn(Population):
             print('***********************************************************')
             print("\nNEW OPTIMUM") 
             for g in best_genomes:
-                print("\nbest_genomes[i]=",g) 
+                print("\nbest_genomes[i] = ",g.key,"  fitness = ",g.fitness) 
             filename = '{0}{1}'.format("reps-", current_generation)
             with open(filename, 'wb') as f:
                 pickle.dump(best_genomes, f)        
