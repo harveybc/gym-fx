@@ -38,6 +38,8 @@ class PopulationSyn(Population):
             # print('\ng[1] = ',g[1])
             print('\ng[1].key = ',g[1].key)
             print('\ng[1].fitness=',g[1].fitness)
+            if g[1].fitness is None:
+                print(g[1])
             if g[1].fitness < min_fitness:
                 min_fitness = g[1].fitness
                 less_fit = g[1]
