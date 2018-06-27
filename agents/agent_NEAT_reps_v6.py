@@ -102,13 +102,13 @@ def run():
             print("\nBEFORE")
             #for g in pop.population.items():
             for g in ec.genomes_h:
-                print("before.key=",g[1].key,"   before.fitness",g[1].fitness)
+                print("before.key=",g.key,"   before.fitness",g.fitness)
             
             gen_best = pop.run(ec.evaluate_genomes, 2)
             
             print("\nAFTER")
             for g in ec.genomes_h:
-                print("after.key=",g[1].key,"   after.fitness",g[1].fitness)
+                print("after.key=",g.key,"   after.fitness",g.fitness)
                 
             
             # verify the training score is enough to stop the NEAT algorithm: TODO change to validation score when generalization is ok 
