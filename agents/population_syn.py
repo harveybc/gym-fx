@@ -9,7 +9,17 @@ from neat.six_util import itervalues
 # PopulationSyn extends Population
 class PopulationSyn(Population):
     #def getBestGenomes(genomes_h, number)
-
+    
+    # replaces in remote the genomes that has less_fit_key
+    def replaceGenomes(self, genomes, less_fit_key, remote):
+        genomes_h = []
+        for g in genomes:
+            if g.key == less_fit_key:
+                remote.key = less_fit_key
+                g = remote
+            genomes_h.append(g)
+                
+        return genomes_h
             
     # calculateFitness(best_genomes)
     def calculateFitness(self, best_genomes):
@@ -17,8 +27,7 @@ class PopulationSyn(Population):
         accum=0
         best=None
         max_fitness=-1000
-        #print('\n*************************************************************')
-        #print('\nbest_genomes ')
+        #search for max fitness
         for n, g in enumerate(best_genomes):
             accum=accum+g.fitness
             countr = countr + 1
@@ -93,14 +102,19 @@ class PopulationSyn(Population):
             # for each remote_reps as remote
             print('\nremote_fitness = ', remote_perf, 'local_fitness = ', local_perf)
             #print('\ngenomes_h = ',genomes_h)
+            genomes = genomes_h
             for remote in remote_reps:
                 # search the less_fit in pop
-                less_fit = self.searchLessFit(genomes_h)
+                less_fit = self.searchLessFit(genomes)
                 # replaces less_fit with remote
                 #print("less_fit = ", less_fit)
                 less_fit_key = less_fit.key
                 print('\nREPLACED = ', less_fit_key, 'fitness=', less_fit.fitness)
-                self.population[less_fit_key] = less_fit
+                #replaces lessfit in population by remote with the same key as less fit
+                remote.key=less_fit_key
+                self.population[less_fit_key] = remote
+                genomes=self.replaceGenomes(genomes, less_fit_key, remote)
+                
         # if local_perf > remote_perf
         if (local_perf >remote_perf):
             # upload best_genomes
