@@ -36,6 +36,7 @@ class PopulationSyn(Population):
     def searchLessFit(self, genomes_h):
         less_fit = None
         min_fitness = 10000
+        print('\ngenomes_h = ',genomes_h)
         for g in genomes_h:
             print('\ng = ',g)
             #print('\ng[1].key = ',g[1].key)
