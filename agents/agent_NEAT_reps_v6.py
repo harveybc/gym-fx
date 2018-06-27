@@ -94,24 +94,14 @@ def run():
             if iteration_counter >= 0:
                 # synchronizes with singularity migrating maximum 3 specimens 
                 pop.syn_singularity(4, my_url, stats,avg_score,rep.current_generation, config, ec.genomes_h)
+                pop.species.speciate(config, pop.population, pop.generation)
+                print("\nSpeciation after migration done")
                 # perform pending evaluations on the singularity network, max 2
                 pop.evaluate_pending(2)
                 #increment iteration counter
                 iteration_counter = iteration_counter + 1
             # execute num_iterations consecutive iterations of the NEAT algorithm
-            #gen_best = pop.run(ec.evaluate_genomes, num_iterations)
-            #print("\nBEFORE")
-            #for g in pop.population.items():
-            #for g in ec.genomes_h:
-            #    print("before.key=",g.key,"   before.fitness",g.fitness)
-            
             gen_best = pop.run(ec.evaluate_genomes, 2)
-            
-            #print("\nAFTER")
-            #for g in ec.genomes_h:
-            #    print("after.key=",g.key,"   after.fitness",g.fitness)
-                
-            
             # verify the training score is enough to stop the NEAT algorithm: TODO change to validation score when generalization is ok 
             if avg_score < 2000000000:
                 solved = False
