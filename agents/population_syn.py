@@ -108,6 +108,7 @@ class PopulationSyn(Population):
                 # replaces less_fit with remote
                 #print("less_fit = ", less_fit)
                 #less_fit_key = less_fit.key
+                less_fit_key = remote.key
                 print('\nREPLACED = ', less_fit_key, 'fitness=', less_fit.fitness, 
                     'new_fitness', less_fit.key)
                 #replaces lessfit in population by remote with the same key as less fit
