@@ -100,6 +100,7 @@ class GenomeEvaluator(object):
         for genome, net in nets:
             genome.fitness = scores[i]
             i = i + 1
+            print("during.key = ",genome.key,"  during.fitness",genome.fitness)
             
     def training_validation_score(self,gen_best,config):
         # calculate training and validation fitness

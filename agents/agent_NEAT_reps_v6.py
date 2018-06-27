@@ -108,6 +108,14 @@ def run():
             print("\nAFTER")
             for g in pop.population.items():
                 print("after.key=",g[1].key,"   after.fitness",g[1].fitness)
+              
+                
+            best_genomes = stats.best_unique_genomes(num_replacements)
+            
+            for g in pop.population.items():
+                print("after.key=",g[1].key,"   after.fitness",g[1].fitness)
+            
+            
             # verify the training score is enough to stop the NEAT algorithm: TODO change to validation score when generalization is ok 
             if avg_score < 2000000000:
                 solved = False
