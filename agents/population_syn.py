@@ -33,7 +33,7 @@ class PopulationSyn(Population):
         return best_fitness
     
     # searchLessFit()
-    def searchLessFit(self, genomes_h, keys_h):
+    def searchLessFit(self, genomes_h):
         less_fit = None
         min_fitness = 10000
         for g in genomes_h:
