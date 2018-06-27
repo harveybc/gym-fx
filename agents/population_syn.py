@@ -97,7 +97,7 @@ class PopulationSyn(Population):
                 # search the less_fit in pop
                 less_fit = self.searchLessFit(genomes_h)
                 # replaces less_fit with remote
-                print("less_fit = ", less_fit)
+                #print("less_fit = ", less_fit)
                 less_fit_key = less_fit.key
                 print('\nREPLACED = ',less_fit_key, 'fitness=', less_fit.fitness)
                 self.population[less_fit_key] = less_fit
