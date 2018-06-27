@@ -8,6 +8,9 @@ from neat.six_util import itervalues
 
 # PopulationSyn extends Population
 class PopulationSyn(Population):
+    #def getBestGenomes(genomes_h, number)
+
+            
     # calculateFitness(best_genomes)
     def calculateFitness(self, best_genomes):
         countr=0
@@ -30,20 +33,20 @@ class PopulationSyn(Population):
         return best_fitness
     
     # searchLessFit()
-    def searchLessFit(self):
+    def searchLessFit(self, genomes_h):
         less_fit = None
         min_fitness = 10000
-        for g in self.population.items():
+        for g in genomes_h:
             # print('\ng[1] = ',g[1])
             #print('\ng[1].key = ',g[1].key)
             #print('\ng[1].fitness=',g[1].fitness)
-            if g[1].fitness is None:
+            if g.fitness is None:
                 min_fitness = -1000
-                less_fit = g[1]
+                less_fit = g
             else:
-                if g[1].fitness < min_fitness:
-                    min_fitness = g[1].fitness
-                    less_fit = g[1]
+                if g.fitness < min_fitness:
+                    min_fitness = g.fitness
+                    less_fit = g
         return less_fit
 
     # synSingularity method for synchronizing NEAT optimization states with singularity 
@@ -51,7 +54,7 @@ class PopulationSyn(Population):
     #       my_url = url of the singularity API
     #       stats = neat.StatisticsReporter
     # returns: best_genoms selected between the remote and local
-    def syn_singularity(self, num_replacements, my_url, stats, avg_score, current_generation, config):
+    def syn_singularity(self, num_replacements, my_url, stats, avg_score, current_generation, config, genomes_h):
         # downloads process from singualrity to find last optimum
         print('num_rep=', num_replacements,'my_url=',  my_url,'stats=',  stats,
             'avg_score=',  avg_score, 'current_generation=',  current_generation)
@@ -91,7 +94,7 @@ class PopulationSyn(Population):
             print('\nremote_fitness = ', remote_perf, 'local_fitness = ', local_perf)
             for remote in remote_reps:
                 # search the less_fit in pop
-                less_fit = self.searchLessFit()
+                less_fit = self.searchLessFit(genomes_h)
                 # replaces less_fit with remote
                 less_fit_key = less_fit.key
                 print('\nREPLACED = ',less_fit_key, 'fitness=', less_fit.fitness)
