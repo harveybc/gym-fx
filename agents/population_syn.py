@@ -17,12 +17,12 @@ class PopulationSyn(Population):
         accum=0
         best=None
         max_fitness=-1000
-        print('\n*************************************************************')
-        print('\nbest_genomes ')
+        #print('\n*************************************************************')
+        #print('\nbest_genomes ')
         for n, g in enumerate(best_genomes):
             accum=accum+g.fitness
             countr = countr + 1
-            print(' fit',n,'=',g.fitness)
+            #print(' fit',n,'=',g.fitness)
             if (g.fitness > max_fitness):
                 max_fitness = g.fitness
                 best = g
@@ -36,9 +36,9 @@ class PopulationSyn(Population):
     def searchLessFit(self, genomes_h):
         less_fit = None
         min_fitness = 10000
-        print('\ngenomes_h = ',genomes_h)
+        #print('\ngenomes_h = ',genomes_h)
         for g in genomes_h:
-            print('\ng = ',g)
+            #print('\ng = ',g)
             #print('\ng[1].key = ',g[1].key)
             #print('\ng[1].fitness=',g[1].fitness)
             if g.fitness is None:
@@ -61,14 +61,13 @@ class PopulationSyn(Population):
             'avg_score=',  avg_score, 'current_generation=',  current_generation)
         res = requests.get(my_url + "/processes/1?username=harveybc&pass_hash=$2a$04$ntNHmofQoMoajG89mTEM2uSR66jKXBgRQJnCgqfNN38aq9UkN4Y6q&process_hash=ph")
         cont = res.json()
-        # print results of request
-        print('\nremote_performance =', cont['result'][0]['current_block_performance'])
         last_optimum_id = cont['result'][0]['last_optimum_id']
         # calcualte local_perf as the weitgthed average of the best performers
         best_genomes = stats.best_unique_genomes(num_replacements)
         local_perf = self.calculateFitness(best_genomes)
         # remote performance from results of request
         remote_perf = cont['result'][0]['current_block_performance']
+        # print results of request
         print('\nremote_performance =', cont['result'][0]['current_block_performance'], '\nlocal_performance =', local_perf, '\nlast_optimum_id =', cont['result'][0]['last_optimum_id'])
         # if remote_performance is not equal to local_performance, download remote_reps
         parameter_downloaded = 0
