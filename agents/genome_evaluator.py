@@ -24,6 +24,7 @@ NUM_CORES = 1
 
 # class for evaluating the genomes
 class GenomeEvaluator(object):
+    genomes_h=[]
     def __init__(self, ts_f, vs_f):
         self.pool = None if NUM_CORES < 2 else multiprocessing.Pool(NUM_CORES)
         self.test_episodes = []

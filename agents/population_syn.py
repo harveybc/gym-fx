@@ -8,7 +8,6 @@ from neat.six_util import itervalues
 
 # PopulationSyn extends Population
 class PopulationSyn(Population):
-    genomes_h=[]
     # calculateFitness(best_genomes)
     def calculateFitness(self, best_genomes):
         countr=0

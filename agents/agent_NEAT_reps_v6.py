@@ -101,13 +101,13 @@ def run():
             #gen_best = pop.run(ec.evaluate_genomes, num_iterations)
             print("\nBEFORE")
             #for g in pop.population.items():
-            for g in pop.genomes_h:
+            for g in ec.genomes_h:
                 print("before.key=",g[1].key,"   before.fitness",g[1].fitness)
             
             gen_best = pop.run(ec.evaluate_genomes, 2)
             
             print("\nAFTER")
-            for g in pop.genomes_h:
+            for g in ec.genomes_h:
                 print("after.key=",g[1].key,"   after.fitness",g[1].fitness)
                 
             
