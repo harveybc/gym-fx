@@ -100,21 +100,16 @@ def run():
             # execute num_iterations consecutive iterations of the NEAT algorithm
             #gen_best = pop.run(ec.evaluate_genomes, num_iterations)
             print("\nBEFORE")
-            for g in pop.population.items():
+            #for g in pop.population.items():
+            for g in pop.genomes_h:
                 print("before.key=",g[1].key,"   before.fitness",g[1].fitness)
             
             gen_best = pop.run(ec.evaluate_genomes, 2)
             
             print("\nAFTER")
-            for g in pop.population.items():
+            for g in pop.genomes_h:
                 print("after.key=",g[1].key,"   after.fitness",g[1].fitness)
-              
                 
-            best_genomes = stats.best_unique_genomes(num_replacements)
-            
-            for g in pop.population.items():
-                print("after.key=",g[1].key,"   after.fitness",g[1].fitness)
-            
             
             # verify the training score is enough to stop the NEAT algorithm: TODO change to validation score when generalization is ok 
             if avg_score < 2000000000:
