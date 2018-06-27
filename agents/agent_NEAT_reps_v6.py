@@ -73,6 +73,7 @@ def run():
     # initializes genomes fitness and gen_best just for the first time
     for g in itervalues(pop.population):
         g.fitness = -10000000.0
+        ec.genomes_h.append(g)
     gen_best = g
     # initializations
     avg_score_v = -10000000.0
