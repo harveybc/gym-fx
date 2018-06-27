@@ -33,7 +33,7 @@ class PopulationSyn(Population):
         return best_fitness
     
     # searchLessFit()
-    def searchLessFit(self, genomes_h):
+    def searchLessFit(self, genomes_h, keys_h):
         less_fit = None
         min_fitness = 10000
         for g in genomes_h:
@@ -96,6 +96,7 @@ class PopulationSyn(Population):
                 # search the less_fit in pop
                 less_fit = self.searchLessFit(genomes_h)
                 # replaces less_fit with remote
+                print("less_fit = ", less_fit)
                 less_fit_key = less_fit.key
                 print('\nREPLACED = ',less_fit_key, 'fitness=', less_fit.fitness)
                 self.population[less_fit_key] = less_fit
