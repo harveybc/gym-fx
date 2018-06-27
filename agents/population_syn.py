@@ -49,13 +49,9 @@ class PopulationSyn(Population):
             #print('\ng = ',g)
             #print('\ng[1].key = ',g[1].key)
             #print('\ng[1].fitness=',g[1].fitness)
-            if g.fitness is None:
-                min_fitness = -1000
-                less_fit=g
-            else:
-                if g.fitness < min_fitness:
-                    min_fitness = g.fitness
-                    less_fit = g
+            if g.fitness < min_fitness:
+                min_fitness = g.fitness
+                less_fit = g
         return less_fit
 
     # synSingularity method for synchronizing NEAT optimization states with singularity 
@@ -110,7 +106,7 @@ class PopulationSyn(Population):
                 #less_fit_key = less_fit.key
                 less_fit_key = remote.key
                 print('\nREPLACED = ', less_fit_key, 'fitness=', less_fit.fitness, 
-                    'new_fitness', less_fit.key)
+                    'new_fitness', remote.fitness)
                 #replaces lessfit in population by remote with the same key as less fit
                 remote.key=less_fit_key
                 self.population[less_fit_key] = remote
