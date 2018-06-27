@@ -15,10 +15,9 @@ class PopulationSyn(Population):
         genomes_h = []
         for g in genomes:
             if g.key == less_fit_key:
-                remote.key = less_fit_key
+                #remote.key = less_fit_key
                 g = remote
             genomes_h.append(g)
-                
         return genomes_h
             
     # calculateFitness(best_genomes)
