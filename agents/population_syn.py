@@ -37,12 +37,12 @@ class PopulationSyn(Population):
         less_fit = None
         min_fitness = 10000
         for g in genomes_h:
-            # print('\ng[1] = ',g[1])
+            print('\ng = ',g)
             #print('\ng[1].key = ',g[1].key)
             #print('\ng[1].fitness=',g[1].fitness)
             if g.fitness is None:
                 min_fitness = -1000
-                less_fit = g
+                less_fit=g
             else:
                 if g.fitness < min_fitness:
                     min_fitness = g.fitness
