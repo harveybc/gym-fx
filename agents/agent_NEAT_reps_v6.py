@@ -100,14 +100,14 @@ def run():
                 iteration_counter = iteration_counter + 1
             # execute num_iterations consecutive iterations of the NEAT algorithm
             #gen_best = pop.run(ec.evaluate_genomes, num_iterations)
-            print("\nBEFORE")
+            #print("\nBEFORE")
             #for g in pop.population.items():
             #for g in ec.genomes_h:
             #    print("before.key=",g.key,"   before.fitness",g.fitness)
             
             gen_best = pop.run(ec.evaluate_genomes, 2)
             
-            print("\nAFTER")
+            #print("\nAFTER")
             #for g in ec.genomes_h:
             #    print("after.key=",g.key,"   after.fitness",g.fitness)
                 
