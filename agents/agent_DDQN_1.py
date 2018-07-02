@@ -27,8 +27,8 @@ K.set_session(sess)
 EPISODES = 5000
 NUMVECTORS = 19
 VECTORSIZE = 48
-REPLAYFACTOR = 2
-BATCHSIZE = 3
+REPLAYFACTOR = 1
+BATCHSIZE = 2
 MEMORYSIZE= 15000 #porque hay 1400 ticks y quiero recordar last 10, 
 # TODO: usar prioritized replay?
 
@@ -151,6 +151,7 @@ if __name__ == "__main__":
         time=0
         points=0.0
         done = False
+        progress = 0.0
         print("Starting Episode = ",e, " Replaying", end='', flush=True)
         while not done:
             # env.render()
@@ -184,7 +185,10 @@ if __name__ == "__main__":
                 break
             if (len(agent.memory) > batch_size) and (time > state_size) and (time%REPLAYFACTOR==0) and (not done):
                 agent.replay(batch_size)
-                print(".", end="",flush=True)
+                progress = info["tick_count"]*100/1450
+                sys.stdout.write("Progress: %d%%   \r" % (progress) )
+                sys.stdout.flush()
+                #print(".", end="",flush=True)
         #TODO: Adicionar validation set score cada vez que se encuentre un óptimo
         #TODO: Detener por no avanzar en ultimos n episodes 
         #TODO: Detener por tiempo además de max episodes
