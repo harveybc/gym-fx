@@ -27,6 +27,7 @@ K.set_session(sess)
 EPISODES = 5000
 NUMVECTORS = 19
 VECTORSIZE = 48
+REPLAYFACTOR = 100
 
 class DQNAgent:
     def __init__(self, state_size, action_size):
@@ -178,7 +179,7 @@ if __name__ == "__main__":
                 # logs the tick Count
                 #log_a.post('TickCount', value=tick_count,step=e)
                 break
-            if (len(agent.memory) > batch_size) and (time > state_size) and (time%10==0) and (not done):
+            if (len(agent.memory) > batch_size) and (time > state_size) and (time%REPLAYFACTOR==0) and (not done):
                 agent.replay(batch_size)
         # TODO: CAMBIAR SIGUIENTE LINEA PARA QUE SE GUARDE SI PERFORMANCE > ANTERIOR?
         # if e % 10 == 0:
