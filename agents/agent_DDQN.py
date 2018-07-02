@@ -113,6 +113,7 @@ if __name__ == "__main__":
     state_size = env.observation_space.shape[0]
     action_size = env.action_space.n
     agent = DQNAgent(state_size, action_size)
+    print("state_size = ", state_size," action_Space = ", action_space)
     done = False
     batch_size = 32 # originalmente 32 (con 128 max 700k)
     best_performance = -1000000.0
