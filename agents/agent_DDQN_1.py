@@ -151,8 +151,7 @@ if __name__ == "__main__":
         time=0
         points=0.0
         done = False
-        
-        print("Starting Episode = ",e )
+        print("Starting Episode = ",e, " Replaying", end='', flush=True)
         while not done:
             # env.render()
             #load data in the observation buffer(action=0 for the first 1440 observations)
@@ -185,7 +184,7 @@ if __name__ == "__main__":
                 break
             if (len(agent.memory) > batch_size) and (time > state_size) and (time%REPLAYFACTOR==0) and (not done):
                 agent.replay(batch_size)
-                print(".",  end='')
+                print(".", end="",flush=True)
         #TODO: Adicionar validation set score cada vez que se encuentre un óptimo
         #TODO: Detener por no avanzar en ultimos n episodes 
         #TODO: Detener por tiempo además de max episodes
