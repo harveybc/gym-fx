@@ -171,7 +171,7 @@ if __name__ == "__main__":
             best_performance = points
             print("***********************************")
             
-            print("New Best Performer: Episodes{}/{} Balance={:.2}, reward: {}".format(e, EPISODES, info["balance"],points))
+            print("New Best Performer: Episodes{}/{} Balance={}, reward: {}".format(e, EPISODES, info["balance"],points))
             print("***********************************")
             
             agent.save("forexv3-ddqn.h5")
