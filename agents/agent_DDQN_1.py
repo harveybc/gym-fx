@@ -28,7 +28,7 @@ EPISODES = 5000
 NUMVECTORS = 19
 VECTORSIZE = 48
 REPLAYFACTOR = 1
-BATCHSIZE = 4
+BATCHSIZE = 2
 MEMORYSIZE= 64000 #porque hay 1400 ticks y quiero recordar last 50
 REMEMBERTHRESHOLD = 100
 STOPLOSS = 50000
@@ -44,7 +44,7 @@ class DQNAgent:
         self.epsilon = 1.0  # exploration rate
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.99
-        self.learning_rate = 0.0001
+        self.learning_rate = 0.01
         self.num_vectors=NUMVECTORS # number of features
         self.vector_size=VECTORSIZE # number of ticks
         
