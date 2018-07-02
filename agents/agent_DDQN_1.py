@@ -28,11 +28,14 @@ EPISODES = 5000
 NUMVECTORS = 19
 VECTORSIZE = 48
 REPLAYFACTOR = 1
-BATCHSIZE = 2
+BATCHSIZE = 4
 MEMORYSIZE= 64000 #porque hay 1400 ticks y quiero recordar last 50
 REMEMBERTHRESHOLD = 100
 STOPLOSS = 50000
 TAKEPROFIT = 50000
+CAPITAL = 10000
+REPMAXPROFIT = 10 # number of times an action/state is recorded for replay
+
 # TODO: usar prioritized replay?
 
 class DQNAgent:
@@ -130,7 +133,7 @@ if __name__ == "__main__":
             entry_point = 'gym_forex.envs:ForexEnv3',
             kwargs = {
             'dataset': ts_f, 'volume':0.2, 'sl':STOPLOSS, 'tp':TAKEPROFIT, 
-            'obsticks':VECTORSIZE, 'capital':10000, 'leverage':100
+            'obsticks':VECTORSIZE, 'capital':CAPITAL, 'leverage':100
         }
     )
     # Make environments
@@ -148,6 +151,7 @@ if __name__ == "__main__":
     #from tensorflow.python.client import device_lib
     #print(device_lib.list_local_devices())
     #log_a = Log('http://localhost:8120', '1h4yvs48DCN_536_m128kbs128lr00001ed9tp1ksl2k') #OJO, capital inicial=300
+    max_variation = 0.0
     for e in range(EPISODES):
         state = env.reset()
         state = np.reshape(state, [agent.num_vectors,state_size])
@@ -166,16 +170,22 @@ if __name__ == "__main__":
             else:
                 action=0
             next_state, reward, done, info = env.step(action)
-            #reward = reward if not done else 0
 
+            
             next_state = np.reshape(next_state, [agent.num_vectors,state_size])
             next_state = np.expand_dims(next_state, axis=0)
             if time>state_size:
-                if (action>2):
-                    print("Action Error = ", action)
                 # if action  = 0 have a REMEMBERTHRESOLD prob of remembering
                 if (action>0):
-                    agent.remember(state, action, reward, next_state, done)
+                    # update max_profit 
+                    variation = abs(info["balance"]-balance_ant)
+                    if variation > max_variation:
+                        max_variation = variation
+                    # remember additional times if profit was large
+                    num_repetitions = 1+round((variation/max_variation)* REPMAXPROFIT)
+                    for repetition in range(num_repetitions):
+                        # remember action/state for replay
+                        agent.remember(state, action, reward, next_state, done)
                 # also save if balance varies, eg. if TP or SL
                 elif (balance_ant - info["balance"])!=0.0:
                     agent.remember(state, action, reward, next_state, done)
@@ -186,6 +196,7 @@ if __name__ == "__main__":
             state = next_state
             time=time+1
             balance_ant = info["balance"]
+            
             #print("e:{}/{},t:{},p:{},e:{:.2}-".format(e, EPISODES, time, points,agent.epsilon))
             if done:
                 agent.update_target_model()
