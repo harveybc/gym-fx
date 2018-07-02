@@ -99,7 +99,7 @@ if __name__ == "__main__":
             entry_point = 'gym_forex.envs:ForexEnv3',
             kwargs = {
             'dataset': ts_f, 'volume':0.2, 'sl':500, 'tp':500, 
-            'obs_ticks':12, 'capital':10000, 'leverage':100
+            'obsticks':12, 'capital':10000, 'leverage':100
         }
     )
     # Make environments
