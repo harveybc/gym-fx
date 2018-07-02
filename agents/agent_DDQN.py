@@ -169,5 +169,9 @@ if __name__ == "__main__":
         #TODO: DESPUES DE QUE ESTÉ FUNCIONANDO CONVERTIR EN FUNCIÓN QUE RETORNA MEJOR y su performance.
         if best_performance < points:
             best_performance = points
+            print("***********************************")
+            
             print("New Best Performer: Episodes{}/{} Balance={:.2}, reward: {}".format(e, EPISODES, info["balance"],points))
+            print("***********************************")
+            
             agent.save("forexv3-ddqn.h5")
