@@ -152,7 +152,7 @@ if __name__ == "__main__":
         points=0.0
         done = False
         progress = 0.0
-        print("Starting Episode = ",e, " Replaying", end='', flush=True)
+        #print("Starting Episode = ",e, " Replaying", flush=True)
         while not done:
             # env.render()
             #load data in the observation buffer(action=0 for the first 1440 observations)
@@ -186,7 +186,7 @@ if __name__ == "__main__":
             if (len(agent.memory) > batch_size) and (time > state_size) and (time%REPLAYFACTOR==0) and (not done):
                 agent.replay(batch_size)
                 progress = info["tick_count"]*100/1450
-                sys.stdout.write("Progress: %d%%   \r" % (progress) )
+                sys.stdout.write("Episode: %d Progress: %d%%   \r" % (e, progress) )
                 sys.stdout.flush()
                 #print(".", end="",flush=True)
         #TODO: Adicionar validation set score cada vez que se encuentre un óptimo
