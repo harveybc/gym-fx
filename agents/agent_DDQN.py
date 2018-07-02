@@ -83,6 +83,7 @@ class DQNAgent:
             else:
                 # a = self.model.predict(next_state)[0]
                 t = self.target_model.predict(next_state)[0]
+                print("action=",action)
                 target[0][action] = reward + self.gamma * np.amax(t)
                 # target[0][action] = reward + self.gamma * t[np.argmax(a)]
             self.model.fit(state, target, epochs=1, verbose=0)
