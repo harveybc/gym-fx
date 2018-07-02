@@ -163,11 +163,6 @@ if __name__ == "__main__":
                 break
             if (len(agent.memory) > batch_size) and (time > state_size) and (time%10==0) and (not done):
                 agent.replay(batch_size)
-        # TODO: CAMBIAR SIGUIENTE LINEA PARA QUE SE GUARDE SI PERFORMANCE > ANTERIOR?
-        # if e % 10 == 0:
-        #     agent.save("./cartpole-ddqn.h5")
-        #TODO: SI PERF>MEJOR ACTUALIZA MEJOR
-        #TODO: DESPUES DE QUE ESTÉ FUNCIONANDO CONVERTIR EN FUNCIÓN QUE RETORNA MEJOR y su performance.
         if best_performance < points:
             best_performance = points
             last_best_episode = e

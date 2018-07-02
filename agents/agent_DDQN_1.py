@@ -27,7 +27,7 @@ K.set_session(sess)
 EPISODES = 5000
 NUMVECTORS = 19
 VECTORSIZE = 48
-REPLAYFACTOR = 2
+REPLAYFACTOR = 10
 
 class DQNAgent:
     def __init__(self, state_size, action_size):
@@ -134,7 +134,7 @@ if __name__ == "__main__":
     agent = DQNAgent(state_size, action_size)
     print("state_size = ", state_size," action_Space = ", action_size)
     done = False
-    batch_size = 128 # originalmente 32 (con 128 max 700k)
+    batch_size = 16 # originalmente 32 (con 128 max 700k)
     best_performance = -1000000.0
     last_best_episode = 0 
     # muestra si hay soporte de GPU
