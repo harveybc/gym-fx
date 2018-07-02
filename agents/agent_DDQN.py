@@ -141,6 +141,8 @@ if __name__ == "__main__":
             next_state = np.reshape(next_state, [agent.num_vectors,state_size])
             next_state = np.expand_dims(next_state, axis=0)
             if time>state_size:
+                if (action>2):
+                    print("Action Error = ", action)
                 agent.remember(state, action, reward, next_state, done)
                 points += reward
             state = next_state
