@@ -56,6 +56,7 @@ class DQNAgent:
         model.add(Dense(24, input_shape=(self.num_vectors,self.vector_size), activation='relu'))
         model.add(Dense(24, activation='relu'))
         model.add(Dense(self.action_size, activation='linear'))
+        model.add(Activation('softmax'))
         model.compile(loss=self._huber_loss,
                       optimizer=Adam(lr=self.learning_rate))
         return model
