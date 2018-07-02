@@ -26,7 +26,7 @@ K.set_session(sess)
 
 EPISODES = 5000
 NUMVECTORS = 19
-VECTORSIZE = 48
+VECTORSIZE = 92
 REPLAYFACTOR = 10
 BATCHSIZE = 10
 MEMORYSIZE= 15000 #porque hay 1400 ticks y quiero recordar last 10
