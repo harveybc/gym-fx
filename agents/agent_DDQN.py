@@ -160,14 +160,14 @@ if __name__ == "__main__":
                 # logs the tick Count
                 #log_a.post('TickCount', value=tick_count,step=e)
                 break
-            if (len(agent.memory) > batch_size) and (time > state_size):
+            if (len(agent.memory) > batch_size) and (time > state_size) and (time%10==0) and (not done):
                 agent.replay(batch_size)
         # TODO: CAMBIAR SIGUIENTE LINEA PARA QUE SE GUARDE SI PERFORMANCE > ANTERIOR?
         # if e % 10 == 0:
-        #     agent.save("./save/cartpole-ddqn.h5")
+        #     agent.save("./cartpole-ddqn.h5")
         #TODO: SI PERF>MEJOR ACTUALIZA MEJOR
         #TODO: DESPUES DE QUE ESTÉ FUNCIONANDO CONVERTIR EN FUNCIÓN QUE RETORNA MEJOR y su performance.
         if best_performance < points:
             best_performance = points
             print("New Best Performer: Episodes{}/{} Balance={:.2}, reward: {}".format(e, EPISODES, info["balance"],points))
-            agent.save("./save/forexv3-ddqn.h5")
+            agent.save("forexv3-ddqn.h5")
