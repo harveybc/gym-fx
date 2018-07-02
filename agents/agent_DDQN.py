@@ -73,7 +73,9 @@ class DQNAgent:
     def act(self, state):
         if np.random.rand() <= self.epsilon:
             return random.randrange(self.action_size)
-        return self.model.predict(state)
+        ret = self.model.predict(state)
+        print ("predict =",ret)
+        return ret
         #act_values = self.model.predict(state)
         #return np.argmax(act_values[0])  # returns action
 
