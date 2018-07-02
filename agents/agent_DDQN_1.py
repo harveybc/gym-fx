@@ -28,7 +28,7 @@ EPISODES = 5000
 NUMVECTORS = 19
 VECTORSIZE = 48
 REPLAYFACTOR = 10
-BATCHSIZE = 20
+BATCHSIZE = 10
 MEMORYSIZE= 15000 #porque hay 1400 ticks y quiero recordar last 10, 
 # TODO: usar prioritized replay?
 
