@@ -28,12 +28,15 @@ EPISODES = 5000
 NUMVECTORS = 19
 VECTORSIZE = 48
 REPLAYFACTOR = 10
+BATCHSIZE = 16
+MEMORYSIZE= 15000 #porque hay 1400 ticks y quiero recordar last 10, 
+# TODO: usar prioritized replay?
 
 class DQNAgent:
     def __init__(self, state_size, action_size):
         self.state_size = state_size
         self.action_size = action_size
-        self.memory = deque(maxlen=2000)
+        self.memory = deque(maxlen=MEMORYSIZE)
         self.gamma = 0.95    # discount rate
         self.epsilon = 1.0  # exploration rate
         self.epsilon_min = 0.01
@@ -134,7 +137,7 @@ if __name__ == "__main__":
     agent = DQNAgent(state_size, action_size)
     print("state_size = ", state_size," action_Space = ", action_size)
     done = False
-    batch_size = 16 # originalmente 32 (con 128 max 700k)
+    batch_size = BATCHSIZE # originalmente 32 (con 128 max 700k)
     best_performance = -1000000.0
     last_best_episode = 0 
     # muestra si hay soporte de GPU
