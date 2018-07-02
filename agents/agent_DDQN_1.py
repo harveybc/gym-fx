@@ -27,7 +27,7 @@ K.set_session(sess)
 EPISODES = 5000
 NUMVECTORS = 19
 VECTORSIZE = 48
-REPLAYFACTOR = 1
+REPLAYFACTOR = 2
 BATCHSIZE = 3
 MEMORYSIZE= 15000 #porque hay 1400 ticks y quiero recordar last 10, 
 # TODO: usar prioritized replay?
@@ -152,7 +152,7 @@ if __name__ == "__main__":
         points=0.0
         done = False
         
-        print("Starting Episode = ",e , " Replaying",  end='')
+        print("Starting Episode = ",e )
         while not done:
             # env.render()
             #load data in the observation buffer(action=0 for the first 1440 observations)
