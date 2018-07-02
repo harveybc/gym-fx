@@ -1,5 +1,5 @@
 # -*- coding: utf-8 
-# max -0.56128 @ 2276   , -0.5787 @ 52
+# 
 #  For importing new environment in ubuntu run, export PYTHONPATH=${PYTHONPATH}:/home/[your username]/gym-forex/
 import random
 import gym
@@ -26,18 +26,18 @@ K.set_session(sess)
 
 EPISODES = 5000
 NUMVECTORS = 19
-VECTORSIZE = 12
+VECTORSIZE = 48
 
 class DQNAgent:
     def __init__(self, state_size, action_size):
         self.state_size = state_size
         self.action_size = action_size
-        self.memory = deque(maxlen=2000)
+        self.memory = deque(maxlen=128000)
         self.gamma = 0.95    # discount rate
         self.epsilon = 1.0  # exploration rate
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.99
-        self.learning_rate = 0.001
+        self.learning_rate = 0.0001
         self.num_vectors=NUMVECTORS # number of features
         self.vector_size=VECTORSIZE # number of ticks
         
@@ -53,12 +53,29 @@ class DQNAgent:
     def _build_model(self):
         # Neural Net for Deep-Q learning Model
         model = Sequential()
-        model.add(Dense(24, input_shape=(self.num_vectors,self.vector_size), activation='relu'))
-        model.add(Dense(24, activation='relu'))
-        model.add(Dense(self.action_size, activation='linear'))
+        # for observation[19][48], 19 vectors of 128-dimensional vectors,input_shape = (19, 48)
+        # first set of CONV => RELU => POOL
+        model.add(Conv1D(512, 5, input_shape=(self.num_vectors,self.vector_size)))
+        model.add(Activation('relu'))
+        model.add(MaxPooling1D(pool_size=2, strides=2))
+        # second set of CONV => RELU => POOL
+        model.add(Conv1D(32, 5))
+        model.add(Activation('relu'))
+        model.add(MaxPooling1D(pool_size=2, strides=2))
+        # set of FC => RELU layers
+        model.add(Flatten())  # this converts our 3D feature maps to 1D feature vectors
+        model.add(Dense(64)) # valor óptimo:64 @400k
+        model.add(Activation('relu'))
+
+        # Softmax activation since we neet to chose only one of athe available actions
+        model.add(Dense(self.action_size))
         model.add(Activation('softmax'))
-        model.compile(loss=self._huber_loss,
-                      optimizer=Adam(lr=self.learning_rate))
+        # multi-GPU support
+        #model = to_multi_gpu(model)
+        # use SGD optimizer
+        opt = SGD(lr=self.learning_rate)
+        model.compile(loss="categorical_crossentropy", optimizer=opt,
+                      metrics=["accuracy"])
         return model
 
     def update_target_model(self):
@@ -116,7 +133,7 @@ if __name__ == "__main__":
     agent = DQNAgent(state_size, action_size)
     print("state_size = ", state_size," action_Space = ", action_size)
     done = False
-    batch_size = 32 # originalmente 32 (con 128 max 700k)
+    batch_size = 128 # originalmente 32 (con 128 max 700k)
     best_performance = -1000000.0
     last_best_episode = 0 
     # muestra si hay soporte de GPU
