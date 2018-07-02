@@ -27,13 +27,13 @@ K.set_session(sess)
 EPISODES = 5000
 NUMVECTORS = 19
 VECTORSIZE = 48
-REPLAYFACTOR = 100
+REPLAYFACTOR = 2
 
 class DQNAgent:
     def __init__(self, state_size, action_size):
         self.state_size = state_size
         self.action_size = action_size
-        self.memory = deque(maxlen=128000)
+        self.memory = deque(maxlen=2000)
         self.gamma = 0.95    # discount rate
         self.epsilon = 1.0  # exploration rate
         self.epsilon_min = 0.01
@@ -171,7 +171,7 @@ if __name__ == "__main__":
             if done:
                 agent.update_target_model()
                 #print("Done: Episodes{}/{} Balance={:.2}, reward: {:.7}, points: {} epsilon:{:.2}  ,".format(e, EPISODES, points,agent.epsilon))
-                print("Done:Ep{}/{} Bal={:.2}, r:{} , best:{}, last:{}".format(e, EPISODES, info["balance"],points, info["tick_count"], best_performance ,last_best_episode))
+                print("Done:Ep{}/{} Bal={}, r:{} , best:{}, last:{}".format(e, EPISODES, info["balance"],points, best_performance ,last_best_episode))
                 #logs the reward
                 #log_a.post('Reward', value=points, step=e)
                 # logs the reward
@@ -181,16 +181,16 @@ if __name__ == "__main__":
                 break
             if (len(agent.memory) > batch_size) and (time > state_size) and (time%REPLAYFACTOR==0) and (not done):
                 agent.replay(batch_size)
-        # TODO: CAMBIAR SIGUIENTE LINEA PARA QUE SE GUARDE SI PERFORMANCE > ANTERIOR?
-        # if e % 10 == 0:
-        #     agent.save("./cartpole-ddqn.h5")
-        #TODO: SI PERF>MEJOR ACTUALIZA MEJOR
-        #TODO: DESPUES DE QUE ESTÉ FUNCIONANDO CONVERTIR EN FUNCIÓN QUE RETORNA MEJOR y su performance.
+        #TODO: Adicionar validation set score cada vez que se encuentre un óptimo
+        #TODO: Detener por no avanzar en ultimos n episodes 
+        #TODO: Detener por tiempo además de max episodes
         if best_performance < points:
             best_performance = points
             last_best_episode = e
             print("***********************************")
-            print("New Best Performer: Episodes{}/{} Balance={}, reward: {}".format(e, EPISODES, info["balance"],points))
+            print("New Best Performer: Ep{}/{} Balance={}, reward: {}".format(e, EPISODES, info["balance"],points))
             print("***********************************")
             
             agent.save("forexv3-ddqn.h5")
+#TODO: DESPUES DE QUE ESTÉ FUNCIONANDO CONVERTIR EN FUNCIÓN QUE RETORNA MEJOR y su performance.
+        

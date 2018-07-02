@@ -153,7 +153,7 @@ if __name__ == "__main__":
             if done:
                 agent.update_target_model()
                 #print("Done: Episodes{}/{} Balance={:.2}, reward: {:.7}, points: {} epsilon:{:.2}  ,".format(e, EPISODES, points,agent.epsilon))
-                print("Done:Ep{}/{} Bal={:.2}, r:{} , best:{}, last:{}".format(e, EPISODES, info["balance"],points, info["tick_count"], best_performance ,last_best_episode))
+                print("Done:Ep{}/{} Bal={:.2}, r:{} , best:{}, last:{}".format(e, EPISODES, info["balance"],points, best_performance ,last_best_episode))
                 #logs the reward
                 #log_a.post('Reward', value=points, step=e)
                 # logs the reward
