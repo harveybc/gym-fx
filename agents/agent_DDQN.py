@@ -66,17 +66,12 @@ class DQNAgent:
         self.target_model.set_weights(self.model.get_weights())
 
     def remember(self, state, action, reward, next_state, done):
-        if (action>2):
-                    print("Action Error = ", action)
         self.memory.append((state, action, reward, next_state, done))
 
     def act(self, state):
         if np.random.rand() <= self.epsilon:
             return random.randrange(self.action_size)
         act_values = self.model.predict(state)
-        #print ("predict =",ret)
-        #return ret
-        print ("predict =",np.argmax(act_values[0][0]))
         return np.argmax(act_values[0][0])  # returns action
 
     def replay(self, batch_size):
@@ -88,7 +83,7 @@ class DQNAgent:
             else:
                 # a = self.model.predict(next_state)[0]
                 t = self.target_model.predict(next_state)[0]
-                print("action=",action)
+                #print("action=",action)
                 target[0][action] = reward + self.gamma * np.amax(t)
                 # target[0][action] = reward + self.gamma * t[np.argmax(a)]
             self.model.fit(state, target, epochs=1, verbose=0)
@@ -134,6 +129,7 @@ if __name__ == "__main__":
         time=0
         points=0.0
         done = False
+        print("Starting Episode = ",e)
         while not done:
             # env.render()
             #load data in the observation buffer(action=0 for the first 1440 observations)
