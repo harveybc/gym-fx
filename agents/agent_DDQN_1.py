@@ -66,10 +66,6 @@ class DQNAgent:
         model.add(Activation('relu'))
         model.add(MaxPooling1D(pool_size=2, strides=2))
         # second set of CONV => RELU => POOL
-        model.add(Conv1D(64, 3))
-        model.add(Activation('relu'))
-        #model.add(MaxPooling1D(pool_size=2, strides=2))
-        # second set of CONV => RELU => POOL
         model.add(Conv1D(32, 3))
         model.add(Activation('relu'))
         model.add(MaxPooling1D(pool_size=2, strides=2))
