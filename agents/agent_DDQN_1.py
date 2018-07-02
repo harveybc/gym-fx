@@ -27,8 +27,8 @@ K.set_session(sess)
 EPISODES = 5000
 NUMVECTORS = 19
 VECTORSIZE = 48
-REPLAYFACTOR = 1
-BATCHSIZE = 2
+REPLAYFACTOR = 5
+BATCHSIZE = 32
 MEMORYSIZE= 15000 #porque hay 1400 ticks y quiero recordar last 10, 
 # TODO: usar prioritized replay?
 
