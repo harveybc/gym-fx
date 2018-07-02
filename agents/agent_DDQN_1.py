@@ -31,6 +31,8 @@ REPLAYFACTOR = 10
 BATCHSIZE = 10
 MEMORYSIZE= 15000 #porque hay 1400 ticks y quiero recordar last 10
 REMEMBERTHRESHOLD = 10
+STOPLOSS = 50000
+TAKEPROFIT = 30000
 # TODO: usar prioritized replay?
 
 class DQNAgent:
@@ -127,7 +129,7 @@ if __name__ == "__main__":
             id = 'ForexTrainingSet-v1',
             entry_point = 'gym_forex.envs:ForexEnv3',
             kwargs = {
-            'dataset': ts_f, 'volume':0.2, 'sl':500, 'tp':500, 
+            'dataset': ts_f, 'volume':0.2, 'sl':STOPLOSS, 'tp':TAKEPROFIT, 
             'obsticks':VECTORSIZE, 'capital':10000, 'leverage':100
         }
     )
