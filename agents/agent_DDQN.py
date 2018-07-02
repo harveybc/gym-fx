@@ -37,6 +37,8 @@ class DQNAgent:
         self.epsilon_decay = 0.99
         self.learning_rate = 0.001
         self.num_vectors=19 # number of features
+        self.vector_size=12 # number of ticks
+        
         self.model = self._build_model()
         self.target_model = self._build_model()
         self.update_target_model()
@@ -100,7 +102,7 @@ if __name__ == "__main__":
             entry_point = 'gym_forex.envs:ForexEnv3',
             kwargs = {
             'dataset': ts_f, 'volume':0.2, 'sl':500, 'tp':500, 
-            'obsticks':12, 'capital':10000, 'leverage':100
+            'obsticks':self.vector_size, 'capital':10000, 'leverage':100
         }
     )
     # Make environments
