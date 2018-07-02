@@ -27,8 +27,8 @@ K.set_session(sess)
 EPISODES = 5000
 NUMVECTORS = 19
 VECTORSIZE = 48
-REPLAYFACTOR = 3
-BATCHSIZE = 6
+REPLAYFACTOR = 30
+BATCHSIZE = 64
 MEMORYSIZE= 15000 #porque hay 1400 ticks y quiero recordar last 10, 
 # TODO: usar prioritized replay?
 
@@ -39,9 +39,9 @@ class DQNAgent:
         self.memory = deque(maxlen=MEMORYSIZE)
         self.gamma = 0.95    # discount rate
         self.epsilon = 1.0  # exploration rate
-        self.epsilon_min = 0.01
-        self.epsilon_decay = 0.99
-        self.learning_rate = 0.000001
+        self.epsilon_min = 0.001
+        self.epsilon_decay = 0.9
+        self.learning_rate = 0.0001
         self.num_vectors=NUMVECTORS # number of features
         self.vector_size=VECTORSIZE # number of ticks
         
