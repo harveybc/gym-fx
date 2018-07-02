@@ -164,7 +164,8 @@ if __name__ == "__main__":
             else:
                 action=0
             next_state, reward, done, info = env.step(action)
-            reward = reward if not done else 0
+            #reward = reward if not done else 0
+
             next_state = np.reshape(next_state, [agent.num_vectors,state_size])
             next_state = np.expand_dims(next_state, axis=0)
             if time>state_size:
@@ -174,7 +175,7 @@ if __name__ == "__main__":
                 if (action>0):
                     agent.remember(state, action, reward, next_state, done)
                 # also save if balance varies, eg. if TP or SL
-                elif (balance_ant-info["balance"])!=0.0:
+                elif (balance_ant - info["balance"])!=0.0:
                     agent.remember(state, action, reward, next_state, done)
                 else:
                     if e % REMEMBERTHRESHOLD == 0:
@@ -182,6 +183,7 @@ if __name__ == "__main__":
                 points += reward
             state = next_state
             time=time+1
+            balance_ant = info["balance"]
             #print("e:{}/{},t:{},p:{},e:{:.2}-".format(e, EPISODES, time, points,agent.epsilon))
             if done:
                 agent.update_target_model()
