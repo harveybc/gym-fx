@@ -29,7 +29,8 @@ NUMVECTORS = 19
 VECTORSIZE = 48
 REPLAYFACTOR = 10
 BATCHSIZE = 10
-MEMORYSIZE= 15000 #porque hay 1400 ticks y quiero recordar last 10, 
+MEMORYSIZE= 15000 #porque hay 1400 ticks y quiero recordar last 10
+REMEMBERTHRESHOLD = 100
 # TODO: usar prioritized replay?
 
 class DQNAgent:
@@ -153,6 +154,7 @@ if __name__ == "__main__":
         points=0.0
         done = False
         progress = 0.0
+        balance_ant=0.0
         #print("Starting Episode = ",e, " Replaying", flush=True)
         while not done:
             # env.render()
@@ -168,7 +170,15 @@ if __name__ == "__main__":
             if time>state_size:
                 if (action>2):
                     print("Action Error = ", action)
-                agent.remember(state, action, reward, next_state, done)
+                # if action  = 0 have a REMEMBERTHRESOLD prob of remembering
+                if (action>0):
+                    agent.remember(state, action, reward, next_state, done)
+                # also save if balance varies, eg. if TP or SL
+                elif (balance_ant-info["balance"])!=0.0:
+                    agent.remember(state, action, reward, next_state, done)
+                else:
+                    if e % REMEMBERTHRESHOLD == 0:
+                        agent.remember(state, action, reward, next_state, done)
                 points += reward
             state = next_state
             time=time+1
