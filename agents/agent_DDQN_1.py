@@ -26,7 +26,7 @@ K.set_session(sess)
 
 EPISODES = 5000
 NUMVECTORS = 19
-VECTORSIZE = 12
+VECTORSIZE = 36
 REPLAYFACTOR = 20
 BATCHSIZE = 10
 MEMORYSIZE= 15000 #porque hay 1400 ticks y quiero recordar last 10
@@ -62,9 +62,13 @@ class DQNAgent:
         model = Sequential()
         # for observation[19][48], 19 vectors of 128-dimensional vectors,input_shape = (19, 48)
         # first set of CONV => RELU => POOL
-        model.add(Conv1D(512, 3, input_shape=(self.num_vectors,self.vector_size)))
+        model.add(Conv1D(256, 5, input_shape=(self.num_vectors,self.vector_size)))
         model.add(Activation('relu'))
         model.add(MaxPooling1D(pool_size=2, strides=2))
+        # second set of CONV => RELU => POOL
+        model.add(Conv1D(64, 3))
+        model.add(Activation('relu'))
+        #model.add(MaxPooling1D(pool_size=2, strides=2))
         # second set of CONV => RELU => POOL
         model.add(Conv1D(32, 3))
         model.add(Activation('relu'))
