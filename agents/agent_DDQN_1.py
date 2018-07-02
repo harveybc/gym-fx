@@ -39,9 +39,9 @@ class DQNAgent:
         self.memory = deque(maxlen=MEMORYSIZE)
         self.gamma = 0.95    # discount rate
         self.epsilon = 1.0  # exploration rate
-        self.epsilon_min = 0.01
-        self.epsilon_decay = 0.99
-        self.learning_rate = 0.0001
+        self.epsilon_min = 0.001
+        self.epsilon_decay = 0.9
+        self.learning_rate = 0.001
         self.num_vectors=NUMVECTORS # number of features
         self.vector_size=VECTORSIZE # number of ticks
         
