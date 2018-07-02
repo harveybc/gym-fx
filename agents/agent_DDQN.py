@@ -36,6 +36,7 @@ class DQNAgent:
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.99
         self.learning_rate = 0.001
+        self.num_vectors=19 # number of features
         self.model = self._build_model()
         self.target_model = self._build_model()
         self.update_target_model()
