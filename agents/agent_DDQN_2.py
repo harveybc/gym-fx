@@ -239,8 +239,8 @@ if __name__ == "__main__":
             if (len(agent.memory) > batch_size) and (time > state_size) and (time%REPLAYFACTOR==0) and (not done):
                 agent.replay(batch_size+e)
                 progress = info["tick_count"]*100/1450
-                #sys.stdout.write("Episode: %d Progress: %d%%   \r" % (e, progress) )
-                #sys.stdout.flush()
+                sys.stdout.write("Episode: %d Progress: %d%%   \r" % (e, progress) )
+                sys.stdout.flush()
                 #print(".", end="",flush=True)
         #TODO: Adicionar validation set score cada vez que se encuentre un óptimo
         #TODO: Detener por no avanzar en ultimos n episodes 
