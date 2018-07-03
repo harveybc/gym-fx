@@ -35,6 +35,7 @@ STOPLOSS = 50000
 TAKEPROFIT = 50000
 CAPITAL = 10000
 REPMAXPROFIT = 1 # number of times an action/state is recorded for replay
+MOVINGAVERAGE = 20
 
 # TODO: usar prioritized replay?
 
@@ -43,6 +44,7 @@ class DQNAgent:
         self.state_size = state_size
         self.action_size = action_size
         self.memory = deque(maxlen=MEMORYSIZE)
+        self.points_log = deque(maxlen=MOVINGAVERAGE)
         self.gamma = 0.95    # discount rate
         self.epsilon = 1.0  # exploration rate
         self.epsilon_min = 0.01
@@ -92,6 +94,14 @@ class DQNAgent:
     def update_target_model(self):
         # copy weights from model to target_model
         self.target_model.set_weights(self.model.get_weights())
+        
+    def average_points(self):
+        accum=0.0
+        if len(self.points_log) == 0:
+            return -100;
+        for p in self.points_log:
+            accum=accum + p
+        return (accum/len(self.points_log))
 
     # copies the weights from the  current model to the max model
     def update_model_max(self):
@@ -213,16 +223,17 @@ if __name__ == "__main__":
             #print("e:{}/{},t:{},p:{},e:{:.2}-".format(e, EPISODES, time, points,agent.epsilon))
             if done:
                 agent.update_target_model()
-                print("Done:Ep{}/{} Bal={}, points:{}, points_max:{} , best:{}, last:{}".format(e, EPISODES, info["balance"],points,points_max, best_performance ,last_best_episode))
+                agent.points_log.append(points)
+                avg_points = agent.average_points()
+                print("Done:Ep{}/{} Bal={}, points:{}, points_max:{} , best:{}, last:{}, average:{}".format(e, EPISODES, info["balance"],points,points_max, best_performance ,last_best_episode, avg_points))
                 # if performance decreased, loads the last model
-                if (points>points_max):
-                    print("max updated")
-                    agent.update_model_max()                                     
-                else:
-                    print("max restored")
-                    agent.restore_max()
-                points_max = points   
-                
+                #if (points>points_max):
+                #    print("max updated")
+                #    agent.update_model_max()                                     
+                #else:
+                #    print("max restored")
+                #    agent.restore_max()
+                #points_max = points   
                 break
                                 
             if (len(agent.memory) > batch_size) and (time > state_size) and (time%REPLAYFACTOR==0) and (not done):
