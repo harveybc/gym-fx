@@ -14,6 +14,7 @@ from keras.layers import Activation, Dropout, Flatten, Dense
 from keras.optimizers import SGD
 from gym.envs.registration import register
 import sys
+from keras.callbacks import TensorBoard, LearningRateScheduler, ReduceLROnPlateau
 #from pastalog import Log
 
 # Allows to run multiple simultaneous GPU precesses
@@ -49,7 +50,7 @@ class DQNAgent:
         self.epsilon = 1.0  # exploration rate
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.9
-        self.learning_rate = 0.001
+        self.learning_rate = 0.01
         self.num_vectors=NUMVECTORS # number of features
         self.vector_size=VECTORSIZE # number of ticks
         
@@ -81,14 +82,15 @@ class DQNAgent:
         model.add(Activation('relu'))
         # output layer
         model.add(Dense(self.action_size))
-        #model.add(Activation('softmax'))
+        model.add(Activation('softmax'))
         # multi-GPU support
         #model = to_multi_gpu(model)
+        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, min_lr=1e-5)
         # use SGD optimizer
         #opt = Adam(lr=self.learning_rate)
-        opt = SGD(lr=self.learning_rate)
-        #model.compile(loss="categorical_crossentropy", optimizer=opt, metrics=["accuracy"])
-        model.compile(loss="mse", optimizer=opt, metrics=["accuracy"])
+        opt = SGD(lr=self.learning_rate, momentum=0.9)
+        model.compile(loss="categorical_crossentropy", optimizer=opt, metrics=["accuracy"])
+        #model.compile(loss="mse", optimizer=opt, metrics=["accuracy"])
         return model
  
     def update_target_model(self):
@@ -135,7 +137,7 @@ class DQNAgent:
                 #print("action=",action)
                 target[0][action] = reward + self.gamma * np.amax(t)
                 # target[0][action] = reward + self.gamma * t[np.argmax(a)]
-            self.model.fit(state, target, epochs=1, verbose=0)
+            self.model.fit(state, target, epochs=1, verbose=0, callbacks=[reduce_lr])
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
 
