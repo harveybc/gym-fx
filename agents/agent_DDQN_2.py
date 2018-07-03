@@ -85,7 +85,7 @@ class DQNAgent:
         model.add(Activation('softmax'))
         # multi-GPU support
         #model = to_multi_gpu(model)
-        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, min_lr=1e-5)
+        self.reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, min_lr=1e-5)
         # use SGD optimizer
         #opt = Adam(lr=self.learning_rate)
         opt = SGD(lr=self.learning_rate, momentum=0.9)
@@ -137,7 +137,7 @@ class DQNAgent:
                 #print("action=",action)
                 target[0][action] = reward + self.gamma * np.amax(t)
                 # target[0][action] = reward + self.gamma * t[np.argmax(a)]
-            self.model.fit(state, target, epochs=1, verbose=0, callbacks=[reduce_lr])
+            self.model.fit(state, target, epochs=1, verbose=0, callbacks=[self.reduce_lr])
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
 
