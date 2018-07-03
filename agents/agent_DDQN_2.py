@@ -206,9 +206,9 @@ if __name__ == "__main__":
                 print("Done:Ep{}/{} Bal={}, r:{} , best:{}, last:{}".format(e, EPISODES, info["balance"],points, best_performance ,last_best_episode))
                 # if performance decreased, loads the last optimum
                 if (points<points_ant):
-                    self.model=self.model_ant
+                    agent.model=agent.model_ant
                 else:
-                    self.model_ant=self.model
+                    agent.model_ant=agent.model
                 break
                 points_ant=points
             if (len(agent.memory) > batch_size) and (time > state_size) and (time%REPLAYFACTOR==0) and (not done):
