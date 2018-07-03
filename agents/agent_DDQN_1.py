@@ -47,7 +47,7 @@ class DQNAgent:
         self.epsilon = 1.0  # exploration rate
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.9
-        self.learning_rate = 0.001
+        self.learning_rate = 0.0001
         self.num_vectors=NUMVECTORS # number of features
         self.vector_size=VECTORSIZE # number of ticks
         
@@ -65,13 +65,13 @@ class DQNAgent:
         model = Sequential()
         # for observation[19][48], 19 vectors of 128-dimensional vectors,input_shape = (19, 48)
         # first set of CONV => RELU => POOL
-        model.add(Conv1D(64, 8,strides=2,padding='same',input_shape=(self.num_vectors,self.vector_size)))
+        model.add(Conv1D(512, 5,strides=2,padding='same',input_shape=(self.num_vectors,self.vector_size)))
         model.add(Activation('relu'))
         # second set of CONV => RELU => POOL
-        model.add(Conv1D(128, 4))
+        model.add(Conv1D(64, 4))
         model.add(Activation('relu'))
         # second set of CONV => RELU => POOL
-        model.add(Conv1D(128, 3))
+        model.add(Conv1D(64, 3))
         model.add(Activation('relu'))
         # set of FC => RELU layers
         model.add(Flatten())  # this converts our 3D feature maps to 1D feature vectors
