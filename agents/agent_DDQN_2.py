@@ -31,7 +31,7 @@ VECTORSIZE = 48
 REPLAYFACTOR = 20
 BATCHSIZE = 1
 MEMORYSIZE= 128000 #porque hay 1400 ticks y quiero recordar last 50
-REMEMBERTHRESHOLD = 100 # frames to skip from remember if no action or change of balance is made
+REMEMBERTHRESHOLD = 20 # frames to skip from remember if no action or change of balance is made
 STOPLOSS = 50000
 TAKEPROFIT = 50000
 CAPITAL = 10000
@@ -239,7 +239,7 @@ if __name__ == "__main__":
                 #points_max = points   
                 break
                                 
-            if (len(agent.memory) > batch_size) and (time > state_size) and (time%REPLAYFACTOR==0) and (not done):
+            if (len(agent.memory) > batch_size) and (time > state_size) and ((e+time)%REPLAYFACTOR==0) and (not done):
                 agent.replay(batch_size+e)
                 progress = info["tick_count"]*100/1450
                 sys.stdout.write("Episode: %d Progress: %d%%   \r" % (e, progress) )
