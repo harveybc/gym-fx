@@ -25,13 +25,13 @@ config = tf.ConfigProto()
 sess = tf.Session(config=config)
 K.set_session(sess)
 
-EPISODES = 5000
+EPISODES = 1400
 NUMVECTORS = 19
 VECTORSIZE = 48
 REPLAYFACTOR = 20
 BATCHSIZE = 1
 MEMORYSIZE= 128000 #porque hay 1400 ticks y quiero recordar last 50
-REMEMBERTHRESHOLD = 20 # frames to skip from remember if no action or change of balance is made
+REMEMBERTHRESHOLD = 1 # NOTE: SKIP INCLUDES EPISODE NUMBER e+time)%REPLAYFACTOR == 0 frames to skip from remember if no action or change of balance is made
 STOPLOSS = 50000
 TAKEPROFIT = 50000
 CAPITAL = 10000
