@@ -163,7 +163,7 @@ if __name__ == "__main__":
         done = False
         progress = 0.0
         balance_ant=0.0
-    
+        points_ant = -100.0
         #print("Starting Episode = ",e, " Replaying", flush=True)
         while not done:
             #load data in the observation buffer(action=0 for the first 1440 observations)
@@ -210,6 +210,7 @@ if __name__ == "__main__":
                 else:
                     self.model_ant=self.model
                 break
+                points_ant=points
             if (len(agent.memory) > batch_size) and (time > state_size) and (time%REPLAYFACTOR==0) and (not done):
                 agent.replay(batch_size)
                 progress = info["tick_count"]*100/1450
