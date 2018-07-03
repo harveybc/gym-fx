@@ -65,11 +65,13 @@ class DQNAgent:
         model = Sequential()
         # for observation[19][48], 19 vectors of 128-dimensional vectors,input_shape = (19, 48)
         # first set of CONV => RELU => POOL
-        model.add(Conv1D(256, 5,strides=2,padding='same',input_shape=(self.num_vectors,self.vector_size)))
+        model.add(Conv1D(512, 5,input_shape=(self.num_vectors,self.vector_size)))
         model.add(Activation('relu'))
+        model.add(MaxPooling1D(pool_size=4, strides=4))
         # second set of CONV => RELU => POOL
         model.add(Conv1D(32, 4))
         model.add(Activation('relu'))
+        model.add(MaxPooling1D(pool_size=2, strides=2))
         # second set of CONV => RELU => POOL
         model.add(Flatten())  # this converts our 3D feature maps to 1D feature vectors
         model.add(Dense(64)) # valor óptimo:64 @400k
@@ -81,8 +83,8 @@ class DQNAgent:
         #model = to_multi_gpu(model)
         # use SGD optimizer
         #opt = SGD(lr=self.learning_rate)
-        opt = Adam(lr=1e-6)
-        model.compile(loss="mse", optimizer=opt,
+        opt = Adam(lr=self.learning_rate)
+        model.compile(loss="categorical_crossentropy", optimizer=opt,
                       metrics=["accuracy"])
         return model
 
