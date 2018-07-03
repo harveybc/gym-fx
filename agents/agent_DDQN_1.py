@@ -161,6 +161,7 @@ if __name__ == "__main__":
         done = False
         progress = 0.0
         balance_ant=0.0
+    
         #print("Starting Episode = ",e, " Replaying", flush=True)
         while not done:
             # env.render()
@@ -186,7 +187,7 @@ if __name__ == "__main__":
                         num_repetitions = 1+round((variation/max_variation)* REPMAXPROFIT)
                     else: 
                         num_repetitions = 1
-                    for repetition in range(num_repetitions):
+                    for repetition in range(round(num_repetitions)):
                         # remember action/state for replay
                         agent.remember(state, action, reward, next_state, done)
                 # also save if balance varies, eg. if TP or SL
