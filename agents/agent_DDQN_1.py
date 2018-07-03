@@ -30,11 +30,11 @@ VECTORSIZE = 36
 REPLAYFACTOR = 4
 BATCHSIZE = 4
 MEMORYSIZE= 128000 #porque hay 1400 ticks y quiero recordar last 50
-REMEMBERTHRESHOLD = 10
+REMEMBERTHRESHOLD = 1
 STOPLOSS = 50000
 TAKEPROFIT = 50000
 CAPITAL = 10000
-REPMAXPROFIT = 100 # number of times an action/state is recorded for replay
+REPMAXPROFIT = 1 # number of times an action/state is recorded for replay
 
 # TODO: usar prioritized replay?
 
