@@ -49,7 +49,7 @@ class DQNAgent:
         self.epsilon = 1.0  # exploration rate
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.9
-        self.learning_rate = 0.000001
+        self.learning_rate = 0.001
         self.num_vectors=NUMVECTORS # number of features
         self.vector_size=VECTORSIZE # number of ticks
         
@@ -85,12 +85,12 @@ class DQNAgent:
         # multi-GPU support
         #model = to_multi_gpu(model)
         # use SGD optimizer
-        opt = Adam(lr=self.learning_rate)
-        #opt = SGD(lr=self.learning_rate)
+        #opt = Adam(lr=self.learning_rate)
+        opt = SGD(lr=self.learning_rate)
         #model.compile(loss="categorical_crossentropy", optimizer=opt, metrics=["accuracy"])
         model.compile(loss="mse", optimizer=opt, metrics=["accuracy"])
         return model
-
+ 
     def update_target_model(self):
         # copy weights from model to target_model
         self.target_model.set_weights(self.model.get_weights())
