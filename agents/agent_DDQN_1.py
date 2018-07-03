@@ -34,7 +34,7 @@ REMEMBERTHRESHOLD = 10
 STOPLOSS = 50000
 TAKEPROFIT = 50000
 CAPITAL = 10000
-REPMAXPROFIT = 10 # number of times an action/state is recorded for replay
+REPMAXPROFIT = 5 # number of times an action/state is recorded for replay
 
 # TODO: usar prioritized replay?
 
