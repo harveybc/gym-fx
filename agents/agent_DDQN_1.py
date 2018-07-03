@@ -29,12 +29,12 @@ NUMVECTORS = 19
 VECTORSIZE = 36
 REPLAYFACTOR = 4
 BATCHSIZE = 4
-MEMORYSIZE= 15000 #porque hay 1400 ticks y quiero recordar last 50
+MEMORYSIZE= 128000 #porque hay 1400 ticks y quiero recordar last 50
 REMEMBERTHRESHOLD = 10
 STOPLOSS = 50000
 TAKEPROFIT = 50000
 CAPITAL = 10000
-REPMAXPROFIT = 10 # number of times an action/state is recorded for replay
+REPMAXPROFIT = 100 # number of times an action/state is recorded for replay
 
 # TODO: usar prioritized replay?
 
@@ -47,7 +47,7 @@ class DQNAgent:
         self.epsilon = 1.0  # exploration rate
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.99
-        self.learning_rate = 0.01
+        self.learning_rate = 0.0001
         self.num_vectors=NUMVECTORS # number of features
         self.vector_size=VECTORSIZE # number of ticks
         
@@ -67,9 +67,9 @@ class DQNAgent:
         # first set of CONV => RELU => POOL
         model.add(Conv1D(512, 5,input_shape=(self.num_vectors,self.vector_size)))
         model.add(Activation('relu'))
-        model.add(MaxPooling1D(pool_size=4, strides=2))
+        model.add(MaxPooling1D(pool_size=2, strides=2))
         # second set of CONV => RELU => POOL
-        model.add(Conv1D(32, 4))
+        model.add(Conv1D(32, 5))
         model.add(Activation('relu'))
         model.add(MaxPooling1D(pool_size=2, strides=2))
         # second set of CONV => RELU => POOL
@@ -83,7 +83,7 @@ class DQNAgent:
         #model = to_multi_gpu(model)
         # use SGD optimizer
         #opt = SGD(lr=self.learning_rate)
-        opt = Adam(lr=self.learning_rate)
+        opt = SGD(lr=self.learning_rate)
         model.compile(loss="categorical_crossentropy", optimizer=opt,
                       metrics=["accuracy"])
         return model
