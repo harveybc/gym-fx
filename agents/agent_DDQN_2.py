@@ -218,6 +218,7 @@ if __name__ == "__main__":
                 if (points<points_max):
                     agent.restore_max()
                     print("max restored")
+                    print("max restored")
                 else:
                     agent.update_model_max()
                     points_max = points
