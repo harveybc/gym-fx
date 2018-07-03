@@ -215,14 +215,14 @@ if __name__ == "__main__":
                 agent.update_target_model()
                 print("Done:Ep{}/{} Bal={}, points:{}, points_max:{} , best:{}, last:{}".format(e, EPISODES, info["balance"],points,points_max, best_performance ,last_best_episode))
                 # if performance decreased, loads the last optimum
-                if (points<=points_max):
-                    agent.restore_max()
-                    print("max restored")
-                    
-                else:
+                if (points>points_max):
                     print("max updated")
-                    agent.update_model_max()
-                    points_max = points
+                    points_max = points   
+                    agent.update_model_max()                                     
+                else:
+                    print("max restored")
+                    agent.restore_max()
+
                 break
                 #print("Done: Episodes{}/{} Balance={:.2}, reward: {:.7}, points: {} epsilon:{:.2}  ,".format(e, EPISODES, points,agent.epsilon))
                 
