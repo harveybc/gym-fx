@@ -218,6 +218,7 @@ if __name__ == "__main__":
                 # if performance decreased, loads the last optimum
                 if (points<points_max):
                     restore_max()
+                    print("max restored")
                 else:
                     update_model_max()
                     points_max = points
