@@ -165,7 +165,6 @@ if __name__ == "__main__":
     
         #print("Starting Episode = ",e, " Replaying", flush=True)
         while not done:
-            # env.render()
             #load data in the observation buffer(action=0 for the first 1440 observations)
             if time>state_size:
                 action = agent.act(state)
@@ -199,21 +198,14 @@ if __name__ == "__main__":
             state = next_state
             time=time+1
             balance_ant = info["balance"]
-            
             #print("e:{}/{},t:{},p:{},e:{:.2}-".format(e, EPISODES, time, points,agent.epsilon))
             if done:
                 agent.update_target_model()
                 #print("Done: Episodes{}/{} Balance={:.2}, reward: {:.7}, points: {} epsilon:{:.2}  ,".format(e, EPISODES, points,agent.epsilon))
                 print("Done:Ep{}/{} Bal={}, r:{} , best:{}, last:{}".format(e, EPISODES, info["balance"],points, best_performance ,last_best_episode))
-                #logs the reward
-                #log_a.post('Reward', value=points, step=e)
-                # logs the reward
-                #log_a.post('Balance', value=balance, step=e)
-                # logs the tick Count
-                #log_a.post('TickCount', value=tick_count,step=e)
                 break
             if (len(agent.memory) > batch_size) and (time > state_size) and (time%REPLAYFACTOR==0) and (not done):
-                #agent.replay(batch_size)
+                agent.replay(batch_size)
                 progress = info["tick_count"]*100/1450
                 sys.stdout.write("Episode: %d Progress: %d%%   \r" % (e, progress) )
                 sys.stdout.flush()
