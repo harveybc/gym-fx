@@ -85,7 +85,7 @@ class DQNAgent:
         model.add(Activation('softmax'))
         # multi-GPU support
         #model = to_multi_gpu(model)
-        self.reduce_lr = ReduceLROnPlateau(monitor='loss', factor=0.3, patience=3, min_lr=5e-5)
+        self.reduce_lr = ReduceLROnPlateau(monitor='loss', factor=0.3, patience=4, min_lr=5e-5)
         # use SGD optimizer
         #opt = Adam(lr=self.learning_rate)
         opt = SGD(lr=self.learning_rate, momentum=0.9)
