@@ -48,7 +48,7 @@ class DQNAgent:
         self.points_log = deque(maxlen=MOVINGAVERAGE)
         self.gamma = 0.95    # discount rate
         self.epsilon = 1.0  # exploration rate
-        self.epsilon_min = 0.01
+        self.epsilon_min = 0.03
         self.epsilon_decay = 0.94
         self.learning_rate = 0.01
         self.num_vectors=NUMVECTORS # number of features
@@ -85,7 +85,7 @@ class DQNAgent:
         model.add(Activation('softmax'))
         # multi-GPU support
         #model = to_multi_gpu(model)
-        self.reduce_lr = ReduceLROnPlateau(monitor='loss', factor=0.3, patience=4, min_lr=5e-5)
+        self.reduce_lr = ReduceLROnPlateau(monitor='loss', factor=0.3, patience=10, min_lr=1e-4)
         # use SGD optimizer
         #opt = Adam(lr=self.learning_rate)
         opt = SGD(lr=self.learning_rate, momentum=0.9)
