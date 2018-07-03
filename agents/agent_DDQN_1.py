@@ -171,9 +171,7 @@ if __name__ == "__main__":
                 action = agent.act(state)
             else:
                 action=0
-            next_state, reward, done, info = env.step(action)
-
-            
+            next_state, reward, done, info = env.step(action)            
             next_state = np.reshape(next_state, [agent.num_vectors,state_size])
             next_state = np.expand_dims(next_state, axis=0)
             if time>state_size:
