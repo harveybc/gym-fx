@@ -65,26 +65,31 @@ class DQNAgent:
         model = Sequential()
         # for observation[19][48], 19 vectors of 128-dimensional vectors,input_shape = (19, 48)
         # first set of CONV => RELU => POOL
-        model.add(Conv1D(256, 5, input_shape=(self.num_vectors,self.vector_size)))
+        model.add(Conv1D(64, 8, 8, subsample=(4,4),init=lambda shape,
+            name: normal(shape, scale=0.01, name=name), border_mode='same', 
+            input_shape=(self.num_vectors,self.vector_size)))
         model.add(Activation('relu'))
-        model.add(MaxPooling1D(pool_size=2, strides=2))
         # second set of CONV => RELU => POOL
-        model.add(Conv1D(32, 3))
+        model.add(Conv1D(128, 4, 4, subsample=(2,2),init=lambda shape,
+            name: normal(shape, scale=0.01, name=name), border_mode='same'))
         model.add(Activation('relu'))
-        model.add(MaxPooling1D(pool_size=2, strides=2))
+        # second set of CONV => RELU => POOL
+        model.add(Conv1D(128, 3, 3, subsample=(1,1),init=lambda shape,
+            name: normal(shape, scale=0.01, name=name), border_mode='same'))
+        model.add(Activation('relu'))
         # set of FC => RELU layers
         model.add(Flatten())  # this converts our 3D feature maps to 1D feature vectors
-        model.add(Dense(64)) # valor óptimo:64 @400k
+        model.add(Dense(512, init=lambda shape, name: normal(shape, scale=0.01, name=name))) # valor óptimo:64 @400k
         model.add(Activation('relu'))
-
-        # Softmax activation since we neet to chose only one of athe available actions
+        # output layer
         model.add(Dense(self.action_size))
-        model.add(Activation('softmax'))
+        #model.add(Activation('softmax'))
         # multi-GPU support
         #model = to_multi_gpu(model)
         # use SGD optimizer
-        opt = SGD(lr=self.learning_rate)
-        model.compile(loss="categorical_crossentropy", optimizer=opt,
+        #opt = SGD(lr=self.learning_rate)
+        opt = Adam(lr=1e-6)
+        model.compile(loss="mse", optimizer=opt,
                       metrics=["accuracy"])
         return model
 
