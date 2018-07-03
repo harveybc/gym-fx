@@ -182,7 +182,10 @@ if __name__ == "__main__":
                     if variation > max_variation:
                         max_variation = variation
                     # remember additional times if profit was large
-                    num_repetitions = 1+round((variation/max_variation)* REPMAXPROFIT)
+                    if max_variation > 0.0:
+                        num_repetitions = 1+round((variation/max_variation)* REPMAXPROFIT)
+                    else: 
+                        num_repetitions = 1
                     for repetition in range(num_repetitions):
                         # remember action/state for replay
                         agent.remember(state, action, reward, next_state, done)
