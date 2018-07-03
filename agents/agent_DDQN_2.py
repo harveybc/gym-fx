@@ -28,14 +28,14 @@ K.set_session(sess)
 EPISODES = 5000
 NUMVECTORS = 19
 VECTORSIZE = 48
-REPLAYFACTOR = 20
-BATCHSIZE = 2
+REPLAYFACTOR = 2
+BATCHSIZE = 1
 MEMORYSIZE= 128000 #porque hay 1400 ticks y quiero recordar last 50
 REMEMBERTHRESHOLD = 1
 STOPLOSS = 50000
 TAKEPROFIT = 50000
 CAPITAL = 10000
-REPMAXPROFIT = 2 # number of times an action/state is recorded for replay
+REPMAXPROFIT = 1 # number of times an action/state is recorded for replay
 MOVINGAVERAGE = 20
 
 # TODO: usar prioritized replay?
@@ -48,8 +48,8 @@ class DQNAgent:
         self.points_log = deque(maxlen=MOVINGAVERAGE)
         self.gamma = 0.95    # discount rate
         self.epsilon = 1.0  # exploration rate
-        self.epsilon_min = 0.01
-        self.epsilon_decay = 0.9
+        self.epsilon_min = 0.1
+        self.epsilon_decay = 0.94
         self.learning_rate = 0.01
         self.num_vectors=NUMVECTORS # number of features
         self.vector_size=VECTORSIZE # number of ticks
@@ -85,7 +85,7 @@ class DQNAgent:
         model.add(Activation('softmax'))
         # multi-GPU support
         #model = to_multi_gpu(model)
-        self.reduce_lr = ReduceLROnPlateau(monitor='loss', factor=0.2, patience=5, min_lr=1e-5)
+        self.reduce_lr = ReduceLROnPlateau(monitor='loss', factor=0.4, patience=3, min_lr=1e-4)
         # use SGD optimizer
         #opt = Adam(lr=self.learning_rate)
         opt = SGD(lr=self.learning_rate, momentum=0.9)
