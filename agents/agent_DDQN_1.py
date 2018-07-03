@@ -213,7 +213,7 @@ if __name__ == "__main__":
                 #log_a.post('TickCount', value=tick_count,step=e)
                 break
             if (len(agent.memory) > batch_size) and (time > state_size) and (time%REPLAYFACTOR==0) and (not done):
-                agent.replay(batch_size)
+                #agent.replay(batch_size)
                 progress = info["tick_count"]*100/1450
                 sys.stdout.write("Episode: %d Progress: %d%%   \r" % (e, progress) )
                 sys.stdout.flush()
