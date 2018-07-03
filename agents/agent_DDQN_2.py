@@ -165,6 +165,7 @@ if __name__ == "__main__":
     #log_a = Log('http://localhost:8120', '1h4yvs48DCN_536_m128kbs128lr00001ed9tp1ksl2k') #OJO, capital inicial=300
     max_variation = 0.0
     num_repetitions = 0
+    points_max = -100.0
     for e in range(EPISODES):
         state = env.reset()
         state = np.reshape(state, [agent.num_vectors,state_size])
@@ -173,8 +174,7 @@ if __name__ == "__main__":
         points=0.0
         done = False
         progress = 0.0
-        balance_ant=0.0
-        points_max = -100.0
+        balance_ant=CAPITAL
         #print("Starting Episode = ",e, " Replaying", flush=True)
         while not done:
             #load data in the observation buffer(action=0 for the first 1440 observations)
