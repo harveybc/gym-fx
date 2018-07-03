@@ -93,6 +93,17 @@ class DQNAgent:
         # copy weights from model to target_model
         self.target_model.set_weights(self.model.get_weights())
 
+    # copies the weights from the  current model to the max model
+    def update_model_max(self):
+        # copy weights from model to target_model
+        self.model_max.set_weights(self.model.get_weights())
+
+    # copies the weights from the  model with max perf to the current model
+    def restore_max(self):
+        # copy weights from model_max to target_model
+        self.model.set_weights(self.model_max.get_weights())
+
+
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
 
@@ -206,9 +217,9 @@ if __name__ == "__main__":
                 print("Done:Ep{}/{} Bal={}, r:{} , best:{}, last:{}".format(e, EPISODES, info["balance"],points, best_performance ,last_best_episode))
                 # if performance decreased, loads the last optimum
                 if (points<points_max):
-                    agent.model=agent.model_max
+                    restore_max()
                 else:
-                    agent.model_max=agent.model
+                    update_model_max()
                     points_max = points
                 break
                 
