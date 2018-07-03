@@ -28,7 +28,7 @@ EPISODES = 5000
 NUMVECTORS = 19
 VECTORSIZE = 48
 REPLAYFACTOR = 10
-BATCHSIZE = 32
+BATCHSIZE = 8
 MEMORYSIZE= 128000 #porque hay 1400 ticks y quiero recordar last 50
 REMEMBERTHRESHOLD = 1
 STOPLOSS = 50000
@@ -46,12 +46,13 @@ class DQNAgent:
         self.gamma = 0.95    # discount rate
         self.epsilon = 1.0  # exploration rate
         self.epsilon_min = 0.01
-        self.epsilon_decay = 0.9
+        self.epsilon_decay = 0.93
         self.learning_rate = 0.0001
         self.num_vectors=NUMVECTORS # number of features
         self.vector_size=VECTORSIZE # number of ticks
         
         self.model = self._build_model()
+        self.model_ant = self.model
         self.target_model = self._build_model()
         self.update_target_model()
 
@@ -203,6 +204,11 @@ if __name__ == "__main__":
                 agent.update_target_model()
                 #print("Done: Episodes{}/{} Balance={:.2}, reward: {:.7}, points: {} epsilon:{:.2}  ,".format(e, EPISODES, points,agent.epsilon))
                 print("Done:Ep{}/{} Bal={}, r:{} , best:{}, last:{}".format(e, EPISODES, info["balance"],points, best_performance ,last_best_episode))
+                # if performance decreased, loads the last optimum
+                if (points<points_ant):
+                    self.model=self.model_ant
+                else:
+                    self.model_ant=self.model
                 break
             if (len(agent.memory) > batch_size) and (time > state_size) and (time%REPLAYFACTOR==0) and (not done):
                 agent.replay(batch_size)
