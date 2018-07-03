@@ -31,7 +31,7 @@ VECTORSIZE = 48
 REPLAYFACTOR = 20
 BATCHSIZE = 1
 MEMORYSIZE= 128000 #porque hay 1400 ticks y quiero recordar last 50
-REMEMBERTHRESHOLD = 10 # frames to skip from remember if no action or change of balance is made
+REMEMBERTHRESHOLD = 100 # frames to skip from remember if no action or change of balance is made
 STOPLOSS = 50000
 TAKEPROFIT = 50000
 CAPITAL = 10000
@@ -50,7 +50,7 @@ class DQNAgent:
         self.epsilon = 1.0  # exploration rate
         self.epsilon_min = 0.005
         self.epsilon_decay = 0.93
-        self.learning_rate = 0.01
+        self.learning_rate = 0.0001
         self.num_vectors=NUMVECTORS # number of features
         self.vector_size=VECTORSIZE # number of ticks
         
@@ -85,7 +85,7 @@ class DQNAgent:
         model.add(Activation('softmax'))
         # multi-GPU support
         #model = to_multi_gpu(model)
-        self.reduce_lr = ReduceLROnPlateau(monitor='loss', factor=0.3, patience=5, min_lr=1e-4)
+        #self.reduce_lr = ReduceLROnPlateau(monitor='loss', factor=0.3, patience=5, min_lr=1e-4)
         # use SGD optimizer
         #opt = Adam(lr=self.learning_rate)
         opt = SGD(lr=self.learning_rate, momentum=0.9)
@@ -137,7 +137,8 @@ class DQNAgent:
                 #print("action=",action)
                 target[0][action] = reward + self.gamma * np.amax(t)
                 # target[0][action] = reward + self.gamma * t[np.argmax(a)]
-            self.model.fit(state, target, epochs=1, verbose=0, callbacks=[self.reduce_lr])
+            #self.model.fit(state, target, epochs=1, verbose=0, callbacks=[self.reduce_lr])
+            self.model.fit(state, target, epochs=1, verbose=0)
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
 
