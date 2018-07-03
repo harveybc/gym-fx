@@ -28,14 +28,14 @@ K.set_session(sess)
 EPISODES = 5000
 NUMVECTORS = 19
 VECTORSIZE = 48
-REPLAYFACTOR = 10
+REPLAYFACTOR = 20
 BATCHSIZE = 2
 MEMORYSIZE= 128000 #porque hay 1400 ticks y quiero recordar last 50
-REMEMBERTHRESHOLD = 5
+REMEMBERTHRESHOLD = 1
 STOPLOSS = 50000
 TAKEPROFIT = 50000
 CAPITAL = 10000
-REPMAXPROFIT = 1 # number of times an action/state is recorded for replay
+REPMAXPROFIT = 2 # number of times an action/state is recorded for replay
 MOVINGAVERAGE = 20
 
 # TODO: usar prioritized replay?
