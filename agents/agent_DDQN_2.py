@@ -28,14 +28,14 @@ EPISODES = 5000
 NUMVECTORS = 19
 VECTORSIZE = 48
 REPLAYFACTOR = 100
-BATCHSIZE = 8
+BATCHSIZE = 2
 MEMORYSIZE= 128000 #porque hay 1400 ticks y quiero recordar last 50
 REMEMBERTHRESHOLD = 1
 STOPLOSS = 50000
 TAKEPROFIT = 50000
 CAPITAL = 10000
 REPMAXPROFIT = 1 # number of times an action/state is recorded for replay
-MOVINGAVERAGE = 20
+MOVINGAVERAGE = 30
 
 # TODO: usar prioritized replay?
 
@@ -225,7 +225,7 @@ if __name__ == "__main__":
                 agent.update_target_model()
                 agent.points_log.append(points)
                 avg_points = agent.average_points()
-                print("Done:Ep{}/{} Bal={}, points:{}, points_max:{} , best:{}, last:{}, average:{}".format(e, EPISODES, info["balance"],points,points_max, best_performance ,last_best_episode, avg_points))
+                print("Done:Ep{}/{} Bal={}, points:{}, best:{}, last:{}, average:{}".format(e, EPISODES, info["balance"],points, best_performance ,last_best_episode, avg_points))
                 # if performance decreased, loads the last model
                 #if (points>points_max):
                 #    print("max updated")
@@ -237,7 +237,7 @@ if __name__ == "__main__":
                 break
                                 
             if (len(agent.memory) > batch_size) and (time > state_size) and (time%REPLAYFACTOR==0) and (not done):
-                agent.replay(batch_size)
+                agent.replay(batch_size+e)
                 progress = info["tick_count"]*100/1450
                 #sys.stdout.write("Episode: %d Progress: %d%%   \r" % (e, progress) )
                 #sys.stdout.flush()
