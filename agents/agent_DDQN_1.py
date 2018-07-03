@@ -65,13 +65,13 @@ class DQNAgent:
         model = Sequential()
         # for observation[19][48], 19 vectors of 128-dimensional vectors,input_shape = (19, 48)
         # first set of CONV => RELU => POOL
-        model.add(Conv1D(64, 8, strides=4, input_shape=(self.num_vectors,self.vector_size)))
+        model.add(Conv1D(64, 8, input_shape=(self.num_vectors,self.vector_size)))
         model.add(Activation('relu'))
         # second set of CONV => RELU => POOL
-        model.add(Conv1D(128, 4, strides=2))
+        model.add(Conv1D(128, 4))
         model.add(Activation('relu'))
         # second set of CONV => RELU => POOL
-        model.add(Conv1D(128, 3, strides=1))
+        model.add(Conv1D(128, 3))
         model.add(Activation('relu'))
         # set of FC => RELU layers
         model.add(Flatten())  # this converts our 3D feature maps to 1D feature vectors
