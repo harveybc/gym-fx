@@ -65,7 +65,7 @@ class DQNAgent:
         model = Sequential()
         # for observation[19][48], 19 vectors of 128-dimensional vectors,input_shape = (19, 48)
         # first set of CONV => RELU => POOL
-        model.add(Conv1D(64, 8,strides=4,padding='same',input_shape=(self.num_vectors,self.vector_size)))
+        model.add(Conv1D(64, 8,strides=2,padding='same',input_shape=(self.num_vectors,self.vector_size)))
         model.add(Activation('relu'))
         # second set of CONV => RELU => POOL
         model.add(Conv1D(128, 4))
