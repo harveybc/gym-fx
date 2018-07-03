@@ -29,7 +29,7 @@ NUMVECTORS = 19
 VECTORSIZE = 48
 REPLAYFACTOR = 1
 BATCHSIZE = 4
-MEMORYSIZE= 64000 #porque hay 1400 ticks y quiero recordar last 50
+MEMORYSIZE= 3000 #porque hay 1400 ticks y quiero recordar last 50
 REMEMBERTHRESHOLD = 100
 STOPLOSS = 50000
 TAKEPROFIT = 50000
@@ -152,6 +152,7 @@ if __name__ == "__main__":
     #print(device_lib.list_local_devices())
     #log_a = Log('http://localhost:8120', '1h4yvs48DCN_536_m128kbs128lr00001ed9tp1ksl2k') #OJO, capital inicial=300
     max_variation = 0.0
+    num_repetitions = 0
     for e in range(EPISODES):
         state = env.reset()
         state = np.reshape(state, [agent.num_vectors,state_size])
@@ -186,7 +187,7 @@ if __name__ == "__main__":
                     if max_variation > 0.0:
                         num_repetitions = 1+round((variation/max_variation)* REPMAXPROFIT)
                     else: 
-                        num_repetitions = 1
+                        num_repetitions = int(1)
                     for repetition in range(int(num_repetitions)):
                         # remember action/state for replay
                         agent.remember(state, action, reward, next_state, done)
