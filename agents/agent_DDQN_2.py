@@ -52,7 +52,7 @@ class DQNAgent:
         self.vector_size=VECTORSIZE # number of ticks
         
         self.model = self._build_model()
-        self.model_ant = self.model
+        self.model_max = self.model
         self.target_model = self._build_model()
         self.update_target_model()
 
@@ -163,7 +163,7 @@ if __name__ == "__main__":
         done = False
         progress = 0.0
         balance_ant=0.0
-        points_ant = -100.0
+        points_max = -100.0
         #print("Starting Episode = ",e, " Replaying", flush=True)
         while not done:
             #load data in the observation buffer(action=0 for the first 1440 observations)
@@ -205,12 +205,13 @@ if __name__ == "__main__":
                 #print("Done: Episodes{}/{} Balance={:.2}, reward: {:.7}, points: {} epsilon:{:.2}  ,".format(e, EPISODES, points,agent.epsilon))
                 print("Done:Ep{}/{} Bal={}, r:{} , best:{}, last:{}".format(e, EPISODES, info["balance"],points, best_performance ,last_best_episode))
                 # if performance decreased, loads the last optimum
-                if (points<points_ant):
-                    agent.model=agent.model_ant
+                if (points<points_max):
+                    agent.model=agent.model_max
                 else:
-                    agent.model_ant=agent.model
+                    agent.model_max=agent.model
+                    points_max = points
                 break
-                points_ant=points
+                
             if (len(agent.memory) > batch_size) and (time > state_size) and (time%REPLAYFACTOR==0) and (not done):
                 agent.replay(batch_size)
                 progress = info["tick_count"]*100/1450
