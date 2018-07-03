@@ -26,15 +26,15 @@ K.set_session(sess)
 
 EPISODES = 5000
 NUMVECTORS = 19
-VECTORSIZE = 80
+VECTORSIZE = 36
 REPLAYFACTOR = 4
-BATCHSIZE = 2
+BATCHSIZE = 8
 MEMORYSIZE= 15000 #porque hay 1400 ticks y quiero recordar last 50
 REMEMBERTHRESHOLD = 10
 STOPLOSS = 50000
 TAKEPROFIT = 50000
 CAPITAL = 10000
-REPMAXPROFIT = 5 # number of times an action/state is recorded for replay
+REPMAXPROFIT = 10 # number of times an action/state is recorded for replay
 
 # TODO: usar prioritized replay?
 
@@ -46,8 +46,8 @@ class DQNAgent:
         self.gamma = 0.95    # discount rate
         self.epsilon = 1.0  # exploration rate
         self.epsilon_min = 0.01
-        self.epsilon_decay = 0.9
-        self.learning_rate = 0.0001
+        self.epsilon_decay = 0.99
+        self.learning_rate = 0.01
         self.num_vectors=NUMVECTORS # number of features
         self.vector_size=VECTORSIZE # number of ticks
         
@@ -65,17 +65,14 @@ class DQNAgent:
         model = Sequential()
         # for observation[19][48], 19 vectors of 128-dimensional vectors,input_shape = (19, 48)
         # first set of CONV => RELU => POOL
-        model.add(Conv1D(512, 5,strides=2,padding='same',input_shape=(self.num_vectors,self.vector_size)))
+        model.add(Conv1D(256, 5,strides=2,padding='same',input_shape=(self.num_vectors,self.vector_size)))
         model.add(Activation('relu'))
         # second set of CONV => RELU => POOL
-        model.add(Conv1D(64, 4))
+        model.add(Conv1D(32, 4))
         model.add(Activation('relu'))
         # second set of CONV => RELU => POOL
-        model.add(Conv1D(64, 3))
-        model.add(Activation('relu'))
-        # set of FC => RELU layers
         model.add(Flatten())  # this converts our 3D feature maps to 1D feature vectors
-        model.add(Dense(512)) # valor óptimo:64 @400k
+        model.add(Dense(64)) # valor óptimo:64 @400k
         model.add(Activation('relu'))
         # output layer
         model.add(Dense(self.action_size))
