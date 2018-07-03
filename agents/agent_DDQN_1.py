@@ -68,10 +68,10 @@ class DQNAgent:
         model.add(Conv1D(64, 8,strides=2,input_shape=(self.num_vectors,self.vector_size)))
         model.add(Activation('relu'))
         # second set of CONV => RELU => POOL
-        model.add(Conv1D(128, 4,strides=2))
+        model.add(Conv1D(128, 4))
         model.add(Activation('relu'))
         # second set of CONV => RELU => POOL
-        model.add(Conv1D(128, 3,strides=1))
+        model.add(Conv1D(128, 3))
         model.add(Activation('relu'))
         # set of FC => RELU layers
         model.add(Flatten())  # this converts our 3D feature maps to 1D feature vectors
