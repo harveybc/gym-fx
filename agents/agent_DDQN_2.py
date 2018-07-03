@@ -212,6 +212,8 @@ if __name__ == "__main__":
             balance_ant = info["balance"]
             #print("e:{}/{},t:{},p:{},e:{:.2}-".format(e, EPISODES, time, points,agent.epsilon))
             if done:
+                agent.update_target_model()
+                print("Done:Ep{}/{} Bal={}, r:{} , best:{}, last:{}".format(e, EPISODES, info["balance"],points, best_performance ,last_best_episode))
                 # if performance decreased, loads the last optimum
                 if (points<points_max):
                     agent.restore_max()
@@ -220,9 +222,8 @@ if __name__ == "__main__":
                     agent.update_model_max()
                     points_max = points
                 break
-                agent.update_target_model()
                 #print("Done: Episodes{}/{} Balance={:.2}, reward: {:.7}, points: {} epsilon:{:.2}  ,".format(e, EPISODES, points,agent.epsilon))
-                print("Done:Ep{}/{} Bal={}, r:{} , best:{}, last:{}".format(e, EPISODES, info["balance"],points, best_performance ,last_best_episode))
+                
 
             if (len(agent.memory) > batch_size) and (time > state_size) and (time%REPLAYFACTOR==0) and (not done):
                 agent.replay(batch_size)
