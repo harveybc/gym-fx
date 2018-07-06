@@ -60,7 +60,7 @@ def run():
                          neat.DefaultSpeciesSet, neat.DefaultStagnation,
                          config_path)
     # uses the extended NEAT population PopulationSyn that synchronizes with singularity
-    pop = PopulationSyn(config)
+    pop = Population(config)
     # add reporters
     stats = neat.StatisticsReporter()
     pop.add_reporter(stats)
