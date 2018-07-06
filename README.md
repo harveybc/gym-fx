@@ -31,11 +31,11 @@ balance variation.
 # Installation
 ### Step 1 - Setup Dependencies
 
-Install Python3, pip3 and other dependencies and OpenAI Gym:  
+Install Python, pip and other dependencies and OpenAI Gym:  
 
-sudo apt-get install -y python3-numpy python3-dev cmake zlib1g-dev libjpeg-dev xvfb libav-tools libboost-all-dev libsdl2-dev  
+sudo apt-get install -y python-numpy python-dev cmake zlib1g-dev libjpeg-dev xvfb libav-tools libboost-all-dev libsdl2-dev python-pip 
 
-pip3 install graphviz matplotlib neat-python python-tk git python3-pip gym neat-python
+pip install graphviz matplotlib neat-python python-tk git gym neat-python matplotlib
 
 ### Step 2 - Setup gym-forex from GitHub
 
@@ -43,15 +43,20 @@ cd
 git clone https://github.com/harveybc/gym-forex  
 cd gym-forex  
 
-  
 ### Step 3 - Configure the NEAT parameters
+
+set the PYTHONPATH venvironment variable, you may add the following line to the .profile file. Replace <username> with your username.
+
+export PYTHONPATH=/home/<username>/gym-forex/:${PYTHONPATH}
+  
+### Step 4 - Configure the NEAT parameters
 
 nano agents/config  
 
 Configure the population size and other parameters according to your computing 
 capacity or requirements, start with the defaults.
 
-### Step 4 - Configure a startup/restart script
+### Step 5 - Configure a startup/restart script
 
 nano res  
 
@@ -67,7 +72,7 @@ After editing, change the permission of the file to be executable:
 
 chmod 777 res  
 
-### Step 5 - Start your optimizer that uses the gym-forex environment and an agent.
+### Step 6 - Start your optimizer that uses the gym-forex environment and an agent.
 
 ./res  
 

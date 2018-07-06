@@ -16,7 +16,7 @@ import pickle
 import random
 import sys
 import time
-import visualize
+#import visualize
 from gym.envs.registration import register
 from population_syn import PopulationSyn # extended neat population for synchronizing witn singularity p2p network
 # Multi-core machine support
