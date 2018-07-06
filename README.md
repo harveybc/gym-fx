@@ -66,7 +66,7 @@ your singularity node Address and Port. For example:
 #!/bin/bash
 git stash
 git pull
-python agents/agent_NEAT.py ./datasets/ts_5min_1w.CSV ./datasets/vs_5min_1w.CSV http://192.168.0.241:3338 config_20
+python agents/agent_NEAT.py ./datasets/ts_5min_1w.CSV ./datasets/vs_5min_1w.CSV config_20
 
 After editing, change the permission of the file to be executable:  
 
