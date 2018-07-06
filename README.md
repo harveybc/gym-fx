@@ -33,8 +33,9 @@ balance variation.
 
 Install openAI Gym from Github according to [these instructions](https://github.com/harveybc/gym-forex)these instructions.  
 Install Python3, pip3 and other dependencies:  
+
 sudo apt-get install -y python3-numpy python3-dev cmake zlib1g-dev libjpeg-dev xvfb libav-tools libboost-all-dev libsdl2-dev  
-pip3 install graphviz matplotlib neat-python python-tk
+pip3 install graphviz matplotlib neat-python python-tk git 
 
 ### Step 2 - Setup gym-forex from GitHub
 
@@ -55,9 +56,10 @@ nano res
 For pulling the latest changes and executing the optimizer with a connection to 
 your singularity node Address and Port. For example:  
 
-\#!/bin/bash  
-git pull  
-python agents/agent_NEAT_reps_v3.py ../datasets/ts_1y.csv http://192.168.0.241:3338 config  
+#!/bin/bash
+git stash
+git pull
+python agents/agent_NEAT.py ./datasets/ts_5min_1w.CSV ./datasets/vs_5min_1w.CSV http://192.168.0.241:3338 config_20
 
 After editing, change the permission of the file to be executable:  
 
