@@ -93,7 +93,7 @@ def run():
             # if it is not the first iteration
             if iteration_counter >= 0:
                 # synchronizes with singularity migrating maximum 3 specimens 
-                pop.syn_singularity(4, my_url, stats,avg_score,rep.current_generation, config, ec.genomes_h)
+                # pop.syn_singularity(4, my_url, stats,avg_score,rep.current_generation, config, ec.genomes_h)
                 pop.species.speciate(config, pop.population, pop.generation)
                 print("\nSpeciation after migration done")
                 # perform pending evaluations on the singularity network, max 2
