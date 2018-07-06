@@ -1,8 +1,7 @@
 # gym-forex
 
 The [Forex environment](https://github.com/harveybc/gym-forex) is a forex
-trading simulator featuring: configurable initial capital, multiple currency pair
-trading, dynamic or dataset-based spread, CSV history timeseries for trading
+trading simulator featuring: configurable initial capital, dynamic or dataset-based spread, CSV history timeseries for trading
 currencies and observations for the agent, fixed or agent-controlled take-profit, stop-loss and order volume.
 
 The environment features discrete action spaces and optionally continuous
@@ -31,7 +30,7 @@ balance variation.
 # Installation
 ### Step 1 - Setup Dependencies
 
-Install Python, pip and other dependencies and OpenAI Gym:  
+Install Python, pip,  OpenAI Gym and other dependencies:  
 
 sudo apt-get install -y python3-numpy python3-dev cmake zlib1g-dev libjpeg-dev xvfb ffmpeg libboost-all-dev libsdl2-dev python3-pip git
 
@@ -45,7 +44,7 @@ cd gym-forex
 
 ### Step 3 - Configure the NEAT parameters
 
-set the PYTHONPATH venvironment variable, you may add the following line to the .profile file. Replace <username> with your username.
+Set the PYTHONPATH venvironment variable, you may add the following line to the .profile file in your home directory to export on start of sessions. Replace <username> with your username.
 
 export PYTHONPATH=/home/<username>/gym-forex/:${PYTHONPATH}
   
