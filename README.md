@@ -31,16 +31,18 @@ balance variation.
 # Installation
 ### Step 1 - Setup Dependencies
 
-Install openAI Gym from Github according to [these instructions](https://github.com/harveybc/gym-forex)these instructions.  
-Install Python3, pip3 and other dependencies:  
+Install Python3, pip3 and other dependencies and OpenAI Gym:  
 
 sudo apt-get install -y python3-numpy python3-dev cmake zlib1g-dev libjpeg-dev xvfb libav-tools libboost-all-dev libsdl2-dev  
-pip3 install graphviz matplotlib neat-python python-tk git 
+
+pip3 install graphviz matplotlib neat-python python-tk git python3-pip gym neat-python
 
 ### Step 2 - Setup gym-forex from GitHub
 
+cd 
 git clone https://github.com/harveybc/gym-forex  
 cd gym-forex  
+
   
 ### Step 3 - Configure the NEAT parameters
 
@@ -69,8 +71,4 @@ chmod 777 res
 
 ./res  
 
-### Step 6 - Verify its Working
 
-Access the web interface from a browser in the address and port you configured.  
-Access the Processes menu to monitor your optimization process progress.  
-Also access the Optimization/Parameters menu to see details of individual optima found.

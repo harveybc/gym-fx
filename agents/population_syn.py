@@ -86,7 +86,7 @@ class PopulationSyn(Population):
                 with open('remote_reps', 'wb') as handler:
                     handler.write(genom_data)
                     handler.close()
-                # carga genom descargado en nueva población pop2
+                # carga genom descargado en nueva poblacion pop2
                 with open('remote_reps', 'rb') as f:
                     remote_reps = pickle.load(f)
                 print('\nPARAMETERS DOWNLOADED: remote_reps=', remote_reps)
