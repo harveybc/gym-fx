@@ -5,7 +5,7 @@ import gym
 import gym.wrappers
 import gym_forex
 import json
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import multiprocessing
 import neat
 from neat.six_util import iteritems
