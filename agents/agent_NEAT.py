@@ -97,7 +97,7 @@ def run():
                 pop.species.speciate(config, pop.population, pop.generation)
                 print("\nSpeciation after migration done")
                 # perform pending evaluations on the singularity network, max 2
-                pop.evaluate_pending(2)
+                #pop.evaluate_pending(2)
                 #increment iteration counter
                 iteration_counter = iteration_counter + 1
             # execute num_iterations consecutive iterations of the NEAT algorithm
