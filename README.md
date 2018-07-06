@@ -33,9 +33,9 @@ balance variation.
 
 Install Python, pip and other dependencies and OpenAI Gym:  
 
-sudo apt-get install -y python-numpy python-dev cmake zlib1g-dev libjpeg-dev xvfb libav-tools libboost-all-dev libsdl2-dev python-pip 
+sudo apt-get install -y python3-numpy python3-dev cmake zlib1g-dev libjpeg-dev xvfb libav-tools libboost-all-dev libsdl2-dev python3-pip 
 
-pip install graphviz matplotlib neat-python python-tk git gym neat-python matplotlib
+pip3 install graphviz matplotlib neat-python python-tk git gym neat-python matplotlib
 
 ### Step 2 - Setup gym-forex from GitHub
 
