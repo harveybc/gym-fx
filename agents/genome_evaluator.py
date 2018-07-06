@@ -18,7 +18,7 @@ import sys
 import time
 #import visualize
 from gym.envs.registration import register
-from population_syn import PopulationSyn # extended neat population for synchronizing witn singularity p2p network
+#from population_syn import PopulationSyn # extended neat population for synchronizing witn singularity p2p network
 # Multi-core machine support
 NUM_CORES = 1
 
