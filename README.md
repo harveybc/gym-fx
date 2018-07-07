@@ -61,7 +61,7 @@ nano res
 For pulling the latest changes and executing the optimizer with a connection to 
 your singularity node Address and Port. For example:  
 
-#!/bin/bash
+#!/bin/bash  
 git pull  
 python3 agents/agent_NEAT.py ./datasets/ts_5min_1w.CSV ./datasets/vs_5min_1w.CSV config_20  
 
