@@ -32,7 +32,7 @@ balance variation.
 
 Install Python, pip,  OpenAI Gym and other dependencies:  
 
-sudo apt-get install -y python3-numpy python3-dev cmake zlib1g-dev libjpeg-dev xvfb ffmpeg libboost-all-dev libsdl2-dev python3-pip git gcc make perl
+sudo apt-get install -y python3-numpy python3-dev cmake zlib1g-dev libjpeg-dev xvfb ffmpeg libboost-all-dev libsdl2-dev python3-pip git gcc make perl  
 
 pip3 install graphviz matplotlib neat-python gitpython gym neat-python matplotlib
 
@@ -44,15 +44,15 @@ git clone https://github.com/harveybc/gym-forex
 
 Set the PYTHONPATH venvironment variable, you may add the following line to the .profile file in your home directory to export on start of sessions. Replace <username> with your username.
 
-export PYTHONPATH=/home/username/gym-forex/:${PYTHONPATH}
+export PYTHONPATH=/home/username/gym-forex/:${PYTHONPATH}  
   
 ### Step 4 - Configure the NEAT parameters
 
-cd gym-forex
-nano agents/config  
+cd gym-forex  
+nano agents/config   
 
 Configure the population size and other parameters according to your computing 
-capacity or requirements, start with the defaults.
+capacity or requirements, start with the defaults.  
 
 ### Step 5 - Configure a startup/restart script
 
@@ -62,8 +62,8 @@ For pulling the latest changes and executing the optimizer with a connection to
 your singularity node Address and Port. For example:  
 
 #!/bin/bash
-git pull
-python3 agents/agent_NEAT.py ./datasets/ts_5min_1w.CSV ./datasets/vs_5min_1w.CSV config_20
+git pull  
+python3 agents/agent_NEAT.py ./datasets/ts_5min_1w.CSV ./datasets/vs_5min_1w.CSV config_20  
 
 After editing, change the permission of the file to be executable:  
 
@@ -71,6 +71,7 @@ chmod 777 res
 
 ### Step 6 - Start your optimizer that uses the gym-forex environment and an agent.
 
-./res  
+./res   
+
 
 
