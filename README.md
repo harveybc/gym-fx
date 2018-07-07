@@ -63,7 +63,6 @@ your singularity node Address and Port. For example:
 
 #!/bin/bash
 git pull
-
 python3 agents/agent_NEAT.py ./datasets/ts_5min_1w.CSV ./datasets/vs_5min_1w.CSV config_20
 
 After editing, change the permission of the file to be executable:  
