@@ -56,6 +56,84 @@ class LanderGenome(neat.DefaultGenome):
         return "Reward discount: {0}\n{1}".format(self.discount,
                                                   super().__str__())
 
+# convert an ann to a dcn model
+def ann2dcn(self, nets_ann, num_vectors, vector_size):
+    # esta funci?n debe retornar un arreglo de modelos 
+    # Deep Conv Neural Net for Deep-Q learning Model
+    models = []
+    # for each net generate a dnn model
+    for net in nets_ann:
+        # creates a new model
+        model = Sequential()
+        # node counter
+        c_node = 0
+        # initialize values from input node
+        node, act_func, agg_func, bias, response, links = net.node_evals[net.input_nodes[0]]
+        # repeat until next_node != output (add layers)
+        while true:
+            # add the layer depending on the conection to the next node:
+            # act_funct of the next node    = core layer
+            # bias of the next neuron (0.1,1) = kernel size
+            kernel_size = round(bias * max_kernel_size)
+            # response of the next node(0.1,1)= pool_size, stride
+            pool_size = round(response * max_pool_size)
+            # link.w to the next node(0,1)  = number of filters
+            filters = links[0].w
+            ##########################################################
+            # Encoding:
+            # agg_funct = min -> adds dropout, else adds conv1D
+            # agg_funct = sum -> add pooling layer
+            # agg_funct = product -> does nothing(add it as option in NEAT config)
+            # act:funct = relu -> adds relu layer
+            # act_funct = sigmoid -> adds hard-sigmoid layer
+            ##########################################################
+            # si agg_funct = min: adiciona capa dropout # TODO: add min aggregation_options in config_20_dqn
+            if agg_funct == 'min':
+                # if its the first node:
+                if c_node==0:
+                    model.add(Dropout(0.1, input_shape=(num_vectors, vector_size)))
+                else:
+                    model.add(Dropout(0.1))
+            # sino es dropout adiciona una capa Conv1D (note in config that sum and product are set so a conv1d layer has double the chances than dropout (min agg_funct))
+            else:
+                if c_node==0:
+                    model.add(Conv1D(filters, kernel_size, input_shape=(num_vectors, vector_size)))
+                else:
+                    model.add(Conv1D(filters, kernel_size))
+            # act_funct = sigmoid: relu 
+            if act_funct == 'relu': 
+                    model.add(Activation('relu'))
+            # act_funct = tanh: hard_sigmoid
+            if act_funct == 'sigmoid': 
+                model.add(Activation('hard_sigmoid'))
+            # agg_funct = sum:pooling, product:no-pooling
+            if agg_funct == 'sum':
+                model.add(MaxPooling1D(pool_size=pool_size, strides=pool_size))
+            # TODO: DROPOUT SOLO SE DEBE USAR EN TRAINING, NO EN EVAL
+            # stop condition for while: until next node = output
+            if links[0].i==net.output_nodes[0]:
+                break
+            # read values from next node
+            node, act_func, agg_func, bias, response, links = net.node_evals[links[0].i]    
+            # increment node counter
+            c_node += 1
+        # adds a dense layer with the parameters of the output node with response attribute
+        model.add(Flatten())  # this converts our 3D feature maps to 1D feature vectors
+        model.add(Dense(response*max_dense)) # valor ?ptimo:64 @400k
+        model.add(Activation('relu'))
+        # TODO: Probar con Hard sigmoid(pq controls requieren  -1,1) y relu(0,1)-> mod. controls para prueba
+        model.add(Dense(self.action_size))
+        model.add(Activation('hard_sigmoid'))
+        # multi-GPU support
+        #model = to_multi_gpu(model)
+        # use SGD optimizer
+        opt = SGD(lr=self.learning_rate)
+        model.compile(loss="mean_squared_error", optimizer=opt,
+                      metrics=["accuracy"])
+        # append model to models
+        models.append(model)
+    return models
+
 
 def compute_fitness(genome, net, episodes, min_reward, max_reward):
     m = int(round(np.log(0.01) / np.log(genome.discount)))
