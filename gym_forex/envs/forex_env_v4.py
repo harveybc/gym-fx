@@ -35,7 +35,7 @@ class ForexEnv4(gym.Env):
         self.max_tp = kwargs['tp']
         self.leverage = kwargs['leverage']
         # minimum number of orders to remove reward penalty when episode done
-        self.min_orders = 10
+        self.min_orders = 4
         # Closing cause
         self.num_closes = 0
         self.c_c = 0
