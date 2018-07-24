@@ -8,7 +8,7 @@ import numpy as np
 import numpy
 from numpy import genfromtxt
 
-class ForexEnv3(gym.Env):
+class ForexEnv4(gym.Env):
     """
     This environment simulates a Forex trading account with only one open order 
     at any time.
@@ -145,7 +145,7 @@ class ForexEnv3(gym.Env):
     
     observation: A concatenation of num_ticks vectors for the lastest: 
                  vector of values from timeseries, equity and its variation, 
-                 order_status( 0 nop, -1=buy,1=sell),time_opened (normalized with
+                 order_status( 0 nop, -1=sell,1=buy),time_opened (normalized with
                  max_order_time), order_profit and its variation, order_drawdown
                  /order_volume_pips,  Performance?=ver archivo Reward2.xlsx tab Long-Term
 
@@ -174,10 +174,12 @@ class ForexEnv3(gym.Env):
         # Calculates profit
         self.profit_pips = 0
         self.real_profit = 0
+        # calculate for existing BUY order (status=1)
         if self.order_status == 1:
             # Low_Bid - order_open min and real profit pips (1 lot = 100000 units of currency)
             self.profit_pips = ((Low - self.open_price) / self.pip_cost)
             self.real_profit = self.profit_pips * self.pip_cost * self.order_volume * 100000
+        # calculate for existing SELL order (status=-1)
         if self.order_status == -1:
             # Order_open - High_Ask (High+spread)
             self.profit_pips = ((self.open_price - (High + spread)) / self.pip_cost)
@@ -236,18 +238,13 @@ class ForexEnv3(gym.Env):
                 self.c_c = 3
             # TODO: Hacer opcion realista de ordenes que se ABREN Y CIERRAN solo si durante el siguiente minuto
             #       el precio de la orden(close) no es high o low del siguiente candle.
+            
             # Executes BUY action, order status  = 1
-            if (self.order_status == 0 or self.order_status == -1) and action == 1:
-                if self.order_status == -1:
-                    self.balance = self.equity
-                    self.margin = 0
-                    self.ant_c_c = self.c_c
-                    self.c_c = 0
+            if (self.order_status == 0) and action == 1:
                 self.order_status = 1
                 # open price = Ask (Close_bid+Spread)
                 self.open_price = Close + spread
                 # order_volume = lo que alcanza con rel_volume de equity
-                
                 # Calcula sl y tp desde action space
                 #print("\naction=",action[0]);
                 #self.sl = self.min_sl + ((self.max_sl-self.min_sl) * ((action[2] + 1) / 2))
@@ -265,7 +262,6 @@ class ForexEnv3(gym.Env):
                     # close existing order
                     self.order_volume = 0.01
                     self.margin = 0
-                    
                 # set the new margin
                 self.margin = self.margin + (self.order_volume * 100000 / self.leverage)
                 # TODO: Colocar accion para tamano de lote con rel_volume como maximo al abrir una orden
@@ -274,14 +270,9 @@ class ForexEnv3(gym.Env):
                 if self.debug == 1:
                     print(self.tick_count, ',buy, o', self.open_price, ',v', self.order_volume, ',m', self.margin, ',e',
                           self.equity, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
-            # Executes SELL action, order status  = -1
-            if (self.order_status == 0 or self.order_status == 1) and action == 2:
-                if self.order_status == 1:
-                    # close existing order
-                    self.balance = self.equity
-                    self.margin = 0
-                    self.ant_c_c = self.c_c
-                    self.c_c = 0
+            
+            # Executes SELL action, order status  = 1
+            if (self.order_status == 0) and action == 2:
                 self.order_status = -1
                 # open_price = Bid
                 self.open_price = Close
@@ -297,36 +288,42 @@ class ForexEnv3(gym.Env):
                 # set the new margin
                 self.margin = self.margin + (self.order_volume * 100000 / self.leverage)
                 self.order_time = self.tick_count
-                
                 # TODO: Hacer version con controles para abrir y cerrar para buy y sell independientes,comparar
                 # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                 if self.debug == 1:
                     print(self.tick_count, ',sell, o', self.open_price, ',v', self.order_volume, ',m', self.margin, ',e',
                           self.equity, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
-                    # TODO: Verificar si ha pasado el min_order_time desde que se abrieron antes de cerrar
+            
+            # Verify si ha pasado el min_order_time desde que se abrieron antes de cerrar
             if ((self.tick_count - self.order_time) > self.min_order_time):
-                if self.order_status == 1 and action == 1:
+                # Closes EXISTING SELL (-1) order with action=BUY (1)
+                if (self.order_status == -1) and action == 1:
                     self.order_status = 0
-                    self.ant_c_c = self.c_c
-                    self.c_c = 0
+                    # Calculate new balance
                     self.balance = self.equity
-                    self.margin = 0
-                    # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
-                    if self.debug == 1:
-                        print(self.tick_count, ',close_buy, o', self.open_price, ',p', self.profit_pips, ',v',
-                              self.order_volume, ',e', self.equity, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':',
-                              MoH)
-                if self.order_status == -1 and action == 2:
-                    self.order_status = 0
-                    self.ant_c_c = self.c_c
-                    self.c_c = 0
-                    self.balance = self.equity
-                    self.margin = 0
+                    # reset margin
+                    self.margin = 0.0
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                     if self.debug == 1:
                         print(self.tick_count, ',close_sell, o', self.open_price, ',p', self.profit_pips, ',v',
-                              self.order_volume, ',e', self.equity, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':',
-                              MoH)
+                              self.order_volume, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
+                    # Set closing cause 0 = normal close
+                    self.ant_c_c = self.c_c
+                    self.c_c = 0
+                # Closes EXISTING BUY (1) order with action=SELL (2)
+                if (self.order_status == 1) and action == 2:
+                    self.order_status = 0
+                    # Calculate new balance
+                    self.balance = self.equity
+                    # reset margin
+                    self.margin = 0.0
+                    # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
+                    if self.debug == 1:
+                        print(self.tick_count, ',close_buy, o', self.open_price, ',p', self.profit_pips, ',v',
+                              self.order_volume, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
+                    # Set closing cause 0 = normal close
+                    self.ant_c_c = self.c_c
+                    self.c_c = 0
         # Calculates reward from RewardFunctionTable
         equity_increment = self.equity - self.equity_ant
         balance_increment = self.balance - self.balance_ant
@@ -428,4 +425,4 @@ class ForexEnv3(gym.Env):
         if mode == 'human':
             return self.equity
         else:
-            super(ForexEnv, self).render(mode=mode)  # just raise an exception
+            super(ForexEnv4, self).render(mode=mode)  # just raise an exception

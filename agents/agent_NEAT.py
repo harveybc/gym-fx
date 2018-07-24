@@ -1,4 +1,4 @@
-# This agent uses the forex_env_v2 that uses continuous and binary controls
+# ANN evolved with NEAT as agent that uses the ForexEnv4 environment
 from __future__ import print_function
 from copy import deepcopy
 from gym.envs.registration import register

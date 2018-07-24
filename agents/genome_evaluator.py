@@ -1,4 +1,4 @@
-# This agent uses the forex_env_v2 that uses continuous and binary controls
+# library for ann genome evaluation
 from __future__ import print_function
 from copy import deepcopy
 import gym
@@ -36,12 +36,12 @@ class GenomeEvaluator(object):
         # register the gym-forex openai gym environment
         register(
             id='ForexTrainingSet-v1',
-            entry_point='gym_forex.envs:ForexEnv3',
+            entry_point='gym_forex.envs:ForexEnv4',
             kwargs={'dataset': ts_f, 'volume':0.2, 'sl':500, 'tp':500,'obsticks':2, 'capital':10000, 'leverage':100}
         )
         register(
             id='ForexValidationSet-v1',
-            entry_point='gym_forex.envs:ForexEnv3',
+            entry_point='gym_forex.envs:ForexEnv4',
             kwargs={'dataset': vs_f,'volume':0.2, 'sl':500, 'tp':500,'obsticks':2, 'capital':10000, 'leverage':100}
         )
         # make openai gym environments
