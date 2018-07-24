@@ -351,11 +351,11 @@ class ForexEnv4(gym.Env):
             if self.c_c == 1:
                 reward = -(5.0 * self.initial_capital)
             # penaliza red que no hace nada
-            if self.tick_count >= (self.num_ticks - 2):
-                if self.num_closes < self.min_orders:
-                    reward = -(0.5*self.initial_capital * (1-(self.num_closes/self.min_orders)))
-                if self.equity == self.initial_capital:
-                    reward = -(10.0 * self.initial_capital)
+            #if self.tick_count >= (self.num_ticks - 2):
+                #if self.num_closes < self.min_orders:
+                #    reward = -(0.5*self.initial_capital * (1-(self.num_closes/self.min_orders)))
+                #if self.equity == self.initial_capital:
+                #    reward = -(10.0 * self.initial_capital)
                     
             reward = reward / self.initial_capital
                 # if self.order_status==0:
