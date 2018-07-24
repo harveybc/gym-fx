@@ -348,6 +348,9 @@ class ForexEnv4(gym.Env):
             if self.tick_count >= (self.num_ticks - 2):
                 if self.equity == self.initial_capital:
                     reward = -(10.0 * self.initial_capital)
+                if self.num_closes < self.min_orders:
+                    reward = -(10.0 * self.initial_capital * (1-(self.num_closes/self.min_orders)))
+                    
             reward = reward / self.initial_capital
                 # if self.order_status==0:
             # TODO: penalizar reward con el cuadrado del tiempo que lleva sin orden * -0.01
@@ -382,8 +385,7 @@ class ForexEnv4(gym.Env):
             self.episode_over = bool(1)
             if self.equity == self.initial_capital:
                 reward = -(10.0 * self.initial_capital)
-            if self.num_closes < self.min_orders:
-                reward = -(10.0 * self.initial_capital * (1-(self.num_closes/self.min_orders)))
+            
             # print('Done - Balance =', self.equity, ',  Reward =', self.reward, 'Time=', self.tick_count)
             # self._reset()
             # self.__init__()
