@@ -34,7 +34,10 @@ class ForexEnv4(gym.Env):
         self.max_sl = kwargs['sl']
         self.max_tp = kwargs['tp']
         self.leverage = kwargs['leverage']
+        # minimum number of orders to remove reward penalty when episode done
+        self.min_orders = 10
         # Closing cause
+        self.num_closes = 0
         self.c_c = 0
         self.episode_over=bool(0)
         # Number of past ticks per feature to be used as observations (1440min=1day, 10080=1Week, 43200=1month, )
@@ -379,12 +382,14 @@ class ForexEnv4(gym.Env):
             self.episode_over = bool(1)
             if self.equity == self.initial_capital:
                 reward = -(10.0 * self.initial_capital)
+            if self.num_closes < self.min_orders:
+                reward = -(10.0 * self.initial_capital * (1-(self.num_closes/self.min_orders) )
             # print('Done - Balance =', self.equity, ',  Reward =', self.reward, 'Time=', self.tick_count)
             # self._reset()
             # self.__init__()
             # TODO: IMPRIMIR ESTADiSTICAS DE METATRADER
         # end of step function.
-        info = {"balance":self.balance, "tick_count":self.tick_count, "order_status":self.order_status}
+        info = {"balance":self.balance, "tick_count":self.tick_count, "order_status":self.order_status, "num_closes":self.num_closes}
         return ob, reward, self.episode_over, info
 
     """
@@ -405,6 +410,7 @@ class ForexEnv4(gym.Env):
         self.margin = 0.0
         self.c_c = 0
         self.ant_c_c = 0
+        self.num_closes = 0
         # Serial data - to - parallel observation matrix and state matrix
         self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         self.state = self.state_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
