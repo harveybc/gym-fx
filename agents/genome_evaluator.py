@@ -127,7 +127,7 @@ class GenomeEvaluator(object):
         best_scores.append(score)
         avg_score = sum(best_scores) / len(best_scores)
         print("Training Set Score=", score, " avg_score=", avg_score, " num_closes= ", info["num_closes"], 
-            " balance=", self.balance)
+            " balance=", info["balance"])
         # calculate the validation set score
         best_scores = []
         observation = self.env_v.reset()
