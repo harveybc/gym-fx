@@ -353,7 +353,7 @@ class ForexEnv4(gym.Env):
             # penaliza red que no hace nada
             if self.tick_count >= (self.num_ticks - 2):
                 if self.num_closes < self.min_orders:
-                    reward = -(2 * self.initial_capital * (1-(self.num_closes/self.min_orders)))
+                    reward = -(self.initial_capital * (1-(self.num_closes/self.min_orders)))
                 if self.equity == self.initial_capital:
                     reward = -(10.0 * self.initial_capital)
                     
@@ -389,8 +389,6 @@ class ForexEnv4(gym.Env):
         # Episode over es TRUE cuando se termina el juego, es decir cuando tick_count=self.num_ticks
         if self.tick_count >= (self.num_ticks - 1):
             self.episode_over = bool(1)
-            if self.equity == self.initial_capital:
-                reward = -(10.0 * self.initial_capital)
             
             # print('Done - Balance =', self.equity, ',  Reward =', self.reward, 'Time=', self.tick_count)
             # self._reset()
