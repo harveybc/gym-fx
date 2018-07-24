@@ -345,11 +345,17 @@ class ForexEnv4(gym.Env):
             # premia incrementos
             #if equity_increment > 0.0:
             #    reward = reward + (self.initial_capital / self.num_ticks)
-            # penaliza margin call
-            if (self.num_closes < self.min_orders) and reward > 0:
+            
+            # penaliza hardly if less than min_orders/2 
+            if (self.num_closes < self.min_orders/2) and reward > 0:
                 reward = reward * (self.num_closes/self.min_orders)
-            if (self.num_closes < self.min_orders) and reward < 0:
+            if (self.num_closes < self.min_orders/2) and reward <= 0:
                 reward = reward - (self.initial_capital / self.num_ticks) * (1-(self.num_closes/self.min_orders))
+    
+            # penaliza lightly if less than min_orders
+            if (self.num_closes < self.min_orders) and reward <= 0:
+                reward = reward - ((self.initial_capital / (10*self.num_ticks))* (1-(self.num_closes/self.min_orders)))
+            # penaliza margin call
             if self.c_c == 1:
                 reward = -(5.0 * self.initial_capital)
             # penaliza red que no hace nada
