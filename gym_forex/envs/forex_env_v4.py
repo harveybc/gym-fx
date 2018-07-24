@@ -224,6 +224,7 @@ class ForexEnv4(gym.Env):
                 # Set closing cause 2 = sl
                 self.ant_c_c = self.c_c
                 self.c_c = 2
+                self.num_closes += 1
             # Verify if close by TP
             if self.profit_pips >= self.tp:
                 # Close order
@@ -239,6 +240,7 @@ class ForexEnv4(gym.Env):
                 # Set closing cause 3 = tp
                 self.ant_c_c = self.c_c
                 self.c_c = 3
+                self.num_closes += 1
             # TODO: Hacer opcion realista de ordenes que se ABREN Y CIERRAN solo si durante el siguiente minuto
             #       el precio de la orden(close) no es high o low del siguiente candle.
             
@@ -313,6 +315,7 @@ class ForexEnv4(gym.Env):
                     # Set closing cause 0 = normal close
                     self.ant_c_c = self.c_c
                     self.c_c = 0
+                    self.num_closes += 1
                 # Closes EXISTING BUY (1) order with action=SELL (2)
                 if (self.order_status == 1) and action == 2:
                     self.order_status = 0
@@ -327,6 +330,7 @@ class ForexEnv4(gym.Env):
                     # Set closing cause 0 = normal close
                     self.ant_c_c = self.c_c
                     self.c_c = 0
+                    self.num_closes += 1
         # Calculates reward from RewardFunctionTable
         equity_increment = self.equity - self.equity_ant
         balance_increment = self.balance - self.balance_ant
