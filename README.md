@@ -27,6 +27,11 @@ discrete action 0 parameter: symbol
 The reward function is the average of the area under the curve of equity and the 
 balance variation.
 
+## MQL4 Dataset Generator
+
+The datasets used for the tests were generated with a MQL4 program located in the
+agents folder (Pending documentation).
+
 # Installation
 ### Step 1 - Setup Dependencies
 
