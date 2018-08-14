@@ -64,7 +64,7 @@ def run():
     pop = PopulationSyn
     # add reporters
     stats = neat.StatisticsReporter()
-    pop.add_reporter(stats)
+    # pop.add_reporter(stats)
     pop.add_reporter(neat.StdOutReporter(True))
     # save a checkpoint every 100 generations or 900 seconds.
     rep = neat.Checkpointer(100, 900)
