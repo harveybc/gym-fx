@@ -2,7 +2,7 @@
 from __future__ import print_function
 from copy import deepcopy
 from gym.envs.registration import register
-#from population_syn import PopulationSyn # extended neat population for synchronizing with singularity p2p network
+from population_syn import PopulationSyn # extended neat population for synchronizing with singularity p2p network
 from genome_evaluator import GenomeEvaluator
 import gym
 import sys
