@@ -61,10 +61,10 @@ def run():
                          config_path)
     # uses the extended NEAT population PopulationSyn that synchronizes with singularity
     # pop = neat.Population(config)
-    pop = PopulationSyn
+    pop = PopulationSyn(config)
     # add reporters
     stats = neat.StatisticsReporter()
-    # pop.add_reporter(stats)
+    pop.add_reporter(stats)
     pop.add_reporter(neat.StdOutReporter(True))
     # save a checkpoint every 100 generations or 900 seconds.
     rep = neat.Checkpointer(100, 900)
