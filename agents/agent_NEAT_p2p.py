@@ -18,10 +18,11 @@ NUM_CORES = 1
 ts_f = sys.argv[1]
 # Second is validation dataset 
 vs_f = sys.argv[2]
-# Third argument is the  url for syngularity sync
-my_url = sys.argv[3]
-# fourth is the config filename
+
+# Thirdis the config filename
 my_config = sys.argv[3]
+# fourth  argument is the  url for syngularity sync
+my_url = sys.argv[4]
 # for cross-validation like training set
 index_t = 0
 
