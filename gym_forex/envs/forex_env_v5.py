@@ -98,7 +98,7 @@ class ForexEnv5(gym.Env):
         self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         self.action_space = spaces.Discrete(3)
         # observation_space=(16 columns + 3 state variables)* obs_ticks, shape=(width,height, channels?)
-        self.observation_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(self.obs_ticks, 1, 19), dtype=np.float32)
+        self.observation_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(self.obs_ticks, 1, 16), dtype=np.float32)
         self.order_time = 0
         # TODO; Quitar cuando se controle SL Y TP
         self.sl = self.max_sl
