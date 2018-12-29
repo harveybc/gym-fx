@@ -397,8 +397,6 @@ class ForexEnv5(gym.Env):
         self.c_c = 0
         self.ant_c_c = 0
         self.num_closes = 0
-        # Serial data - to - parallel observation matrix and state matrix
-        self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         ob = self.obs_matrix
         #self.__init__(self.dataset)
         self.episode_over = bool(0)
