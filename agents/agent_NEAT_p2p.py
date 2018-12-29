@@ -1,8 +1,11 @@
-# ANN evolved with NEAT as agent that uses the ForexEnv4 environment
+# ANN evolved with NEAT as agent that uses the ForexEnv environment
 from __future__ import print_function
 from copy import deepcopy
 from gym.envs.registration import register
-from population_syn import PopulationSyn # extended neat population for synchronizing with singularity p2p network
+#*******************************************************************
+# extended neat population for synchronizing with singularity p2p network
+from population_syn import PopulationSyn 
+# ******************************************************************
 from genome_evaluator import GenomeEvaluator
 import gym
 import sys
@@ -60,9 +63,12 @@ def run():
     config = neat.Config(AgentGenome, neat.DefaultReproduction,
                          neat.DefaultSpeciesSet, neat.DefaultStagnation,
                          config_path)
+                         
+    #*************************************************************************
     # uses the extended NEAT population PopulationSyn that synchronizes with singularity
     # pop = neat.Population(config)
     pop = PopulationSyn(config)
+    #**************************************************************************
     # add reporters
     stats = neat.StatisticsReporter()
     pop.add_reporter(stats)
@@ -94,8 +100,10 @@ def run():
                 avg_score=ec.training_validation_score(gen_best, config)
             # if it is not the first iteration
             if iteration_counter >= 0:
+                #**************************************************************
                 # synchronizes with singularity migrating maximum 3 specimens 
                 pop.syn_singularity(4, my_url, stats,avg_score,rep.current_generation, config, ec.genomes_h)
+                #**************************************************************
                 pop.species.speciate(config, pop.population, pop.generation)
                 print("\nSpeciation after migration done")
                 # perform pending evaluations on the singularity network, max 2
