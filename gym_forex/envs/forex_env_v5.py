@@ -389,9 +389,10 @@ class ForexEnv5(gym.Env):
         print ("obs_ticks = ", self.obs_ticks)
         for i in range(0, self.num_columns):
             for j in range(0, self.obs_ticks):
-                self.obs_matrix[i].append(self.my_data[j, i].copy())
+                self.obs_matrix[i].append(self.my_data[j, i])
+            print ("obs_matrix_pre[",i,"] = ", self.obs_matrix[i])
         for i in range(0, self.num_columns):        
-            print ("obs_matrix[",i,"] = ", self.obs_matrix[i])
+            print ("obs_matrix_post[",i,"] = ", self.obs_matrix[i])
                 #self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         self.tick_count = self.obs_ticks
         self.order_status = 0
