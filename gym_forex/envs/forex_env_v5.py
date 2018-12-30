@@ -386,6 +386,7 @@ class ForexEnv5(gym.Env):
         self.balance_ant = self.balance
         self.equity_ant = self.equity
         print ("First my_data row = ", self.my_data[0,:])
+        print ("obs_ticks = ", self.obs_ticks)
         for i in range(0, self.obs_ticks):
             for j in range(0, self.num_columns):
                 self.obs_matrix[j].append(self.my_data[i, j])
