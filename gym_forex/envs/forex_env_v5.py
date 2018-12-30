@@ -390,7 +390,7 @@ class ForexEnv5(gym.Env):
         for i in range(0, self.num_columns):
             for j in range(0, self.obs_ticks):
                 self.obs_matrix[i].append(self.my_data[j, i])
-                
+        for i in range(0, self.num_columns):        
             print ("obs_matrix[",i,"] = ", self.obs_matrix[i])
                 #self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         self.tick_count = self.obs_ticks
