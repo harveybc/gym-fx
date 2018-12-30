@@ -385,9 +385,10 @@ class ForexEnv5(gym.Env):
         self.balance = self.equity
         self.balance_ant = self.balance
         self.equity_ant = self.equity
+        print ("First my")
         for i in range(0, self.obs_ticks):
             for j in range(0, self.num_columns):
-                self.obs_matrix[j].append(self.my_data[i, j])
+                self.obs_matrix[j].append(self.my_data[j, i])
                 #self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         self.tick_count = self.obs_ticks
         self.order_status = 0
