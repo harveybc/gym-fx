@@ -7,6 +7,7 @@ import math
 import numpy as np
 import numpy
 from numpy import genfromtxt
+import copy
 
 class ForexEnv5(gym.Env):
     """
@@ -94,10 +95,10 @@ class ForexEnv5(gym.Env):
         self.state_columns = 0
         # Serial data - to - parallel observation matrix and state matrix
         historic = deque(self.obs_ticks * [0.0], self.obs_ticks)
-        self.obs_matrix = self.num_columns * [historic.copy()]
+        self.obs_matrix = self.num_columns * [copy.deepcopy(historic)]
         for i in range(0, self.obs_ticks):
             for j in range(0, self.num_columns - 1):
-                self.obs_matrix[j].append(self.my_data[i, j].copy())
+                self.obs_matrix[j].append(self.my_data[i, j])
                 #self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         # initialize tick counter 
         self.tick_count = self.obs_ticks
@@ -391,7 +392,6 @@ class ForexEnv5(gym.Env):
         for i in range(0, self.num_columns):
             for j in range(0, self.obs_ticks):
                 self.obs_matrix[i]=self.obs_matrix[i].append(self.my_data[j, i])
-            self.obs_matrix[i]=self.obs_matrix[i].copy()
             print ("obs_matrix_pre[",i,"] = ", self.obs_matrix[i])
         for i in range(0, self.num_columns):        
             print ("obs_matrix_post[",i,"] = ", self.obs_matrix[i])
