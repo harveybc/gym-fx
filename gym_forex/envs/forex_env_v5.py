@@ -346,7 +346,7 @@ class ForexEnv5(gym.Env):
                     self.equity = 0
                     
             reward = reward / self.initial_capital
-                # if self.order_status==0:
+            # if self.order_status==0:
             # TODO: penalizar reward con el cuadrado del tiempo que lleva sin orden * -0.01
                 # para evitar que sin acciones se obtenga ganancia 0 al final (deseado: -2, entonces variación=-2/num_ticks)
                 # TODO: Auto-calcular reward descontado por inectividad como función del total de ticks?
@@ -386,7 +386,7 @@ class ForexEnv5(gym.Env):
         self.balance_ant = self.balance
         self.equity_ant = self.equity
         for i in range(0, self.obs_ticks):
-            for j in range(0, self.num_columns - 1):
+            for j in range(0, self.num_columns):
                 self.obs_matrix[j].append(self.my_data[i, j])
                 #self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         self.tick_count = self.obs_ticks
