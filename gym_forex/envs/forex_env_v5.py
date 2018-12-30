@@ -401,11 +401,9 @@ class ForexEnv5(gym.Env):
         self.c_c = 0
         self.ant_c_c = 0
         self.num_closes = 0
-        ob = self.obs_matrix
         #self.__init__(self.dataset)
         self.episode_over = bool(0)
-        print("ob = ",ob)
-        return ob
+        return self.obs_matrix
 
     """
     _render: muestra performance de ultima orden, performance general y OPCIONALMENTE actualiza un grafico del equity
