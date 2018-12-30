@@ -404,6 +404,7 @@ class ForexEnv5(gym.Env):
         ob = self.obs_matrix
         #self.__init__(self.dataset)
         self.episode_over = bool(0)
+        print("ob = ",ob)
         return ob
 
     """
