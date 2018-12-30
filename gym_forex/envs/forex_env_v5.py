@@ -95,7 +95,7 @@ class ForexEnv5(gym.Env):
         self.state_columns = 0
         # Serial data - to - parallel observation matrix and state matrix
         historic = deque([], maxlen=self.obs_ticks)
-        self.obs_matrix = self.num_columns * [copy.deepcopy(historic)]
+        self.obs_matrix = self.num_columns * [historic]
         for i in range(0, self.obs_ticks):
             for j in range(0, self.num_columns - 1):
                 self.obs_matrix[j].append(self.my_data[i, j])
