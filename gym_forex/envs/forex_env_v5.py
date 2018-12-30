@@ -79,7 +79,7 @@ class ForexEnv5(gym.Env):
         # flag para representacion de observaciones 0=valores raw, 1=return
         self.use_return = 0
         # load csv file, The file must contain 16 cols: the 0 = HighBid, 1 = Low, 2 = Close, 3 = NextOpen, 4 = v, 5 = MoY, 6 = DoM, 7 = DoW, 8 = HoD, 9 = MoH, ..<6 indicators>
-        self.my_data = genfromtxt(csv_f, delimiter=',', skip_header=1)
+        self.my_data = genfromtxt(csv_f, delimiter=',', skip_header=0)
         # initialize number of ticks from from CSV
         self.num_ticks = len(self.my_data)
         # initialize number of columns from the CSV
