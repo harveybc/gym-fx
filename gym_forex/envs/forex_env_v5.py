@@ -111,6 +111,7 @@ class ForexEnv5(gym.Env):
         # TODO; Quitar cuando se controle SL Y TP
         self.sl = self.max_sl
         self.tp = self.max_tp
+        print ("Finished INIT function")
 
 
     """
