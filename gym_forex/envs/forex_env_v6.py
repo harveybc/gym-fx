@@ -237,8 +237,8 @@ class ForexEnv6(gym.Env):
                 # order_volume = lo que alcanza con rel_volume de equity
                 # Calcula sl y tp desde action space
                 #print("\naction=",action[0]);
-                self.tp = ((self.max_tp) * ((action[0] + 1) / 2))
-                self.sl = ((self.max_sl) * ((action[1] + 1) / 2))
+                self.tp = (self.max_tp) * (action[0])
+                self.sl = (self.max_sl) * (action[1])
                 #self.tp = self.min_tp + ((self.max_tp-self.min_tp) * ((action[0] + 1) / 2))
                 #self.sl = self.min_sl + ((self.max_sl-self.min_sl) * ((action[1] + 1) / 2))
                 #self.sl = self.max_sl
@@ -246,7 +246,7 @@ class ForexEnv6(gym.Env):
                 # TODO: ADICIONAR VOLUME DESDE ACTION SPACE 
                 # a=Tuple((Discrete(3),  Box(low=-1.0, high=1.0, shape=3, dtype=np.float32)) # nop, buy, sell vol,tp,sl
                 #self.order_volume = self.equity * self.max_volume * self.leverage * ((action[2] + 1) / 2) / 100000
-                self.order_volume = self.equity * self.max_volume * self.leverage * ((action[2] + 1) / 2) / 100000
+                self.order_volume = self.equity * self.max_volume * self.leverage * action[2] / 100000
                 #self.order_volume = self.equity * self.max_volume * self.leverage / 100000
                 # redondear a volumenes minimos de 0.01
                 self.order_volume = math.trunc(self.order_volume * 100) / 100.0
@@ -274,12 +274,12 @@ class ForexEnv6(gym.Env):
                 # self.tp = self.max_tp
                 #self.tp = self.min_tp + ((self.max_tp-self.min_tp) * ((action[0] + 1) / 2))
                 #self.sl = self.min_sl + ((self.max_sl-self.min_sl) * ((action[1] + 1) / 2))
-                self.tp = ((self.max_tp) * ((action[0] + 1) / 2))
-                self.sl = ((self.max_sl) * ((action[1] + 1) / 2))
+                self.tp = (self.max_tp) * (action[0])
+                self.sl = (self.max_sl) * (action[1])
                 # TODO: ADICIONAR VOLUME DESDE ACTION SPACE 
                 # a=Tuple((Discrete(3),  Box(low=-1.0, high=1.0, shape=3, dtype=np.float32)) # nop, buy, sell vol,tp,sl
                 #self.order_volume = self.equity * self.max_volume * self.leverage/ 100000
-                self.order_volume = self.equity * self.max_volume * self.leverage * ((action[2] + 1) / 2) / 100000
+                self.order_volume = self.equity * self.max_volume * self.leverage * (action[2]) / 100000
                 # redondear a volumenes minimos de 0.01
                 self.order_volume = math.trunc(self.order_volume * 100) / 100.0
                 # set the new margin
