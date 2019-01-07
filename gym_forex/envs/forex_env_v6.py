@@ -303,6 +303,7 @@ class ForexEnv6(gym.Env):
                     self.ant_c_c = self.c_c
                     self.c_c = 0
                     self.num_closes += 1
+                print("action=", action)
                 # Closes EXISTING BUY (1) order with action=SELL (2)
                 if (self.order_status == 1) and action[3] == -1:
                     self.order_status = 0
