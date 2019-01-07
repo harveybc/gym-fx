@@ -168,10 +168,14 @@ class ForexEnv6(gym.Env):
             self.profit_pips = ((Low - self.open_price) / self.pip_cost)
             self.real_profit = self.profit_pips * self.pip_cost * self.order_volume * 100000
         # calculate for existing SELL order (status=-1)
-        if self.order_status == -1:
+        elif self.order_status == -1:
             # Order_open - High_Ask (High+spread)
             self.profit_pips = ((self.open_price - (High + spread)) / self.pip_cost)
             self.real_profit = self.profit_pips * self.pip_cost * self.order_volume * 100000
+        else:
+            self.profit_pips = 0
+            self.real_profit = 0
+            
         # Calculates equity
         self.equity = self.balance + self.real_profit
         # Verify if Margin Call
@@ -185,6 +189,9 @@ class ForexEnv6(gym.Env):
             self.equity = 0.0
             # reset margin
             self.margin = 0.0
+            # reset profit in pips
+            self.profit_pips = 0
+            self.real_profit = 0
             # Set closing cause 1 = Margin call
             self.ant_c_c = self.c_c
             self.c_c = 1
@@ -209,6 +216,10 @@ class ForexEnv6(gym.Env):
                 # Set closing cause 2 = sl
                 self.ant_c_c = self.c_c
                 self.c_c = 2
+                # reset profit in pips
+                self.profit_pips = 0
+                self.real_profit = 0
+                # increments number of orders counter
                 self.num_closes += 1
             # Verify if close by TP
             if self.profit_pips >= self.tp:
@@ -224,12 +235,16 @@ class ForexEnv6(gym.Env):
                 # Set closing cause 3 = tp
                 self.ant_c_c = self.c_c
                 self.c_c = 3
+                # reset profit in pips
+                self.profit_pips = 0
+                self.real_profit = 0
+                # increment the counter for the number of orders closed
                 self.num_closes += 1
             # TODO: Hacer opcion realista de ordenes que se ABREN Y CIERRAN solo si durante el siguiente minuto
             #       el precio de la orden(close) no es high o low del siguiente candle.
             
             # Executes BUY action, order status  = 1
-            if (self.order_status == 0) and action[3] == 1.0:
+            if (self.order_status == 0) and action[3] > 0.5:
                 self.order_status = 1
                 # open price = Ask (Close_bid+Spread)
                 self.open_price = Close + spread
@@ -263,7 +278,7 @@ class ForexEnv6(gym.Env):
                     print(self.tick_count, ',buy, o', self.open_price, ',v', self.order_volume, ' tp:', self.tp, ' sl:', self.sl, ' b:', self.balance)
             
             # Executes SELL action, order status  = 1
-            if (self.order_status == 0) and action[3] == -1.0:
+            if (self.order_status == 0) and action[3] < -0.5:
                 self.order_status = -1
                 # open_price = Bid
                 self.open_price = Close
@@ -292,7 +307,7 @@ class ForexEnv6(gym.Env):
             # Verify si ha pasado el min_order_time desde que se abrieron antes de cerrar
             if ((self.tick_count - self.order_time) > self.min_order_time):
                 # Closes EXISTING SELL (-1) order with action=BUY (1)
-                if (self.order_status == -1) and action[3] == 1.0:
+                if (self.order_status == -1) and action[3] > 0.5:
                     self.order_status = 0
                     # Calculate new balance
                     self.balance = self.equity
@@ -304,10 +319,14 @@ class ForexEnv6(gym.Env):
                     # Set closing cause 0 = normal close
                     self.ant_c_c = self.c_c
                     self.c_c = 0
+                    # reset profit in pips
+                    self.profit_pips = 0
+                    self.real_profit = 0
+                    # increment counter for number of orders closed
                     self.num_closes += 1
                 # print("action=", action)
                 # Closes EXISTING BUY (1) order with action=SELL (2)
-                if (self.order_status == 1) and action[3] == -1.0:
+                if (self.order_status == 1) and action[3] < -0.5:
                     self.order_status = 0
                     # Calculate new balance
                     self.balance = self.equity
@@ -319,6 +338,10 @@ class ForexEnv6(gym.Env):
                     # Set closing cause 0 = normal close
                     self.ant_c_c = self.c_c
                     self.c_c = 0
+                    # reset profit in pips
+                    self.profit_pips = 0
+                    self.real_profit = 0
+                    # incrments counter of closed orders
                     self.num_closes += 1
         # Calculates reward from RewardFunctionTable
         equity_increment = self.equity - self.equity_ant
