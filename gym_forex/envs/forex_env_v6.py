@@ -33,10 +33,13 @@ class ForexEnv6(gym.Env):
         # initialize environment variables
         self.num_features = kwargs['num_features']
         self.capital = kwargs['capital']
-        self.min_sl = kwargs['sl']
-        self.min_tp = kwargs['tp']
-        self.max_sl = kwargs['sl']
-        self.max_tp = kwargs['tp']
+        self.min_sl = kwargs['min_sl']
+        self.min_tp = kwargs['min_tp']
+        self.max_sl = kwargs['max_sl']
+        self.max_tp = kwargs['max_tp']
+        self.max_tp = kwargs['max_tp']
+        # Order Volume relative to Equity (TODO: Cambiar a max_volume)
+        self.max_volume = kwargs['max_volume']
         self.leverage = kwargs['leverage']
         # minimum number of orders to remove reward penalty when episode done
         self.min_orders = 4
@@ -69,8 +72,7 @@ class ForexEnv6(gym.Env):
         self.margin = 0.0
         # Minimum order time in ticks, its zero for the daily timeframe
         self.min_order_time = 0
-        # Order Volume relative to Equity (TODO: Cambiar a max_volume)
-        self.rel_volume = kwargs['volume']
+
         # spread calculus: 0=from last csv column in pips, 1=lineal from volatility, 2=quadratic, 3=exponential
         self.spread_funct = 0
         # using spread=20 sinse its above the average plus the stddev in alpari but on
@@ -240,8 +242,8 @@ class ForexEnv6(gym.Env):
                 #self.tp = self.max_tp
                 # TODO: ADICIONAR VOLUME DESDE ACTION SPACE 
                 # a=Tuple((Discrete(3),  Box(low=-1.0, high=1.0, shape=3, dtype=np.float32)) # nop, buy, sell vol,tp,sl
-                self.order_volume = self.equity * self.rel_volume * self.leverage * ((action[2] + 1) / 2) / 100000
-                #self.order_volume = self.equity * self.rel_volume * self.leverage / 100000
+                self.order_volume = self.equity * self.max_volume * self.leverage * ((action[2] + 1) / 2) / 100000
+                #self.order_volume = self.equity * self.max_volume * self.leverage / 100000
                 # redondear a volumenes minimos de 0.01
                 self.order_volume = math.trunc(self.order_volume * 100) / 100.0
                 # si volume menos del mínimo, hace volumen= mínimo TODO: QUITAR? CUANDO SE CALCULE VOLUME
@@ -271,8 +273,8 @@ class ForexEnv6(gym.Env):
                 self.sl = self.min_sl + ((self.max_sl-self.min_sl) * ((action[1] + 1) / 2))
                 # TODO: ADICIONAR VOLUME DESDE ACTION SPACE 
                 # a=Tuple((Discrete(3),  Box(low=-1.0, high=1.0, shape=3, dtype=np.float32)) # nop, buy, sell vol,tp,sl
-                #self.order_volume = self.equity * self.rel_volume * self.leverage/ 100000
-                self.order_volume = self.equity * self.rel_volume * self.leverage * ((action[2] + 1) / 2) / 100000
+                #self.order_volume = self.equity * self.max_volume * self.leverage/ 100000
+                self.order_volume = self.equity * self.max_volume * self.leverage * ((action[2] + 1) / 2) / 100000
                 # redondear a volumenes minimos de 0.01
                 self.order_volume = math.trunc(self.order_volume * 100) / 100.0
                 # set the new margin
