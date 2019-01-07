@@ -260,8 +260,7 @@ class ForexEnv6(gym.Env):
                 self.order_time = self.tick_count
                 # print transaction: Num,DateTime,Type,Size,Price,SL,TP,margin,equity
                 if self.debug == 1:
-                    print(self.tick_count, ',buy, o', self.open_price, ',v', self.order_volume, ',m', self.margin, ',e',
-                          self.equity, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
+                    print(self.tick_count, ',buy, o', self.open_price, ',v', self.order_volume, ' tp:', self.tp, ' sl:', self.sl)
             
             # Executes SELL action, order status  = 1
             if (self.order_status == 0) and action[3] == -1.0:
