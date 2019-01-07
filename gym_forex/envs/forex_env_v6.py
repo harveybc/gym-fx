@@ -103,7 +103,7 @@ class ForexEnv6(gym.Env):
             self.obs_matrix[i] = copy.deepcopy(historic)
         for i in range(0, self.obs_ticks):
             for j in range(0, self.num_columns):
-                self.obs_matrix[j].append(self.my_data[i, j])
+                self.obs_matrix[j].appendleft(self.my_data[i, j])
                 #self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         # initialize tick counter 
         self.tick_count = self.obs_ticks
@@ -406,7 +406,7 @@ class ForexEnv6(gym.Env):
         #print ("obs_ticks = ", self.obs_ticks)
         for i in range(0, self.num_columns):
             for j in range(0, self.obs_ticks):
-                self.obs_matrix[i].append(self.my_data[j, i])
+                self.obs_matrix[i].appendleft(self.my_data[j, i])
         #    print ("obs_matrix_pre[",i,"] = ", self.obs_matrix[i])
         self.tick_count = self.obs_ticks
         self.order_status = 0
