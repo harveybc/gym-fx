@@ -192,7 +192,8 @@ class ForexEnv6(gym.Env):
             self.episode_over = bool(1)
             # TODO: ADICIONAR CONTROLES PARA SL Y TP ENTRE MAX_SL Y TP
             # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
-            #print('MARGIN CALL - Balance =', self.equity, ',  Reward =', self.reward-5, 'Time=', self.tick_count)
+            if self.debug == 1:
+                print('MARGIN CALL - Balance =', self.equity, ',  Reward =', self.reward-5, 'Time=', self.tick_count)
         if (self.episode_over == False):
             # Verify if close by SL
             if self.profit_pips <= (-1 * self.sl):
@@ -204,8 +205,7 @@ class ForexEnv6(gym.Env):
                 self.margin = 0.0
                 # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                 if self.debug == 1:
-                    print(self.tick_count, ',stop_loss, o', self.open_price, ',p', self.profit_pips, ',v',
-                          self.order_volume, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
+                    print(self.tick_count, ',stop_loss, p:', self.profit_pips, ',b:', self.balance)
                 # Set closing cause 2 = sl
                 self.ant_c_c = self.c_c
                 self.c_c = 2
@@ -220,8 +220,7 @@ class ForexEnv6(gym.Env):
                 self.margin = 0.0
                 # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                 if self.debug == 1:
-                    print(self.tick_count, ',take_profit, o', self.open_price, ',p', self.profit_pips, ',v',
-                          self.order_volume, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
+                    print(self.tick_count, ',take_profit, p:', self.profit_pips, ',b:', self.balance)
                 # Set closing cause 3 = tp
                 self.ant_c_c = self.c_c
                 self.c_c = 3
@@ -261,7 +260,7 @@ class ForexEnv6(gym.Env):
                 self.order_time = self.tick_count
                 # print transaction: Num,DateTime,Type,Size,Price,SL,TP,margin,equity
                 if self.debug == 1:
-                    print(self.tick_count, ',buy, o', self.open_price, ',v', self.order_volume, ' tp:', self.tp, ' sl:', self.sl)
+                    print(self.tick_count, ',buy, o', self.open_price, ',v', self.order_volume, ' tp:', self.tp, ' sl:', self.sl, ' b:', self.balance)
             
             # Executes SELL action, order status  = 1
             if (self.order_status == 0) and action[3] == -1.0:
@@ -288,8 +287,7 @@ class ForexEnv6(gym.Env):
                 # TODO: Hacer version con controles para abrir y cerrar para buy y sell independientes,comparar
                 # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                 if self.debug == 1:
-                    print(self.tick_count, ',sell, o', self.open_price, ',v', self.order_volume, ',m', self.margin, ',e',
-                          self.equity, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
+                    print(self.tick_count, ',sell, o', self.open_price, ',v', self.order_volume, ' tp:', self.tp, ' sl:', self.sl, ' b:', self.balance)
             
             # Verify si ha pasado el min_order_time desde que se abrieron antes de cerrar
             if ((self.tick_count - self.order_time) > self.min_order_time):
@@ -302,8 +300,7 @@ class ForexEnv6(gym.Env):
                     self.margin = 0.0
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                     if self.debug == 1:
-                        print(self.tick_count, ',close_sell, o', self.open_price, ',p', self.profit_pips, ',v',
-                              self.order_volume, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
+                        print(self.tick_count, ',close_sell, p:', self.profit_pips, ',b:', self.balance)
                     # Set closing cause 0 = normal close
                     self.ant_c_c = self.c_c
                     self.c_c = 0
@@ -318,8 +315,7 @@ class ForexEnv6(gym.Env):
                     self.margin = 0.0
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                     if self.debug == 1:
-                        print(self.tick_count, ',close_buy, o', self.open_price, ',p', self.profit_pips, ',v',
-                              self.order_volume, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
+                        print(self.tick_count, ',close_buy, p:', self.profit_pips, ',b:', self.balance)
                     # Set closing cause 0 = normal close
                     self.ant_c_c = self.c_c
                     self.c_c = 0
