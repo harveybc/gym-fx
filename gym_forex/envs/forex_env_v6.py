@@ -109,7 +109,7 @@ class ForexEnv6(gym.Env):
         self.tick_count = self.obs_ticks
         # set action space to 3 actions, 0=nop, 1=buy, 2=sell
         # TODO: ACTION SPACE  = SL/SLMAX, TP/TPMAX, VOLUME/VOLUMEMAX, DIRECTION
-        self.action_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=4, dtype=np.float32)
+        self.action_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(4,), dtype=np.float32)
         # observation_space=(16 columns + 3 state variables)* obs_ticks, shape=(width,height, channels?)
         #TODO : Leer shape (número de features y window size de header de dataset)
         self.observation_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(self.obs_ticks, 1, self.num_features), dtype=np.float32)
