@@ -50,7 +50,7 @@ class ForexEnv6(gym.Env):
         # Number of past ticks per feature to be used as observations (1440min=1day, 10080=1Week, 43200=1month, )
         self.obs_ticks = kwargs['obsticks'] # best 48@ 700k
         num_symbols = 1
-        self.debug = 0  # Show debug msgs
+        self.debug = 1  # Show debug msgs
         csv_f = kwargs['dataset']
         self.dataset = kwargs['dataset']
         self.initial_capital = self.capital
