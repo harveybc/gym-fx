@@ -272,8 +272,10 @@ class ForexEnv6(gym.Env):
                 # print("\naction=", action[0]);
                 # self.sl = self.max_sl 
                 # self.tp = self.max_tp
-                self.tp = self.min_tp + ((self.max_tp-self.min_tp) * ((action[0] + 1) / 2))
-                self.sl = self.min_sl + ((self.max_sl-self.min_sl) * ((action[1] + 1) / 2))
+                #self.tp = self.min_tp + ((self.max_tp-self.min_tp) * ((action[0] + 1) / 2))
+                #self.sl = self.min_sl + ((self.max_sl-self.min_sl) * ((action[1] + 1) / 2))
+                self.tp = ((self.max_tp) * ((action[0] + 1) / 2))
+                self.sl = ((self.max_sl) * ((action[1] + 1) / 2))
                 # TODO: ADICIONAR VOLUME DESDE ACTION SPACE 
                 # a=Tuple((Discrete(3),  Box(low=-1.0, high=1.0, shape=3, dtype=np.float32)) # nop, buy, sell vol,tp,sl
                 #self.order_volume = self.equity * self.max_volume * self.leverage/ 100000
