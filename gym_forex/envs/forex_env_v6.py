@@ -30,7 +30,8 @@ class ForexEnv6(gym.Env):
 
     def __init__(self, **kwargs):
         metadata = {'render.modes': ['human', 'ansi']}
-        # initialize initial capital
+        # initialize environment variables
+        self.num_features = kwargs['num_features']
         self.capital = kwargs['capital']
         self.min_sl = kwargs['sl']
         self.min_tp = kwargs['tp']
@@ -68,7 +69,7 @@ class ForexEnv6(gym.Env):
         self.margin = 0.0
         # Minimum order time in ticks, its zero for the daily timeframe
         self.min_order_time = 0
-        # Order Volume relative to Equity
+        # Order Volume relative to Equity (TODO: Cambiar a max_volume)
         self.rel_volume = kwargs['volume']
         # spread calculus: 0=from last csv column in pips, 1=lineal from volatility, 2=quadratic, 3=exponential
         self.spread_funct = 0
@@ -105,11 +106,11 @@ class ForexEnv6(gym.Env):
         # initialize tick counter 
         self.tick_count = self.obs_ticks
         # set action space to 3 actions, 0=nop, 1=buy, 2=sell
-        # TODO: ACTION SPACE  = DISCRETE 3 + 2 uint + 1 float (volume)
-        self.action_space = spaces.Discrete(3)
+        # TODO: ACTION SPACE  = SL/SLMAX, TP/TPMAX, VOLUME/VOLUMEMAX, DIRECTION
+        self.action_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(4), dtype=np.float32)
         # observation_space=(16 columns + 3 state variables)* obs_ticks, shape=(width,height, channels?)
         #TODO : Leer shape (n�mero de features y window size de header de dataset)
-        self.observation_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(self.obs_ticks, 1, 14), dtype=np.float32)
+        self.observation_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(self.obs_ticks, 1, self.num_features), dtype=np.float32)
         self.order_time = 0
         # TODO; Quitar cuando se controle SL Y TP
         self.sl = self.max_sl
@@ -226,22 +227,21 @@ class ForexEnv6(gym.Env):
             #       el precio de la orden(close) no es high o low del siguiente candle.
             
             # Executes BUY action, order status  = 1
-            if (self.order_status == 0) and action == 1:
+            if (self.order_status == 0) and action[3] == 1.0:
                 self.order_status = 1
                 # open price = Ask (Close_bid+Spread)
                 self.open_price = Close + spread
                 # order_volume = lo que alcanza con rel_volume de equity
                 # Calcula sl y tp desde action space
                 #print("\naction=",action[0]);
-                #TODO : Adicionar sl, tp y volume desde action space
-                #self.sl = self.min_sl + ((self.max_sl-self.min_sl) * ((action[2] + 1) / 2))
-                #self.tp = self.min_tp + ((self.max_tp-self.min_tp) * ((action[3] + 1) / 2))
-                self.sl = self.max_sl
-                self.tp = self.max_tp
+                self.tp = self.min_tp + ((self.max_tp-self.min_tp) * ((action[0] + 1) / 2))
+                self.sl = self.min_sl + ((self.max_sl-self.min_sl) * ((action[1] + 1) / 2))
+                #self.sl = self.max_sl
+                #self.tp = self.max_tp
                 # TODO: ADICIONAR VOLUME DESDE ACTION SPACE 
                 # a=Tuple((Discrete(3),  Box(low=-1.0, high=1.0, shape=3, dtype=np.float32)) # nop, buy, sell vol,tp,sl
-                #self.order_volume = self.equity * self.rel_volume * self.leverage * ((action[1] + 1) / 2) / 100000
-                self.order_volume = self.equity * self.rel_volume * self.leverage / 100000
+                self.order_volume = self.equity * self.rel_volume * self.leverage * ((action[2] + 1) / 2) / 100000
+                #self.order_volume = self.equity * self.rel_volume * self.leverage / 100000
                 # redondear a volumenes minimos de 0.01
                 self.order_volume = math.trunc(self.order_volume * 100) / 100.0
                 # si volume menos del mínimo, hace volumen= mínimo TODO: QUITAR? CUANDO SE CALCULE VOLUME
@@ -259,17 +259,20 @@ class ForexEnv6(gym.Env):
                           self.equity, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
             
             # Executes SELL action, order status  = 1
-            if (self.order_status == 0) and action == 2:
+            if (self.order_status == 0) and action[3] == -1.0:
                 self.order_status = -1
                 # open_price = Bid
                 self.open_price = Close
                 # Calcula sl y tp desde action space
                 # print("\naction=", action[0]);
-                self.sl = self.max_sl 
-                self.tp = self.max_tp
+                # self.sl = self.max_sl 
+                # self.tp = self.max_tp
+                self.tp = self.min_tp + ((self.max_tp-self.min_tp) * ((action[0] + 1) / 2))
+                self.sl = self.min_sl + ((self.max_sl-self.min_sl) * ((action[1] + 1) / 2))
                 # TODO: ADICIONAR VOLUME DESDE ACTION SPACE 
                 # a=Tuple((Discrete(3),  Box(low=-1.0, high=1.0, shape=3, dtype=np.float32)) # nop, buy, sell vol,tp,sl
-                self.order_volume = self.equity * self.rel_volume * self.leverage/ 100000
+                #self.order_volume = self.equity * self.rel_volume * self.leverage/ 100000
+                self.order_volume = self.equity * self.rel_volume * self.leverage * ((action[2] + 1) / 2) / 100000
                 # redondear a volumenes minimos de 0.01
                 self.order_volume = math.trunc(self.order_volume * 100) / 100.0
                 # set the new margin
@@ -284,7 +287,7 @@ class ForexEnv6(gym.Env):
             # Verify si ha pasado el min_order_time desde que se abrieron antes de cerrar
             if ((self.tick_count - self.order_time) > self.min_order_time):
                 # Closes EXISTING SELL (-1) order with action=BUY (1)
-                if (self.order_status == -1) and action == 1:
+                if (self.order_status == -1) and action[3] == 1.0:
                     self.order_status = 0
                     # Calculate new balance
                     self.balance = self.equity
@@ -299,7 +302,7 @@ class ForexEnv6(gym.Env):
                     self.c_c = 0
                     self.num_closes += 1
                 # Closes EXISTING BUY (1) order with action=SELL (2)
-                if (self.order_status == 1) and action == 2:
+                if (self.order_status == 1) and action[3] == -1:
                     self.order_status = 0
                     # Calculate new balance
                     self.balance = self.equity
