@@ -372,7 +372,7 @@ class ForexEnv6(gym.Env):
         # Push values from timeseries into state
         # 0 = HighBid, 1 = Low, 2 = Close, 3 = NextOpen, 4 = v, 5 = MoY, 6 = DoM, 7 = DoW, 8 = HoD, 9 = MoH, ..<num_columns>
         for i in range(0, self.num_columns - 1):
-            self.obs_matrix[i].append(self.my_data[self.tick_count, i])
+            self.obs_matrix[i].appendleft(self.my_data[self.tick_count, i])
         # matrix for the state(order status, equity variation, reward and statistics (from reward table))
         ob = self.obs_matrix
         # increment tick counter
