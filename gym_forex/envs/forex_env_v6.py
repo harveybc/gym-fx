@@ -244,7 +244,7 @@ class ForexEnv6(gym.Env):
             #       el precio de la orden(close) no es high o low del siguiente candle.
             
             # Executes BUY action, order status  = 1
-            if (self.order_status == 0) and action[3] > 0.5:
+            if (self.order_status == 0) and action[3] > 0:
                 self.order_status = 1
                 # open price = Ask (Close_bid+Spread)
                 self.open_price = Close + spread
@@ -278,7 +278,7 @@ class ForexEnv6(gym.Env):
                     print(self.tick_count, ',buy, o', self.open_price, ',v', self.order_volume, ' tp:', self.tp, ' sl:', self.sl, ' b:', self.balance)
             
             # Executes SELL action, order status  = 1
-            if (self.order_status == 0) and action[3] < -0.5:
+            if (self.order_status == 0) and action[3] < 0:
                 self.order_status = -1
                 # open_price = Bid
                 self.open_price = Close
@@ -307,7 +307,7 @@ class ForexEnv6(gym.Env):
             # Verify si ha pasado el min_order_time desde que se abrieron antes de cerrar
             if ((self.tick_count - self.order_time) > self.min_order_time):
                 # Closes EXISTING SELL (-1) order with action=BUY (1)
-                if (self.order_status == -1) and action[3] > 0.5:
+                if (self.order_status == -1) and action[3] > 0:
                     self.order_status = 0
                     # Calculate new balance
                     self.balance = self.equity
@@ -326,7 +326,7 @@ class ForexEnv6(gym.Env):
                     self.num_closes += 1
                 # print("action=", action)
                 # Closes EXISTING BUY (1) order with action=SELL (2)
-                if (self.order_status == 1) and action[3] < -0.5:
+                if (self.order_status == 1) and action[3] < 0:
                     self.order_status = 0
                     # Calculate new balance
                     self.balance = self.equity
