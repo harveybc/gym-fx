@@ -147,12 +147,9 @@ class ForexEnv6(gym.Env):
         High = self.my_data[self.tick_count, 0]
         Low = self.my_data[self.tick_count, 1]
         Close = self.my_data[self.tick_count, 2]
-        DoW = self.my_data[self.tick_count, 13]
-        MoY = self.my_data[self.tick_count, 11]
-        DoM = self.my_data[self.tick_count, 12]
+        DoW = self.my_data[self.tick_count, 11]
         HoD = self.my_data[self.tick_count, 12]
-        MoH = self.my_data[self.tick_count, 12]
-
+        
         # Elevate spread  at 0 hours and if its weekend (DoW<=2 and Hour < 2)or(DoW>=5 and Hour > 23)
         if (DoW < 1 or DoW > 5) or (HoD < 2 and HoD > 23):
             spread = self.pip_cost * 60
