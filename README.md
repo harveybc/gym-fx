@@ -63,8 +63,7 @@ capacity or requirements, start with the defaults.
 
 nano res  
 
-For pulling the latest changes and executing the optimizer with a connection to 
-your singularity node Address and Port. For example:  
+For example:  
 
 #!/bin/bash  
 git pull  
