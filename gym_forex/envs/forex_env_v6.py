@@ -321,6 +321,9 @@ class ForexEnv6(gym.Env):
                     self.real_profit = 0
                     # increment counter for number of orders closed
                     self.num_closes += 1
+                #if action == 0 (nop), print status
+                if (self.order_status == -1) and action[3] == 0:
+                    print(self.tick_count, ',o_sell, p:', self.profit_pips, ',b:', self.balance)
                 # print("action=", action)
                 # Closes EXISTING BUY (1) order with action=SELL (2)
                 if (self.order_status == 1) and action[3] < 0:
@@ -340,6 +343,9 @@ class ForexEnv6(gym.Env):
                     self.real_profit = 0
                     # incrments counter of closed orders
                     self.num_closes += 1
+                if (self.order_status == 1) and action[3] == 0:
+                    print(self.tick_count, ',o_buy, p:', self.profit_pips, ',b:', self.balance)
+                    
         # Calculates reward from RewardFunctionTable
         equity_increment = self.equity - self.equity_ant
         balance_increment = self.balance - self.balance_ant
