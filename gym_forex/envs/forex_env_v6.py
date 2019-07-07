@@ -209,7 +209,7 @@ class ForexEnv6(gym.Env):
                 self.margin = 0.0
                 # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                 if self.debug == 1:
-                    print(self.tick_count, ',stop_loss, p:', self.profit_pips, ',b:', self.balance)
+                    print(self.tick_count, ',stop_loss, pips:', self.profit_pips,' profit:', self.real_profit, ',b:', self.balance)
                 # Set closing cause 2 = sl
                 self.ant_c_c = self.c_c
                 self.c_c = 2
@@ -228,7 +228,7 @@ class ForexEnv6(gym.Env):
                 self.margin = 0.0
                 # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                 if self.debug == 1:
-                    print(self.tick_count, ',take_profit, p:', self.profit_pips, ',b:', self.balance)
+                    print(self.tick_count, ',take_profit, pips:', self.profit_pips,' profit:', self.real_profit, ',b:', self.balance)
                 # Set closing cause 3 = tp
                 self.ant_c_c = self.c_c
                 self.c_c = 3
@@ -312,7 +312,7 @@ class ForexEnv6(gym.Env):
                     self.margin = 0.0
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                     if self.debug == 1:
-                        print(self.tick_count, ',close_sell, p:', self.profit_pips, ',b:', self.balance)
+                        print(self.tick_count, ',close_sell, pips:', self.profit_pips,' profit:', self.real_profit, ',b:', self.balance)
                     # Set closing cause 0 = normal close
                     self.ant_c_c = self.c_c
                     self.c_c = 0
@@ -323,7 +323,7 @@ class ForexEnv6(gym.Env):
                     self.num_closes += 1
                 #if action == 0 (nop), print status
                 if (self.order_status == -1) and action[3] == 0:
-                    print(self.tick_count, ',o_sell, p:', self.profit_pips, ',b:', self.balance)
+                    print(self.tick_count, ',o_sell, pips:', self.profit_pips,' profit:', self.real_profit, ',b:', self.balance)
                 # print("action=", action)
                 # Closes EXISTING BUY (1) order with action=SELL (2)
                 if (self.order_status == 1) and action[3] < 0:
@@ -334,7 +334,7 @@ class ForexEnv6(gym.Env):
                     self.margin = 0.0
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                     if self.debug == 1:
-                        print(self.tick_count, ',close_buy, p:', self.profit_pips, ',b:', self.balance)
+                        print(self.tick_count, ',close_buy, pips:', self.profit_pips,' profit:', self.real_profit, ',b:', self.balance)
                     # Set closing cause 0 = normal close
                     self.ant_c_c = self.c_c
                     self.c_c = 0
@@ -344,7 +344,7 @@ class ForexEnv6(gym.Env):
                     # incrments counter of closed orders
                     self.num_closes += 1
                 if (self.order_status == 1) and action[3] == 0:
-                    print(self.tick_count, ',o_buy, p:', self.profit_pips, ',b:', self.balance)
+                    print(self.tick_count, ',o_buy, pips:', self.profit_pips,' profit:', self.real_profit, ',b:', self.balance)
                     
         # Calculates reward from RewardFunctionTable
         equity_increment = self.equity - self.equity_ant
