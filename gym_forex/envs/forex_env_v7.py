@@ -14,7 +14,7 @@ class ForexEnv7(gym.Env):
     This environment simulates a Forex trading account with only one open order 
     at any time.
     
-    Version 5 removes the state as part of the observations and does not normalize observations
+    Version 7 uses multiple symbols.
     
     __init__ parameters:
     
@@ -108,7 +108,11 @@ class ForexEnv7(gym.Env):
         # initialize tick counter 
         self.tick_count = self.obs_ticks
         # set action space to 3 actions, 0=nop, 1=buy, 2=sell
-        # TODO: ACTION SPACE  = SL/SLMAX, TP/TPMAX, VOLUME/VOLUMEMAX, DIRECTION
+        
+        #TODO: ACTION SPADE CON SYMBOL
+        
+        
+        # TODO: ACTION SPACE  = SYMBOL, SL, TP, VOLUME, DIRECTION
         self.action_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(4,), dtype=np.float32)
         # observation_space=(16 columns + 3 state variables)* obs_ticks, shape=(width,height, channels?)
         #TODO : Leer shape (número de features y window size de header de dataset)
