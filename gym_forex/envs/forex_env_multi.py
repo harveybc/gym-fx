@@ -24,15 +24,6 @@ class ForexEnvMulti(gym.Env):
     each tick of the action timeseries input.  It is used as input to the 
     action controller that decides the action to apply in the action timeseries.
     
-    __init__ parameters:
-    
-    capital: An initial_capital is loaded in the simulated account as equity.
-    max_tp,min_tp, max_sl, min_sl,min sl,tp:   The values for stop-loss and take-profit.
-    max_volume: maximum volume of orders as percentage of equity. (def:0.1)
-    max_order_time: maximum order time.
-    num_ticks: number of lastest ticks to be used as obs. (def:2)
-    csv_f:   A path to a CSV file containing the timeseries.
-    symbol_num: The number of symbos in the timeseries.
     """
     metadata = {'render.modes': ['human']}
 
