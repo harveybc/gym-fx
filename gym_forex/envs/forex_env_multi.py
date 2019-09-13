@@ -9,17 +9,25 @@ import numpy
 from numpy import genfromtxt
 import copy
 
-class ForexEnv7(gym.Env):
+class ForexEnvMulti(gym.Env):
     """
     This environment simulates a Forex trading account with only one open order 
     at any time.
     
-    Version 7 uses multiple symbols.
+    Version multi performs trading in multiple simultaneous symbols and uses
+    separate action and observation timeseries input. 
+    
+    Action timeseries input are the raw prices of the symbol (H,L,C,spread?). It
+    is not normalized and it is used for the trading simulation system.
+    
+    Observation timeseries input is the preprocessing output corresponding to
+    each tick of the action timeseries input.  It is used as input to the 
+    action controller that decides the action to apply in the action timeseries.
     
     __init__ parameters:
     
     capital: An initial_capital is loaded in the simulated account as equity.
-    sl,tp:   The values for stop-loss and take-profit.
+    max_tp,min_tp, max_sl, min_sl,min sl,tp:   The values for stop-loss and take-profit.
     max_volume: maximum volume of orders as percentage of equity. (def:0.1)
     max_order_time: maximum order time.
     num_ticks: number of lastest ticks to be used as obs. (def:2)
@@ -108,16 +116,8 @@ class ForexEnv7(gym.Env):
         # initialize tick counter 
         self.tick_count = self.obs_ticks
         # set action space to 3 actions, 0=nop, 1=buy, 2=sell
-        
-        # number of symbols to trade
-        #maximum number of simultaneous orders
-        self.num_symbols = 5;
-        self.num_signals = num_symbols*4
-
-        self.features_per_symbol = 29
-        self.features_global = 3
-        # TODO: ACTION SPACE  = SYMBOL, SL, TP, VOLUME, DIRECTION
-        self.action_space = (spaces.Discrete(self.num_symbols),spaces.Box(low=float(-1.0), high=float(1.0), shape=(4,), dtype=np.float32))
+        # TODO: ACTION SPACE  = SL/SLMAX, TP/TPMAX, VOLUME/VOLUMEMAX, DIRECTION
+        self.action_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(4,), dtype=np.float32)
         # observation_space=(16 columns + 3 state variables)* obs_ticks, shape=(width,height, channels?)
         #TODO : Leer shape (número de features y window size de header de dataset)
         self.observation_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(self.obs_ticks, 1, self.num_features), dtype=np.float32)
@@ -125,8 +125,6 @@ class ForexEnv7(gym.Env):
         # TODO; Quitar cuando se controle SL Y TP
         self.sl = self.max_sl
         self.tp = self.max_tp
-        # orders array contains the state of the orders per symbol
-        self.orders = np.zeros(self.num_symbols)
         print ("Finished INIT function")
 
     """
@@ -153,11 +151,10 @@ class ForexEnv7(gym.Env):
     """
 
     def step(self, action):
-        # for each symbol read time_variables from CSV. Format: 0 = HighBid, 1 = Low, 2 = Close, 3 = NextOpen, 4 = v, 5 = MoY, 6 = DoM, 7 = DoW, 8 = HoD, 9 = MoH, ..<num_columns>
-        for i in range (0, self.num_symbols):
-            High[i] = self.my_data[self.tick_count, i*self.features_*0]
-            Low[i] = self.my_data[self.tick_count, 1]
-            Close[i] = self.my_data[self.tick_count, 2]
+        # read time_variables from CSV. Format: 0 = HighBid, 1 = Low, 2 = Close, 3 = NextOpen, 4 = v, 5 = MoY, 6 = DoM, 7 = DoW, 8 = HoD, 9 = MoH, ..<num_columns>
+        High = self.my_data[self.tick_count, 0]
+        Low = self.my_data[self.tick_count, 1]
+        Close = self.my_data[self.tick_count, 2]
         DoW = self.my_data[self.tick_count, 11]
         HoD = self.my_data[self.tick_count, 12]
         
@@ -167,7 +164,7 @@ class ForexEnv7(gym.Env):
         else:
             spread = self.pip_cost * 20
 
-        # Calculates profit per symbol order
+        # Calculates profit
         self.profit_pips = 0
         self.real_profit = 0
         # calculate for existing BUY order (status=1)
