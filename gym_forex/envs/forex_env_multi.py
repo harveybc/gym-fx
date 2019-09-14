@@ -55,8 +55,9 @@ class ForexEnvMulti(gym.Env):
         self.csv_observation = kwargs['csv_observation']
         # minimum number of orders to remove reward penalty when episode done
         self.min_orders = 4
-        # Closing cause
+        # counter of closed orders
         self.num_closes = 0
+        # Closing cause
         self.c_c = 0
         self.episode_over = bool(0)
         num_symbols = 1
