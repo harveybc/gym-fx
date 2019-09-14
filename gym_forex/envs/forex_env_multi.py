@@ -23,35 +23,44 @@ class ForexEnvMulti(gym.Env):
     Observation timeseries input is the preprocessing output corresponding to
     each tick of the action timeseries input.  It is used as input to the 
     action controller that decides the action to apply in the action timeseries.
-    
+    It may contain also pre-processed techincal indicators.
     """
     metadata = {'render.modes': ['human']}
 
     def __init__(self, **kwargs):
         metadata = {'render.modes': ['human', 'ansi']}
         # initialize environment variables
+        self.num_symbols = kwargs['num_symbols']
         self.num_features = kwargs['num_features']
+        self.num_components = kwargs['num_components']
+        # initial capital un USD
         self.capital = kwargs['capital']
+        # maximum and minimum take_profit and stop_loss in pips
         self.min_sl = kwargs['min_sl']
         self.min_tp = kwargs['min_tp']
         self.max_sl = kwargs['max_sl']
         self.max_tp = kwargs['max_tp']
-        self.max_tp = kwargs['max_tp']
+        # maximum number of simultaneous orders
+        self.max_orders = kwargs['max_orders']
         # Order Volume relative to Equity (TODO: Cambiar a max_volume)
         self.max_volume = kwargs['max_volume']
         self.leverage = kwargs['leverage']
+        # Number of past ticks per feature to be used as observations (1440min=1day, 10080=1Week, 43200=1month, )
+        self.obs_ticks = kwargs['obsticks'] # best 48@ 700k
+        # file path for the action dataset (non pre-processed prices)
+        # csv_f = kwargs['dataset'] 
+        csv_action = kwargs['csv_action']
+        # file path for the observation dataset (pre-processed prices and technical indicators)
+        #self.dataset = kwargs['dataset']
+        self.csv_observation = kwargs['csv_observation']
         # minimum number of orders to remove reward penalty when episode done
         self.min_orders = 4
         # Closing cause
         self.num_closes = 0
         self.c_c = 0
-        self.episode_over=bool(0)
-        # Number of past ticks per feature to be used as observations (1440min=1day, 10080=1Week, 43200=1month, )
-        self.obs_ticks = kwargs['obsticks'] # best 48@ 700k
+        self.episode_over = bool(0)
         num_symbols = 1
         self.debug = 1  # Show debug msgs
-        csv_f = kwargs['dataset']
-        self.dataset = kwargs['dataset']
         self.initial_capital = self.capital
         self.equity = self.capital
         self.balance = self.capital
@@ -71,7 +80,6 @@ class ForexEnvMulti(gym.Env):
         self.margin = 0.0
         # Minimum order time in ticks, its zero for the daily timeframe
         self.min_order_time = 0
-
         # spread calculus: 0=from last csv column in pips, 1=lineal from volatility, 2=quadratic, 3=exponential
         self.spread_funct = 0
         # using spread=20 sinse its above the average plus the stddev in alpari but on
