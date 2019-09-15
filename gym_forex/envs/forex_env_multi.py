@@ -57,11 +57,15 @@ class ForexEnvMulti(gym.Env):
         self.min_orders = 4
         # counter of closed orders
         self.num_closes = 0
-        # Closing cause
-        self.c_c = 0
+        # Closing cause for each symbol's last order
+        self.c_c = []
+        # Closing cause general
+        self.c_c_g = []
+        # variable to indicate episode over
         self.episode_over = bool(0)
-        num_symbols = 1
+      
         self.debug = 1  # Show debug msgs
+        
         self.initial_capital = self.capital
         self.equity = self.capital
         self.balance = self.capital
