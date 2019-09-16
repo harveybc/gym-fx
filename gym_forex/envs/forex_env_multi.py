@@ -40,9 +40,9 @@ class ForexEnvMulti(gym.Env):
         self.min_tp = kwargs['min_tp']
         self.max_sl = kwargs['max_sl']
         self.max_tp = kwargs['max_tp']
-        # maximum number of simultaneous orders
+        # maximum number of simultaneous orders, max 1 order per symbol
         self.max_orders = kwargs['max_orders']
-        # Order Volume relative to Equity (TODO: Cambiar a max_volume)
+        # Order Volume relative to Equity 
         self.max_volume = kwargs['max_volume']
         self.leverage = kwargs['leverage']
         # Number of past ticks per feature to be used as observations (1440min=1day, 10080=1Week, 43200=1month, )
@@ -63,24 +63,21 @@ class ForexEnvMulti(gym.Env):
         self.c_c_g = []
         # variable to indicate episode over
         self.episode_over = bool(0)
-      
-        self.debug = 1  # Show debug msgs
-        
-        self.initial_capital = self.capital
+        # Show debug msgs
+        self.debug = 1  
+        # initialize account-wide values
         self.equity = self.capital
         self.balance = self.capital
         self.balance_ant = self.capital
         # for equity variation calculus
         self.equity_ant = self.capital
-        # order status: -1=sell, 1=buy, 00=nop
-        self.order_status = 0
-        self.order_profit = 0.0
-        # symbor of active order (from symbol list)
-        self.order_symbol = 0
+        # order status for each symbol: -1=sell, 1=buy, 00=nop
+        self.order_status = [0] * self.max_orders
+        self.order_profit = [0.0] * self.max_orders
         # initialize reward value
         self.reward = 0.0
         # Min / Max SL / TP, Min / Max (Default 1000?) in pips
-        self.pip_cost = 0.00001
+        self.pip_cost = [0.00001] * self.num_symbols
         # margin acumulativo = open_price*volume*100000/leverage TODO: Hacer uno para cada orden y recalcular total
         self.margin = 0.0
         # Minimum order time in ticks, its zero for the daily timeframe
