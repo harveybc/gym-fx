@@ -55,12 +55,12 @@ class ForexEnvMulti(gym.Env):
         self.csv_observation = kwargs['csv_observation']
         # minimum number of orders to remove reward penalty when episode done
         self.min_orders = 4
-        # counter of closed orders
-        self.num_closes = 0
+        # counter of closed orders per symbol 
+        self.num_closes = [0] * self.num_symbols
         # Closing cause for each symbol's last order
-        self.c_c = []
+        self.c_c = [0]*self.num_symbols
         # Closing cause general
-        self.c_c_g = []
+        self.c_c_g = 0
         # variable to indicate episode over
         self.episode_over = bool(0)
         # Show debug msgs
@@ -78,19 +78,16 @@ class ForexEnvMulti(gym.Env):
         self.reward = 0.0
         # Min / Max SL / TP, Min / Max (Default 1000?) in pips
         self.pip_cost = [0.00001] * self.num_symbols
-        # margin acumulativo = open_price*volume*100000/leverage TODO: Hacer uno para cada orden y recalcular total
+        # margin acumulativo = open_price*volume*100000/leverage
         self.margin = 0.0
-        # Minimum order time in ticks, its zero for the daily timeframe
+        # Minimum order time in ticks, its zero for the hourly timeframe
         self.min_order_time = 0
-        # spread calculus: 0=from last csv column in pips, 1=lineal from volatility, 2=quadratic, 3=exponential
-        self.spread_funct = 0
-        # using spread=20 sinse its above the average plus the stddev in alpari but on
-        self.spread = 20
-        self.ant_c_c = 0 #TODO: ATERIOR CLOSING CAUSE PARA DETECTAR SL CONSECUTIVOS Y PENALIZARLOS
-        # num_symbols
-        self.num_symbols = 1
-        # flag para representacion de observaciones 0=valores raw, 1=return
-        self.use_return = 0
+        # spread calculus: 0=from last csv column in pips, 1=lineal from volatility, 2=quadratic, 3=exponential, 4=constant
+        self.spread_funct = 4
+        # using spread=25 as average since its above the average plus the stddev in alpari but on
+        self.spread = [25]*self.num_symbols
+        # anterior closing cause para verificar consecutice drawdown
+        self.ant_c_c = [0]*self.num_symbols
         # load csv file, The file must contain 16 cols: the 0 = HighBid, 1 = Low, 2 = Close, 3 = NextOpen, 4 = v, 5 = MoY, 6 = DoM, 7 = DoW, 8 = HoD, 9 = MoH, ..<6 indicators>
         self.my_data = genfromtxt(csv_f, delimiter=',', skip_header=0)
         # initialize number of ticks from from CSV
