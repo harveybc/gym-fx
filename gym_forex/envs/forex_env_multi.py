@@ -93,9 +93,9 @@ class ForexEnvMulti(gym.Env):
         # load csv file, The file must contain 16 cols: the 0 = HighBid, 1 = Low, 2 = Close, 3 = NextOpen, 4 = v, 5 = MoY, 6 = DoM, 7 = DoW, 8 = HoD, 9 = MoH, ..<6 indicators>
         self.o_data = genfromtxt(csv_observation, delimiter=',', skip_header=0)
         # initialize number of ticks from from CSV
-        self.num_ticks = len(self.my_data)
+        self.num_ticks = len(self.a_data)
         #verify if observation and action have the same number of ticks
-        
+        if (self.num_ticks )
         # initialize number of columns from the CSV
         self.num_columns = len(self.my_data[0])
         # Generate pre-processing inputs - TODO(0=no,1=FFT_maxamp,2=Poincare for 1/f(FFT_max_amp),3=FFT_2ndamp,4=Poincare for 3),etc...
