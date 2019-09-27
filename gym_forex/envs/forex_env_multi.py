@@ -95,17 +95,10 @@ class ForexEnvMulti(gym.Env):
         # initialize number of ticks from from CSV
         self.num_ticks = len(self.a_data)
         #verify if observation and action have the same number of ticks
-        if (self.num_ticks )
+        if (self.num_ticks == len(self.o_data)):
+            print("Error: len(a_data) ! len(o_data)")
         # initialize number of columns from the CSV
         self.num_columns = len(self.my_data[0])
-        # Generate pre-processing inputs - TODO(0=no,1=FFT_maxamp,2=Poincare for 1/f(FFT_max_amp),3=FFT_2ndamp,4=Poincare for 3),etc...
-        self.preprocessing = 0
-        # Select the column from which pre-processing observations will be generated
-        self.preprocessing_column = 0
-        # reward function 0=equity variation, 1=Table
-        self.reward_function = 0
-        # in version 5, state is not included in the observations
-        self.state_columns = 0
         # Serial data - to - parallel observation matrix and state matrix
         historic = deque(self.obs_ticks * [0.0], self.obs_ticks)
         self.obs_matrix = [None] * self.num_columns 
