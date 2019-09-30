@@ -95,8 +95,8 @@ class ForexEnvMulti(gym.Env):
         # initialize number of ticks from from CSV
         self.num_ticks = len(self.a_data)
         #verify if observation and action have the same number of ticks
-        if (self.num_ticks == len(self.o_data)):
-            print("Error: len(a_data) ! len(o_data)")
+        if (self.num_ticks != len(self.o_data)):
+            print("Error: len(a_data) != len(o_data)")
         # initialize number of columns from the CSV
         self.num_columns = len(self.my_data[0])
         # Serial data - to - parallel observation matrix and state matrix
