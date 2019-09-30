@@ -45,7 +45,9 @@ class ForexEnvMulti(gym.Env):
         # Order Volume relative to Equity 
         self.max_volume = kwargs['max_volume']
         self.leverage = kwargs['leverage']
-        # Number of past ticks per feature to be used as observations (1440min=1day, 10080=1Week, 43200=1month, )
+        # Number of past ticks per feature to be used as observations 
+        self.obs_ticks = kwargs['obsticks'] # best 48@ 700k
+        # Number of past ticks per feature to be used as window in each observation tick
         self.obs_ticks = kwargs['obsticks'] # best 48@ 700k
         # file path for the action dataset (non pre-processed prices)
         # csv_f = kwargs['dataset'] 
@@ -98,11 +100,11 @@ class ForexEnvMulti(gym.Env):
         if (self.num_ticks != len(self.o_data)):
             print("Error: len(a_data) != len(o_data)")
         # initialize number of columns from the CSV
-        self.num_columns = len(self.my_data[0])
+        self.num_columns = len(self.o_data[0])
         # Serial data - to - parallel observation matrix and state matrix
-        historic = deque(self.obs_ticks * [0.0], self.obs_ticks)
-        self.obs_matrix = [None] * self.num_columns 
-        for i in range(0, self.num_columns):
+        historic = deque([[0.0]*self.obs_ticks]*self.num_components , self.obs_ticks)
+        self.obs_matrix = [[[None] * self.obs_ticks] * self.num_components ]* (self.num_features*self.num_symbols)
+        for i in range(0, (self.num_features*self.num_symbols)):
             self.obs_matrix[i] = copy.deepcopy(historic)
         for i in range(0, self.obs_ticks):
             for j in range(0, self.num_columns):
