@@ -46,8 +46,8 @@ class ForexEnvMulti(gym.Env):
         self.max_volume = kwargs['max_volume']
         self.leverage = kwargs['leverage']
         # Number of past ticks per feature to be used as observations 
-        self.obs_ticks = kwargs['obsticks'] # best 48@ 700k
-        # Window size per observation 
+        # self.obs_ticks = kwargs['obsticks'] # best 48@ 700k
+        # Window size is the number of past ticks per features to be used as observations 
         self.window_size = kwargs['window_size'] # best 48@ 700k
         # file path for the action dataset (non pre-processed prices)
         # csv_f = kwargs['dataset'] 
@@ -93,57 +93,49 @@ class ForexEnvMulti(gym.Env):
         # load action dataset, it contains high, low, close, and spread for each symbol
         self.a_data = genfromtxt(csv_action, delimiter=',', skip_header=0)
         # load csv file, The file must contain 16 cols: the 0 = HighBid, 1 = Low, 2 = Close, 3 = NextOpen, 4 = v, 5 = MoY, 6 = DoM, 7 = DoW, 8 = HoD, 9 = MoH, ..<6 indicators>
-        self.o_data = genfromtxt(csv_observation, delimiter=',', skip_header=0)
+        self.o_data = genfromtxt(self.csv_observation, delimiter=',', skip_header=0)
         # initialize number of ticks from from CSV
         self.num_ticks = len(self.a_data)
         #verify if observation and action have the same number of ticks
         if (self.num_ticks != len(self.o_data)):
             print("Error: len(a_data) != len(o_data)")
-        # initialize number of columns from the CSV
+        # initialize number of columns from the observation CSV
         self.num_columns = len(self.o_data[0])
-        # Serial data - to - parallel observation matrix and state matrix
+        # the observation matrix is an array containing a 2d matrix deque with length self.window_size
         historic = deque([[0.0]*self.num_components ]*self.window_size , self.window_size)
         # Observation matrix 
-        self.obs_matrix = [[[None] * self.obs_ticks] * self.num_components ]* (self.num_features*self.num_symbols)
+        self.obs_matrix = [[[None] * self.num_components] * self.window_size ]* (self.num_features*self.num_symbols)
         for i in range(0, (self.num_features*self.num_symbols)):
             self.obs_matrix[i] = copy.deepcopy(historic)
-        for i in range(0, self.obs_ticks):
+        for i in range(0, self.window_size):
             for j in range(0, self.num_columns):
-                self.obs_matrix[j].appendleft(self.my_data[i, j])
+                self.obs_matrix[j].appendleft(self.o_data[i, j])
                 #self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         # initialize tick counter 
-        self.tick_count = self.obs_ticks
+        self.tick_count = self.window_size
         # set action space to 3 actions, 0=nop, 1=buy, 2=sell
-        # TODO: ACTION SPACE  = SL/SLMAX, TP/TPMAX, VOLUME/VOLUMEMAX, DIRECTION
-        self.action_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(4,), dtype=np.float32)
+        # ACTION SPACE  = (TP/TPMAX, SL/SLMAX,  VOLUME/VOLUMEMAX, DIRECTION), symbol
+        self.action_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(4,self.num_symbols), dtype=np.float32)
         # observation_space=(16 columns + 3 state variables)* obs_ticks, shape=(width,height, channels?)
-        #TODO : Leer shape (número de features y window size de header de dataset)
-        self.observation_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(self.obs_ticks, 1, self.num_features), dtype=np.float32)
-        self.order_time = 0
+        self.observation_space = spaces.Box(low=float(-1.0), high=float(1.0), shape=(self.obs_ticks,  self.num_components,  self.num_features), dtype=np.float32)
+        self.order_time = [0] * self.max_orders
         # TODO; Quitar cuando se controle SL Y TP
-        self.sl = self.max_sl
-        self.tp = self.max_tp
+        self.sl = [self.max_sl] * self.max_orders
+        self.tp = [self.max_tp] * self.max_orders
         print ("Finished INIT function")
 
     """
     _step parameters:
     
     action from action set:
-        discrete action 0: 0=nop,1=buy,2=sell. 
-#TODO: PROBAR CON 4 ACCIONES: 0=NOP,1=BUY, -1=SELL, CLOSE
-        discrete action 0 parameter: symbol
-        (optional) continuous action 0 parameter: percent_tp, percent_sl, percent_of_max_volume
-    
+        (TP/TPMAX, SL/SLMAX, VOLUME/VOLUMEMAX, DIRECTION), symbol. 
+        
     _step return values: 
-    
-    observation: A concatenation of num_ticks vectors for the lastest: 
-                 vector of values from timeseries, equity and its variation, 
-                 order_status( 0 nop, -1=sell,1=buy),time_opened (normalized with
-                 max_order_time), order_profit and its variation, order_drawdown
-                 /order_volume_pips,  Performance?=ver archivo Reward2.xlsx tab Long-Term
+        observation: A concatenation of (num_features*num_symbols) 2D matrixes 
+        with (num_components, window_size)
 
-    reward: Ver archivo Reward2.xlsx tab Short-Term
-            TODO: Perf_total=Perf*reward_acum?
+    reward: Area under profit curve
+
     self.episode_over: Imprime statistics
 
     """
