@@ -142,11 +142,11 @@ class ForexEnvMulti(gym.Env):
 
     def step(self, action):
         # read time_variables from CSV. Format: 0 = HighBid, 1 = Low, 2 = Close, 3 = NextOpen, 4 = v, 5 = MoY, 6 = DoM, 7 = DoW, 8 = HoD, 9 = MoH, ..<num_columns>
-        High = self.my_data[self.tick_count, 0]
-        Low = self.my_data[self.tick_count, 1]
-        Close = self.my_data[self.tick_count, 2]
-        DoW = self.my_data[self.tick_count, 11]
-        HoD = self.my_data[self.tick_count, 12]
+        High = self.a_data[self.tick_count, 0]
+        Low = self.a_data[self.tick_count, 1]
+        Close = self.a_data[self.tick_count, 2]
+        DoW = self.a_data[self.tick_count,146]
+        HoD = self.a_data[self.tick_count,147]
         
         # Elevate spread  at 0 hours and if its weekend (DoW<=2 and Hour < 2)or(DoW>=5 and Hour > 23)
         if (DoW < 1 or DoW > 5) or (HoD < 2 and HoD > 23):
