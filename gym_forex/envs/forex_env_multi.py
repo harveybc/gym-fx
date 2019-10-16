@@ -55,7 +55,9 @@ class ForexEnvMulti(gym.Env):
         # file path for the observation dataset (pre-processed prices and technical indicators)
         #self.dataset = kwargs['dataset']
         self.csv_observation = kwargs['csv_observation']
-        # minimum number of orders to remove reward penalty when episode done
+        # number of timesignals in the action dataset
+        self.num_timesignals = kwargs['num_timesignals']
+        # minimum number of orders to depenalize reward
         self.min_orders = 4
         # counter of closed orders per symbol 
         self.num_closes = [0] * self.num_symbols
@@ -100,7 +102,9 @@ class ForexEnvMulti(gym.Env):
         if (self.num_ticks != len(self.o_data)):
             print("Error: len(a_data) != len(o_data)")
         # initialize number of columns from the observation CSV
-        self.num_columns = len(self.o_data[0])
+        self.num_columns_a = len(self.a_data[0])         
+        # initialize number of columns from the observation CSV
+        self.num_columns_o = len(self.o_data[0])
         # the observation matrix is an array containing a 2d matrix deque with length self.window_size
         historic = deque([[0.0]*self.num_components ]*self.window_size , self.window_size)
         # Observation matrix 
@@ -141,27 +145,38 @@ class ForexEnvMulti(gym.Env):
     """
 
     def step(self, action):
-        # read time_variables from CSV. Format: 0 = HighBid, 1 = Low, 2 = Close, 3 = NextOpen, 4 = v, 5 = MoY, 6 = DoM, 7 = DoW, 8 = HoD, 9 = MoH, ..<num_columns>
-        High = self.a_data[self.tick_count, 0]
-        Low = self.a_data[self.tick_count, 1]
-        Close = self.a_data[self.tick_count, 2]
-        DoW = self.a_data[self.tick_count,146]
-        HoD = self.a_data[self.tick_count,147]
+        # number of columns per symbol in action dataset
+        cps = (self.num_columns_a - self.num_timesignals)//self.num_symbols
+        # initialize hlc price arrays for each symbol
+        High  = [0.0] * self.num_symbols
+        Low   = [0.0] * self.num_symbols
+        Close = [0.0] * self.num_symbols
+        # read hlc from action dataset 
+        for i in range(0,self.num_symbols):
+            High  = self.a_data[self.tick_count, 0 + (i*cps)]
+            Low   = self.a_data[self.tick_count, 1 + (i*cps)]
+            Close = self.a_data[self.tick_count, 2 + (i*cps)]
+        # read time variables from last columns of action dataset
+        DoW = self.a_data[self.tick_count, 146]
+        HoD = self.a_data[self.tick_count, 147]
         
         # Elevate spread  at 0 hours and if its weekend (DoW<=2 and Hour < 2)or(DoW>=5 and Hour > 23)
         if (DoW < 1 or DoW > 5) or (HoD < 2 and HoD > 23):
             spread = self.pip_cost * 60
         else:
-            spread = self.pip_cost * 20
+            spread = self.pip_cost * 25
 
         # Calculates profit
-        self.profit_pips = 0
-        self.real_profit = 0
+        self.profit_pips = [0]*self.num_symbols
+        self.real_profit = [0.0]*self.num_symbols
+        
         # calculate for existing BUY order (status=1)
-        if self.order_status == 1:
+        #TODO: HACER CICLO PARA CADA ORDEN
+        if self.order_status[i] == 1:
             # Low_Bid - order_open min and real profit pips (1 lot = 100000 units of currency)
-            self.profit_pips = ((Low - self.open_price) / self.pip_cost)
+            self.profit_pips[i] = ((Low - self.open_price) / self.pip_cost)
             self.real_profit = self.profit_pips * self.pip_cost * self.order_volume * 100000
+            
         # calculate for existing SELL order (status=-1)
         elif self.order_status == -1:
             # Order_open - High_Ask (High+spread)
