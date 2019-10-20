@@ -84,8 +84,10 @@ class ForexEnvMulti(gym.Env):
         self.reward = 0.0
         # Min / Max SL / TP, Min / Max (Default 1000?) in pips
         self.pip_cost = [0.00001] * self.num_symbols
-        # margin acumulativo = open_price*volume*100000/leverage
-        self.margin = 0.0
+        # margin  = open_price*volume*100000/leverage , uno por orden, el acumulativo se compara para verificar si hay margin call
+        self.margin = 0.0 * self.num_symbols
+        # margin acumulativo, se compara con equity para verificar si hay margin call.
+        self.margin_a = 0.0 
         # Minimum order time in ticks, its zero for the hourly timeframe
         self.min_order_time = 0
         # spread calculus: 0=from last csv column in pips, 1=lineal from volatility, 2=quadratic, 3=exponential, 4=constant
@@ -194,7 +196,7 @@ class ForexEnvMulti(gym.Env):
             self.equity = self.balance + self.real_profit[i]
             
             # Verify if Margin Call, CLOSE ALL ORDERS
-            if self.equity < self.margin:
+            if self.equity < self.margin_a:
                 for j in range(0,self.num_symbols):
                     # Close order
                     self.order_status[j] = 0
@@ -203,7 +205,9 @@ class ForexEnvMulti(gym.Env):
                     # Calculate new balance
                     self.equity = 0.0
                     # reset margin
-                    self.margin = 0.0
+                    self.margin[i] = 0.0
+                    # reset margin
+                    self.margin_a = 0.0
                     # reset profit in pips
                     self.profit_pips[j] = 0
                     self.real_profit[j] = 0
@@ -217,7 +221,6 @@ class ForexEnvMulti(gym.Env):
                     self.episode_over = bool(1)
     #TODO: Continuar revision de multi
     
-                    # TODO: ADICIONAR CONTROLES PARA SL Y TP ENTRE MAX_SL Y TP
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                     if self.debug == 1:
                         print('MARGIN CALL - Balance =', self.equity, ',  Reward =', self.reward, 'Time=', self.tick_count)
@@ -229,7 +232,11 @@ class ForexEnvMulti(gym.Env):
                     # Calculate new balance
                     self.balance = self.equity
                     # resets margin
-                    self.margin = 0.0
+                    # TODO: Recalcular margen cuando se cierre o se abra una orden, (hacer función)
+                    # para cada orden
+                    # 
+                    self.margin_a = self.margin_a - self.margin[i]
+                    self.margin[i] = 0.0
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                     if self.debug == 1:
                         print(self.tick_count, ',stop_loss, pips:', self.profit_pips[i],' profit:', self.real_profit[i], ',b:', self.balance)
@@ -248,7 +255,8 @@ class ForexEnvMulti(gym.Env):
                     # Calculate new balance
                     self.balance = self.equity
                     # reset margin
-                    self.margin = 0.0
+                    self.margin_a = self.margin_a - self.margin[i]
+                    self.margin[i] = 0.0
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                     if self.debug == 1:
                         print(self.tick_count, ',take_profit, pips:', self.profit_pips[i],' profit:', self.real_profit[i], ',b:', self.balance)
@@ -286,9 +294,12 @@ class ForexEnvMulti(gym.Env):
                     if self.order_volume[i] <= 0.01:
                         # close existing order
                         self.order_volume[i] = 0.01
-                        self.margin = 0
+                        self.margin[i] = 0.0
                     # set the new margin
-                    self.margin = self.margin + (self.order_volume[i] * 100000 / self.leverage)
+                    self.margin[i] = (self.order_volume[i] * 100000 / self.leverage)
+                    self.margin_a = self.margin_a + self.margin[i]
+
+                    
                     # TODO: Colocar accion para tamano de lote con rel_volume como maximo al abrir una orden
                     self.order_time = self.tick_count
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,margin,equity
@@ -315,6 +326,9 @@ class ForexEnvMulti(gym.Env):
                     # redondear a volumenes minimos de 0.01
                     self.order_volume[i] = math.trunc(self.order_volume[i] * 100) / 100.0
                     # set the new margin
+                    # TODO: CONTINUAR CORRIGIENDO MARGIN
+                    
+                    
                     self.margin = self.margin + (self.order_volume[i] * 100000 / self.leverage)
                     self.order_time = self.tick_count
                     # TODO: Hacer version con controles para abrir y cerrar para buy y sell independientes,comparar
