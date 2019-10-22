@@ -219,8 +219,6 @@ class ForexEnvMulti(gym.Env):
                     self.num_closes[i] += 1
                     # End episode
                     self.episode_over = bool(1)
-    #TODO: Continuar revision de multi
-    
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                     if self.debug == 1:
                         print('MARGIN CALL - Balance =', self.equity, ',  Reward =', self.reward, 'Time=', self.tick_count)
