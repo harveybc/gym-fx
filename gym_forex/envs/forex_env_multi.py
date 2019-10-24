@@ -328,6 +328,8 @@ class ForexEnvMulti(gym.Env):
                     
                     
                     self.margin = self.margin + (self.order_volume[i] * 100000 / self.leverage)
+                    self.margin_a = self.margin_a + self.margin[i]
+                    
                     self.order_time = self.tick_count
                     # TODO: Hacer version con controles para abrir y cerrar para buy y sell independientes,comparar
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
@@ -342,6 +344,7 @@ class ForexEnvMulti(gym.Env):
                         # Calculate new balance
                         self.balance = self.equity
                         # reset margin
+                        self.margin_a = self.margin_a - self.margin[i]
                         self.margin = 0.0
                         # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                         if self.debug == 1:
@@ -364,6 +367,7 @@ class ForexEnvMulti(gym.Env):
                         # Calculate new balance
                         self.balance = self.equity
                         # reset margin
+                        self.margin_a = self.margin_a - self.margin[i]
                         self.margin = 0.0
                         # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                         if self.debug == 1:
