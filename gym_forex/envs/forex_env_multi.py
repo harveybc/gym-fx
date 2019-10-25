@@ -223,6 +223,7 @@ class ForexEnvMulti(gym.Env):
                     if self.debug == 1:
                         print('MARGIN CALL - Balance =', self.equity, ',  Reward =', self.reward, 'Time=', self.tick_count)
             if (self.episode_over == False):
+                
                 # Verify if close by SL
                 if self.profit_pips[i] <= (-1 * self.sl[i]):
                     # Close order
@@ -246,6 +247,7 @@ class ForexEnvMulti(gym.Env):
                     self.real_profit[i] = 0
                     # increments number of orders counter
                     self.num_closes[i] += 1
+                    
                 # Verify if close by TP
                 if self.profit_pips[i] >= self.tp:
                     # Close order
