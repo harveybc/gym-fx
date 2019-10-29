@@ -61,6 +61,7 @@ class ForexEnvMulti(gym.Env):
         self.min_orders = 4
         # counter of closed orders per symbol 
         self.num_closes = [0] * self.num_symbols
+        self.num_closes_t = 0
         # Closing cause for each symbol's last order
         self.c_c = [0]*self.num_symbols
         # Closing cause general
@@ -397,6 +398,10 @@ class ForexEnvMulti(gym.Env):
             # premia incrementos
             #if equity_increment > 0.0:
             #    reward = reward + (self.initial_capital / self.num_ticks)
+            # calculate total number of orders
+            self.num_closes_t = 0
+            for j in range(0,self.num_symbols):
+                self.num_closes_t = self.num_closes_t + self.num_closes[j]
             
             # penaliza hardly if less than min_orders/2 
             if (self.num_closes_t < self.min_orders/2) and reward > 0:
@@ -491,4 +496,4 @@ class ForexEnvMulti(gym.Env):
         if mode == 'human':
             return self.equity
         else:
-            super(ForexEnv5, self).render(mode=mode)  # just raise an exception
+            super(ForexEnvMulti, self).render(mode=mode)  # just raise an exception
