@@ -8,7 +8,7 @@ import numpy as np
 import numpy
 from numpy import genfromtxt
 import copy
-
+# TODO: Swap rates
 class ForexEnvMulti(gym.Env):
     """
     This environment simulates a Forex trading account with only one open order 
@@ -117,8 +117,7 @@ class ForexEnvMulti(gym.Env):
         for i in range(0, self.window_size):
             for j in range(0, self.num_columns):
                 self.obs_matrix[j].appendleft(self.o_data[i, j])
-                #self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
-        # initialize tick counter 
+                #self.obs_matrix = self.num_columns * [deque(self.obs_tick4
         self.tick_count = self.window_size
         # set action space to 3 actions, 0=nop, 1=buy, 2=sell
         # ACTION SPACE  = (TP/TPMAX, SL/SLMAX,  VOLUME/VOLUMEMAX, DIRECTION), symbol
@@ -154,15 +153,16 @@ class ForexEnvMulti(gym.Env):
         High  = [0.0] * self.num_symbols
         Low   = [0.0] * self.num_symbols
         Close = [0.0] * self.num_symbols
+        
         # read hlc from action dataset 
         for i in range(0,self.num_symbols):
             High  = self.a_data[self.tick_count, 0 + (i*cps)]
             Low   = self.a_data[self.tick_count, 1 + (i*cps)]
             Close = self.a_data[self.tick_count, 2 + (i*cps)]
+            
         # read time variables from last columns of action dataset
         DoW = self.a_data[self.tick_count, 146]
         HoD = self.a_data[self.tick_count, 147]
-        
         # Elevate spread  at 0 hours and if its weekend (DoW<=2 and Hour < 2)or(DoW>=5 and Hour > 23)
         if (DoW < 1 or DoW > 5) or (HoD < 2 and HoD > 23):
             spread = self.pip_cost * 60
@@ -172,18 +172,15 @@ class ForexEnvMulti(gym.Env):
         # Calculates profit
         self.profit_pips = [0]*self.num_symbols
         self.real_profit = [0.0]*self.num_symbols
-        
-        
         # For each order (max one per symbol), calculate the new order status and new balance/equity/margin 
         for i in range (0, self.num_symbols):
-            # calculate for existing BUY order (status=1)
-            
+            # calculate order starus for existing BUY order (status=1)
             if self.order_status[i] == 1:
                 # Low[i]_Bid - order_open min and real profit pips (1 lot = 100000 units of currency)
                 self.profit_pips[i] = ((Low[i] - self.open_price[i]) / self.pip_cost[i])
                 self.real_profit[i] = self.profit_pips[i] * self.pip_cost[i] * self.order_volume[i] * 100000
 
-            # calculate for existing SELL order (status=-1
+            # calculate order status for existing SELL order (status=-1)
             elif self.order_status[i] == -1:
                 # Order_open - High[i]_Ask (High[i]+spread[i])
                 self.profit_pips[i] = ((self.open_price[i] - (High[i] + spread[i])) / self.pip_cost[i])
@@ -191,9 +188,11 @@ class ForexEnvMulti(gym.Env):
             else:
                 self.profit_pips[i] = 0
                 self.real_profit[i] = 0
-
-            # Calculates equity
-            self.equity = self.balance + self.real_profit[i]
+			
+            # Calculates equity with the profit of all orders
+            self.equity = self.balance
+            for j in range(0, self.sum_symbols):
+	            self.equity = self.equity + self.real_profit[j]
             
             # Verify if Margin Call, CLOSE ALL ORDERS
             if self.equity < self.margin_a:
@@ -222,26 +221,25 @@ class ForexEnvMulti(gym.Env):
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                     if self.debug == 1:
                         print('MARGIN CALL - Balance =', self.equity, ',  Reward =', self.reward, 'Time=', self.tick_count)
+           
             if (self.episode_over == False):
-                
                 # Verify if close by SL
                 if self.profit_pips[i] <= (-1 * self.sl[i]):
                     # Close order
                     self.order_status[i] = 0
-                    # Calculate new balance
-                    self.balance = self.equity
+                    # Calculate new balance as prev balance  plus profit
+                    self.balance = self.balance + self.real_profit[i]
                     # resets margin
-                    # TODO: Recalcular margen cuando se cierre o se abra una orden, (hacer función)
                     # para cada orden
-                    # 
                     self.margin_a = self.margin_a - self.margin[i]
                     self.margin[i] = 0.0
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                     if self.debug == 1:
                         print(self.tick_count, ',stop_loss, pips:', self.profit_pips[i],' profit:', self.real_profit[i], ',b:', self.balance)
                     # Set closing cause 2 = sl
-                    self.ant_c_c[i][i] = self.c_c[i]
+                    self.ant_c_c[i] = self.c_c[i]
                     self.c_c[i] = 2
+                    self.c_c_g = 2
                     # reset profit in pips
                     self.profit_pips[i] = 0
                     self.real_profit[i] = 0
@@ -252,9 +250,9 @@ class ForexEnvMulti(gym.Env):
                 if self.profit_pips[i] >= self.tp:
                     # Close order
                     self.order_status[i] = 0
-                    # Calculate new balance
-                    self.balance = self.equity
-                    # reset margin
+                    # Calculate new balance as prev balance plus profit
+                    self.balance = self.balance + self.real_profit[i]
+                    # reset margin 
                     self.margin_a = self.margin_a - self.margin[i]
                     self.margin[i] = 0.0
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
@@ -263,6 +261,7 @@ class ForexEnvMulti(gym.Env):
                     # Set closing cause 3 = tp
                     self.ant_c_c[i] = self.c_c[i]
                     self.c_c[i] = 3
+                    self.c_c_g = 3
                     # reset profit in pips
                     self.profit_pips[i] = 0
                     self.real_profit[i] = 0
@@ -270,23 +269,22 @@ class ForexEnvMulti(gym.Env):
                     self.num_closes[i] += 1
 
                 # Executes BUY action, order status  = 1
-                if (self.order_status[i] == 0) and action[3] > 0:
+                if (self.order_status[i] == 0) and (action[3][i]> 0):
                     self.order_status[i] = 1
                     # open price = Ask (Close_bid+Spread)
-                    self.open_price[i] = Close + spread[i]
+                    self.open_price[i] = Close[i] + spread[i]
                     # order_volume = lo que alcanza con rel_volume de equity
                     # Calcula sl y tp desde action space
                     #print("\naction=",action[0]);
-                    self.tp = (self.max_tp) * (action[0])
-                    self.sl[i] = (self.max_sl) * (action[1])
+                    self.tp[i]= (self.max_tp) * (action[0][i])
+                    self.sl[i] = (self.max_sl) * (action[1][i])
                     #self.tp = self.min_tp + ((self.max_tp-self.min_tp) * ((action[0] + 1) / 2))
                     #self.sl[i] = self.min_sl + ((self.max_sl-self.min_sl) * ((action[1] + 1) / 2))
                     #self.sl[i] = self.max_sl
                     #self.tp = self.max_tp
-                    # TODO: ADICIONAR VOLUME DESDE ACTION SPACE 
                     # a=Tuple((Discrete(3),  Box(low=-1.0, high=1.0, shape=3, dtype=np.float32)) # nop, buy, sell vol,tp,sl
                     #self.order_volume[i] = self.equity * self.max_volume * self.leverage * ((action[2] + 1) / 2) / 100000
-                    self.order_volume[i] = self.equity * self.max_volume * self.leverage * action[2] / 100000
+                    self.order_volume[i] = self.equity * self.max_volume * self.leverage * action[2][i]/ 100000
                     #self.order_volume[i] = self.equity * self.max_volume * self.leverage / 100000
                     # redondear a volumenes minimos de 0.01
                     self.order_volume[i] = math.trunc(self.order_volume[i] * 100) / 100.0
@@ -298,91 +296,88 @@ class ForexEnvMulti(gym.Env):
                     # set the new margin
                     self.margin[i] = (self.order_volume[i] * 100000 / self.leverage)
                     self.margin_a = self.margin_a + self.margin[i]
-
-                    
+             
                     # TODO: Colocar accion para tamano de lote con rel_volume como maximo al abrir una orden
                     self.order_time = self.tick_count
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,margin,equity
                     if self.debug == 1:
-                        print(self.tick_count, ',buy, o', self.open_price[i], ',v', self.order_volume[i], ' tp:', self.tp, ' sl:', self.sl[i], ' b:', self.balance)
+                        print(self.tick_count, ',buy, o', self.open_price[i], ',v', self.order_volume[i], ' tp:', self.tp[i], ' sl:', self.sl[i], ' b:', self.balance)
 
                 # Executes SELL action, order status  = 1
-                if (self.order_status[i] == 0) and action[3] < 0:
+                if (self.order_status[i] == 0) and (action[3][i]< 0):
                     self.order_status[i] = -1
                     # open_price = Bid
-                    self.open_price[i] = Close
+                    self.open_price[i] = Close[i]
                     # Calcula sl y tp desde action space
                     # print("\naction=", action[0]);
                     # self.sl[i] = self.max_sl 
                     # self.tp = self.max_tp
                     #self.tp = self.min_tp + ((self.max_tp-self.min_tp) * ((action[0] + 1) / 2))
                     #self.sl[i] = self.min_sl + ((self.max_sl-self.min_sl) * ((action[1] + 1) / 2))
-                    self.tp = (self.max_tp) * (action[0])
-                    self.sl[i] = (self.max_sl) * (action[1])
+                    self.tp[i] = (self.max_tp) * (action[0][i])
+                    self.sl[i] = (self.max_sl) * (action[1][i])
                     # TODO: ADICIONAR VOLUME DESDE ACTION SPACE 
                     # a=Tuple((Discrete(3),  Box(low=-1.0, high=1.0, shape=3, dtype=np.float32)) # nop, buy, sell vol,tp,sl
                     #self.order_volume[i] = self.equity * self.max_volume * self.leverage/ 100000
-                    self.order_volume[i] = self.equity * self.max_volume * self.leverage * (action[2]) / 100000
+                    self.order_volume[i] = self.equity * self.max_volume * self.leverage * (action[2][i]) / 100000
                     # redondear a volumenes minimos de 0.01
                     self.order_volume[i] = math.trunc(self.order_volume[i] * 100) / 100.0
                     # set the new margin
-                    # TODO: CONTINUAR CORRIGIENDO MARGIN
-                    
-                    
-                    self.margin = self.margin + (self.order_volume[i] * 100000 / self.leverage)
+                    self.margin[i] = (self.order_volume[i] * 100000 / self.leverage)
                     self.margin_a = self.margin_a + self.margin[i]
-                    
                     self.order_time = self.tick_count
                     # TODO: Hacer version con controles para abrir y cerrar para buy y sell independientes,comparar
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                     if self.debug == 1:
-                        print(self.tick_count, ',sell, o', self.open_price[i], ',v', self.order_volume[i], ' tp:', self.tp, ' sl:', self.sl[i], ' b:', self.balance)
+                        print(self.tick_count, ',sell, o', self.open_price[i], ',v', self.order_volume[i], ' tp:', self.tp[i], ' sl:', self.sl[i], ' b:', self.balance)
 
                 # Verify si ha pasado el min_order_time desde que se abrieron antes de cerrar
                 if ((self.tick_count - self.order_time) > self.min_order_time):
                     # Closes EXISTING SELL (-1) order with action=BUY (1)
-                    if (self.order_status[i] == -1) and action[3] > 0:
+                    if (self.order_status[i] == -1) and (action[3][i] > 0):
                         self.order_status[i] = 0
-                        # Calculate new balance
-                        self.balance = self.equity
-                        # reset margin
+                        # Calculate new balance as prev balance plus profit
+                        self.balance = self.balance + self.real_profit[i]
+                        # reset margin 
                         self.margin_a = self.margin_a - self.margin[i]
-                        self.margin = 0.0
+                        self.margin[i] = 0.0
                         # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                         if self.debug == 1:
                             print(self.tick_count, ',close_sell, pips:', self.profit_pips[i],' profit:', self.real_profit[i], ',b:', self.balance)
                         # Set closing cause 0 = normal close
                         self.ant_c_c[i] = self.c_c[i]
                         self.c_c[i] = 0
+                        self.c_c_g = 0
                         # reset profit in pips
                         self.profit_pips[i] = 0
                         self.real_profit[i] = 0
                         # increment counter for number of orders closed
                         self.num_closes[i] += 1
                     #if action == 0 (nop), print status
-                    if (self.order_status[i] == -1) and action[3] == 0:
+                    if (self.order_status[i] == -1) and (action[3][i] == 0):
                         print(self.tick_count, ',o_sell, pips:', self.profit_pips[i],' profit:', self.real_profit[i], ',b:', self.balance)
                     # print("action=", action)
                     # Closes EXISTING BUY (1) order with action=SELL (2)
-                    if (self.order_status[i] == 1) and action[3] < 0:
+                    if (self.order_status[i] == 1) and (action[3][i] < 0):
                         self.order_status[i] = 0
-                        # Calculate new balance
-                        self.balance = self.equity
-                        # reset margin
+                        # Calculate new balance as prev balance plus profit
+                        self.balance = self.balance + self.real_profit[i]
+                        # reset margin 
                         self.margin_a = self.margin_a - self.margin[i]
-                        self.margin = 0.0
+                        self.margin[i] = 0.0
                         # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                         if self.debug == 1:
                             print(self.tick_count, ',close_buy, pips:', self.profit_pips[i],' profit:', self.real_profit[i], ',b:', self.balance)
                         # Set closing cause 0 = normal close
                         self.ant_c_c[i] = self.c_c[i]
                         self.c_c[i] = 0
+                        self.c_c_g = 0
                         # reset profit in pips
                         self.profit_pips[i] = 0
                         self.real_profit[i] = 0
                         # incrments counter of closed orders
                         self.num_closes[i] += 1
-                    if (self.order_status[i] == 1) and action[3] == 0:
+                    if (self.order_status[i] == 1) and (action[3][i] == 0):
                         print(self.tick_count, ',o_buy, pips:', self.profit_pips[i],' profit:', self.real_profit[i], ',b:', self.balance)
                     
         # end for each symbol
@@ -404,21 +399,21 @@ class ForexEnvMulti(gym.Env):
             #    reward = reward + (self.initial_capital / self.num_ticks)
             
             # penaliza hardly if less than min_orders/2 
-            if (self.num_closes < self.min_orders/2) and reward > 0:
+            if (self.num_closes_t < self.min_orders/2) and reward > 0:
                 reward = reward * (self.num_closes/self.min_orders)
-            if (self.num_closes < self.min_orders/2) and reward <= 0:
+            if (self.num_closes_t < self.min_orders/2) and reward <= 0:
                 reward = reward - (self.initial_capital / self.num_ticks) * (1-(self.num_closes/self.min_orders))
     
             # penaliza lightly if less than min_orders
-            if (self.num_closes < self.min_orders) and reward <= 0:
+            if (self.num_closes_t < self.min_orders) and reward <= 0:
                 reward = reward - ((self.initial_capital / (10*self.num_ticks))* (1-(self.num_closes/self.min_orders)))
             # penaliza margin call
-            if self.c_c == 1:
+            if self.c_c_g == 1:
                 reward = -(5.0 * self.initial_capital)
             # penaliza red que no hace nada
             if self.tick_count >= (self.num_ticks - 2):
-                if self.num_closes < self.min_orders:
-                    reward = -(10*self.initial_capital * (1 - (self.num_closes / self.min_orders)))
+                if self.num_closes_t < self.min_orders:
+                    reward = -(10*self.initial_capital * (1 - (self.num_closes_t / self.min_orders)))
                     self.balance = 0
                     self.equity = 0
                 if self.equity == self.initial_capital:
@@ -436,7 +431,7 @@ class ForexEnvMulti(gym.Env):
         # Push values from timeseries into state
         # 0 = HighBid, 1 = Low, 2 = Close, 3 = NextOpen, 4 = v, 5 = MoY, 6 = DoM, 7 = DoW, 8 = HoD, 9 = MoH, ..<num_columns>
         for i in range(0, self.num_columns - 1):
-            self.obs_matrix[i].appendleft(self.my_data[self.tick_count, i])
+            self.obs_matrix[i].appendleft(self.o_data[self.tick_count, i])
         # matrix for the state(order status, equity variation, reward and statistics (from reward table))
         ob = self.obs_matrix
         # increment tick counter
@@ -470,16 +465,16 @@ class ForexEnvMulti(gym.Env):
         #print ("obs_ticks = ", self.obs_ticks)
         for i in range(0, self.num_columns):
             for j in range(0, self.obs_ticks):
-                self.obs_matrix[i].appendleft(self.my_data[j, i])
+                self.obs_matrix[i].appendleft(self.o_data[j, i])
         #    print ("obs_matrix_pre[",i,"] = ", self.obs_matrix[i])
         self.tick_count = self.obs_ticks
-        self.order_status = 0
+        self.order_status = [0] * self.num_symbols
         self.reward = 0.0
-        self.order_profit = 0.0
+        self.order_profit = [0.0] * self.num_symbols
         self.margin = 0.0
-        self.c_c = 0
-        self.ant_c_c = 0
-        self.num_closes = 0
+        self.c_c = [0] * self.num_symbols
+        self.ant_c_c = [0] * self.num_symbols
+        self.num_closes = [0] * self.num_symbols
         #self.__init__(self.dataset)
         self.episode_over = bool(0)
         return self.obs_matrix
