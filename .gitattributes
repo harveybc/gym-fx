@@ -1,1 +1,6 @@
-datasets/* linguist-vendored
+*.CSV linguist-language=Python
+*.ex4 linguist-language=Python
+*.mq4 linguist-language=Python
+*.ini linguist-language=Python
+*.xml linguist-language=Python
+
