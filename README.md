@@ -1,7 +1,7 @@
 # gym-forex
 
-The [Forex environment](https://github.com/harveybc/gym-forex) is a forex
-trading simulator featuring: configurable initial capital, dynamic or dataset-based spread, CSV history timeseries for trading
+The [Forex environment](https://github.com/harveybc/gym-fx) is a forex
+trading simulator for OpenAI Gym, allowing to test the performace of a custom trading agent. Featuring: configurable initial capital, dynamic or dataset-based spread, CSV history timeseries for trading
 currencies and observations for the agent, fixed or agent-controlled take-profit, stop-loss and order volume.
 
 The environment features discrete action spaces and optionally continuous
@@ -43,13 +43,20 @@ pip3 install graphviz neat-python gitpython gym neat-python matplotlib
 
 ### Step 2 - Setup gym-forex from GitHub
 
-git clone https://github.com/harveybc/gym-forex  
+git clone https://github.com/harveybc/gym-fx  
 
 ### Step 3 - Configure the NEAT parameters
 
 Set the PYTHONPATH venvironment variable, you may add the following line to the .profile file in your home directory to export on start of sessions. Replace <username> with your username.
 
-export PYTHONPATH=/home/username/gym-forex/:${PYTHONPATH}  
+-On Linux:
+
+export PYTHONPATH=/home/username/gym-fx/:${PYTHONPATH}  
+
+-On Windows:
+
+set PYTHONPATH="c:\Users\harve\";%PYTHONPATH%  
+
   
 ### Step 4 - Configure the NEAT parameters
 
