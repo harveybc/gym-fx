@@ -18,6 +18,7 @@ import sys
 import time
 #import visualize
 from gym.envs.registration import register
+import requests
 #from population_syn import PopulationSyn # extended neat population for synchronizing witn singularity p2p network
 # Multi-core machine support
 NUM_CORES = 1
@@ -105,7 +106,7 @@ class GenomeEvaluator(object):
             i = i + 1
             
     def training_validation_score(self,gen_best,config):
-        # calculate training and validation fitness
+        # calculate training and validation fitness, also upload data to a data-logger instance via Web API call
         best_scores = []
         observation = self.env_t.reset()
         score = 0.0
@@ -128,6 +129,15 @@ class GenomeEvaluator(object):
         avg_score = sum(best_scores) / len(best_scores)
         print("Training Set Score=", score, " avg_score=", avg_score, " num_closes= ", info["num_closes"], 
             " balance=", info["balance"])
+        # upload training set score to data-logger instance
+        URL = "http://localhost:5000/training_error"
+        # parameters to be sent to the API
+        PARAMS = {'mse':score}
+        # sending get request and saving the response as response object
+        r = requests.post(url = URL, json = PARAMS)
+        
+        # extracting data in json format
+        data = r.json()
         # calculate the validation set score
         best_scores = []
         observation = self.env_v.reset()
@@ -146,5 +156,6 @@ class GenomeEvaluator(object):
         best_scores.append(score)
         avg_score_v = sum(best_scores) / len(best_scores)
         print("Validation Set Score = ", avg_score_v)
+
         print("*********************************************************")
         return avg_score

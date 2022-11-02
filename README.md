@@ -39,7 +39,7 @@ Install Python, pip,  OpenAI Gym and other dependencies:
 
 sudo apt-get install -y python3-numpy python3-dev cmake zlib1g-dev libjpeg-dev xvfb ffmpeg libboost-all-dev libsdl2-dev python3-pip git gcc make perl  
 
-pip3 install graphviz neat-python gitpython gym neat-python matplotlib
+pip3 install graphviz neat-python gitpython gym neat-python matplotlib requests
 
 ### Step 2 - Setup gym-forex from GitHub
 
