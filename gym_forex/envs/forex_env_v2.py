@@ -420,7 +420,7 @@ class ForexEnv2(gym.Env):
             # self.__init__()
             # TODO: IMPRIMIR ESTADiSTICAS DE METATRADER
         # end of step function.
-        info = {"balance":self.balance, "tick_count":self.tick_count, "equity":self.equity, "reward":self.reward, "order_status":self.order_status, "order_type":self.margin}
+        info = {"balance":self.balance, "tick_count":self.tick_count, "equity":self.equity, "reward":self.reward, "order_status":self.order_status, "margin":self.margin, "initial_capital":self.initial_capital}
         return ob, reward, episode_over, info
 
     """
