@@ -405,9 +405,8 @@ class ForexEnv4(gym.Env):
             # print('Done - Balance =', self.equity, ',  Reward =', self.reward, 'Time=', self.tick_count)
             # self._reset()
             # self.__init__()
-            # TODO: IMPRIMIR ESTADiSTICAS DE METATRADER
         # end of step function.
-        info = {"balance":self.balance, "tick_count":self.tick_count, "order_status":self.order_status, "num_closes":self.num_closes}
+        info = {"balance":self.balance, "tick_count":self.tick_count, "num_closes":self.num_closes, "equity":self.equity, "reward":self.reward, "order_status":self.order_status, "margin":self.margin, "initial_capital":self.initial_capital}
         return ob, reward, self.episode_over, info
 
     """
