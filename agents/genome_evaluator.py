@@ -130,11 +130,13 @@ class GenomeEvaluator(object):
         print("Training Set Score=", score, " avg_score=", avg_score, " num_closes= ", info["num_closes"], 
             " balance=", info["balance"])
         # upload training set score to data-logger instance
-        URL = "http://localhost:5000/training_error"
+        api_url = "http://localhost:5000/training_error"
         # parameters to be sent to the API
-        PARAMS = {'mse':score}
+        params = {'mse':score}
         # sending get request and saving the response as response object
-        r = requests.post(url = URL, json = PARAMS)
+        session = requests.Session()
+        session.auth = ("test","pass")
+        r = session.post(url = api_url, json = params)
         
         # extracting data in json format
         data = r.json()
