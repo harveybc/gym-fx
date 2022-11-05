@@ -132,7 +132,7 @@ class GenomeEvaluator(object):
         # upload training set score to data-logger instance
         api_url = "http://localhost:5000/training_error"
         # parameters to be sent to the API
-        params = {'mse':score}
+        params = info
         # sending get request and saving the response as response object
         session = requests.Session()
         session.auth = ("test","pass")

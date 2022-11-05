@@ -80,7 +80,7 @@ def run():
     avg_score_v_ant = avg_score_v
     avg_score = avg_score_v
     iteration_counter = 0
-    best_fitness=-2000.0;
+    best_fitness=-2000.0
     pop_size=len(pop.population)
     # sets the nuber of continuous iterations 
     num_iterations = round(200/len(pop.population))+1
