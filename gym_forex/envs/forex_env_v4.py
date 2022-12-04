@@ -26,7 +26,6 @@ class ForexEnv4(gym.Env):
     metadata = {'render.modes': ['human']}
 
     def __init__(self, **kwargs):
-        metadata = {'render.modes': ['human', 'ansi']}
         # initialize initial capital
         self.capital = kwargs['capital']
         self.min_sl = kwargs['sl']
@@ -42,10 +41,8 @@ class ForexEnv4(gym.Env):
         self.episode_over=bool(0)
         # Number of past ticks per feature to be used as observations (1440min=1day, 10080=1Week, 43200=1month, )
         self.obs_ticks = kwargs['obsticks'] # best 48@ 700k
-        num_symbols = 1
         self.debug = 0  # Show debug msgs
         csv_f = kwargs['dataset']
-        self.dataset = kwargs['dataset']
         self.initial_capital = self.capital
         self.equity = self.capital
         self.balance = self.capital
@@ -219,8 +216,7 @@ class ForexEnv4(gym.Env):
                 self.margin = 0.0
                 # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                 if self.debug == 1:
-                    print(self.tick_count, ',stop_loss, o', self.open_price, ',p', self.profit_pips, ',v',
-                          self.order_volume, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
+                    self._print_helper(HoD, MoY, DoM, MoH)
                 # Set closing cause 2 = sl
                 self.ant_c_c = self.c_c
                 self.c_c = 2
@@ -235,8 +231,8 @@ class ForexEnv4(gym.Env):
                 self.margin = 0.0
                 # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                 if self.debug == 1:
-                    print(self.tick_count, ',take_profit, o', self.open_price, ',p', self.profit_pips, ',v',
-                          self.order_volume, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
+                    self._print_helper(HoD, MoY, DoM, MoH)
+
                 # Set closing cause 3 = tp
                 self.ant_c_c = self.c_c
                 self.c_c = 3
@@ -273,9 +269,8 @@ class ForexEnv4(gym.Env):
                 self.order_time = self.tick_count
                 # print transaction: Num,DateTime,Type,Size,Price,SL,TP,margin,equity
                 if self.debug == 1:
-                    print(self.tick_count, ',buy, o', self.open_price, ',v', self.order_volume, ',m', self.margin, ',e',
-                          self.equity, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
-            
+                    self._print_helper(HoD, MoY, DoM, MoH)
+
             # Executes SELL action, order status  = 1
             if (self.order_status == 0) and action == 2:
                 self.order_status = -1
@@ -296,9 +291,8 @@ class ForexEnv4(gym.Env):
                 # TODO: Hacer version con controles para abrir y cerrar para buy y sell independientes,comparar
                 # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                 if self.debug == 1:
-                    print(self.tick_count, ',sell, o', self.open_price, ',v', self.order_volume, ',m', self.margin, ',e',
-                          self.equity, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
-            
+                    self._print_helper(HoD, MoY, DoM, MoH)
+
             # Verify si ha pasado el min_order_time desde que se abrieron antes de cerrar
             if ((self.tick_count - self.order_time) > self.min_order_time):
                 # Closes EXISTING SELL (-1) order with action=BUY (1)
@@ -310,8 +304,8 @@ class ForexEnv4(gym.Env):
                     self.margin = 0.0
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                     if self.debug == 1:
-                        print(self.tick_count, ',close_sell, o', self.open_price, ',p', self.profit_pips, ',v',
-                              self.order_volume, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
+                        self._print_helper(HoD, MoY, DoM, MoH)
+
                     # Set closing cause 0 = normal close
                     self.ant_c_c = self.c_c
                     self.c_c = 0
@@ -325,8 +319,7 @@ class ForexEnv4(gym.Env):
                     self.margin = 0.0
                     # print transaction: Num,DateTime,Type,Size,Price,SL,TP,Profit,Balance
                     if self.debug == 1:
-                        print(self.tick_count, ',close_buy, o', self.open_price, ',p', self.profit_pips, ',v',
-                              self.order_volume, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)
+                        self._print_helper(HoD, MoY, DoM, MoH)
                     # Set closing cause 0 = normal close
                     self.ant_c_c = self.c_c
                     self.c_c = 0
@@ -432,7 +425,6 @@ class ForexEnv4(gym.Env):
         self.obs_matrix = self.num_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         self.state = self.state_columns * [deque(self.obs_ticks * [0.0], self.obs_ticks)]
         ob = numpy.concatenate([self.obs_matrix, self.state])
-        #self.__init__(self.dataset)
         self.episode_over = bool(0)
         return ob
 
@@ -449,3 +441,7 @@ class ForexEnv4(gym.Env):
             return self.equity
         else:
             super(ForexEnv4, self).render(mode=mode)  # just raise an exception
+
+    def _print_helper(self, HoD, MoY, DoM, MoH):
+        print(self.tick_count, ',close_buy, o', self.open_price, ',p', self.profit_pips, ',v',
+                              self.order_volume, ',b', self.balance, ',d', MoY, '-', DoM, ' ', HoD, ':', MoH)

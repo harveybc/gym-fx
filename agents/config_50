@@ -11,7 +11,7 @@ reset_on_extinction   = 0
 [AgentGenome]
 num_inputs              = 38
 num_hidden              = 0
-num_outputs             = 3
+num_outputs             = 6
 initial_connection      = partial 0.5
 feed_forward            = True
 compatibility_disjoint_coefficient = 1.0

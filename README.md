@@ -10,7 +10,7 @@ volume.
 
 ## Observation Space
 
-A concatenation of num_ticks vectors for the lastest: 
+A concatenation of `num_ticks` vectors for the lastest: 
 vector of values from timeseries, equity and its variation, 
 order_status( -1=closed,1=opened),time_opened (normalized with
 max_order_time), order_profit and its variation, order_drawdown
@@ -29,33 +29,44 @@ balance variation.
 
 ## MQL4 Dataset Generator
 
-The datasets used for the tests were generated with a MQL4 program located in the
-agents folder (Pending documentation).
+Download and install Metatrader 4.
+
+- Mac 
+
+Navigate to `Library -> Application -> Support -> MetaTrader 4 -> Bottles -> metatrader64 -> drive_c -> Program Files(x86) -> MetaTrader 4 > MQL4.`
+
+Copy the `*.mq4` files from datasets into the `Scripts` folder. 
+
+To run these scripts, open MT4 and in the `Navigator` pane, run the scripts under the "Scripts" folder. Right click the file and click `Modify`. Run, edit, and debug scripts here as you see fit. The `.csv` files generated with these scripts will appear in `Files`.
+
+- Windows
+
+On MT4: `File-> Open Data folder -> MQL4`.
 
 # Installation
 ### Step 1 - Setup Dependencies
 
 Install Python, pip,  OpenAI Gym and other dependencies:  
 
-sudo apt-get install -y python3-numpy python3-dev cmake zlib1g-dev libjpeg-dev xvfb ffmpeg libboost-all-dev libsdl2-dev python3-pip git gcc make perl  
+`sudo apt-get install -y python3-numpy python3-dev cmake zlib1g-dev libjpeg-dev xvfb ffmpeg libboost-all-dev libsdl2-dev python3-pip git gcc make perl ` 
 
-pip3 install graphviz neat-python gitpython gym neat-python matplotlib requests
+`pip3 install graphviz neat-python gitpython gym neat-python matplotlib requests`
 
 ### Step 2 - Setup gym-forex from GitHub
 
-git clone https://github.com/harveybc/gym-fx  
+`git clone https://github.com/harveybc/gym-fx`
 
 ### Step 3 - Configure the NEAT parameters
 
 Set the PYTHONPATH venvironment variable, you may add the following line to the .profile file in your home directory to export on start of sessions. Replace <username> with your username.
 
--On Linux:
+- Linux:
 
-export PYTHONPATH=/home/username/gym-fx/:${PYTHONPATH}  
+`export PYTHONPATH=/home/username/gym-fx/:${PYTHONPATH}`
 
--On Windows:
+- Windows:
 
-set PYTHONPATH="c:\Users\harve\";%PYTHONPATH%  
+`set PYTHONPATH="c:\Users\harve\";%PYTHONPATH%`
 
   
 ### Step 4 - Configure the NEAT parameters
@@ -71,18 +82,18 @@ capacity or requirements, start with the defaults.
 nano res  
 
 For example:  
-
+```
 #!/bin/bash  
 git pull  
 python3 agents/agent_NEAT.py ./datasets/ts_5min_1w.CSV ./datasets/vs_5min_1w.CSV config_20  
-
+```
 After editing, change the permission of the file to be executable:  
 
-chmod 777 res  
+`chmod 777 res`
 
 ### Step 6 - Start your optimizer that uses the gym-forex environment and an agent.
 
-./res   
+`./res`
 
 
 

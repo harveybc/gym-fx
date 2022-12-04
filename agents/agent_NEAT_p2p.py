@@ -88,7 +88,7 @@ def run():
     avg_score_v_ant = avg_score_v
     avg_score = avg_score_v
     iteration_counter = 0
-    best_fitness=-2000.0;
+    best_fitness=-2000.0
     pop_size=len(pop.population)
     # sets the nuber of continuous iterations 
     num_iterations = round(200/len(pop.population))+1
@@ -118,7 +118,7 @@ def run():
             if solved:
                 print("Solved.")
                 # save the winners.
-                for n, g in enumerate(best_genomes):
+                for n, g in enumerate(gen_best):
                     name = 'winner-{0}'.format(n)
                     with open(name + '.pickle', 'wb') as f:
                         pickle.dump(g, f)
@@ -126,7 +126,6 @@ def run():
         except KeyboardInterrupt:
             print("User break.")
             break
-    env.close()
 
 if __name__ == '__main__':
     run()
