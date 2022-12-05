@@ -18,9 +18,7 @@ NUM_CORES = 1
 ts_f = sys.argv[1]
 # Second is validation dataset 
 vs_f = sys.argv[2]
-# Third argument is the  url for syngularity sync
-#my_url = sys.argv[3]
-# fourth is the config filename
+# third is the config filename
 my_config = sys.argv[3]
 # for cross-validation like training set
 index_t = 0
@@ -87,36 +85,39 @@ def run():
     # repeat NEAT iterations until solved or keyboard interrupt
     while 1:
         try:
-            # if it is not the  first iteration calculate training and validation scores
+            # if it is not the first iteration calculate training and validation scores
             if iteration_counter >0:
                 avg_score=ec.training_validation_score(gen_best, config)
             # if it is not the first iteration
             if iteration_counter >= 0:
-                # synchronizes with singularity migrating maximum 3 specimens 
-                # pop.syn_singularity(4, my_url, stats,avg_score,rep.current_generation, config, ec.genomes_h)
                 pop.species.speciate(config, pop.population, pop.generation)
                 print("\nSpeciation after migration done")
-                # perform pending evaluations on the singularity network, max 2
-                #pop.evaluate_pending(2)
                 #increment iteration counter
                 iteration_counter = iteration_counter + 1
             # execute num_iterations consecutive iterations of the NEAT algorithm
             gen_best = pop.run(ec.evaluate_genomes, 2)
-            # verify the training score is enough to stop the NEAT algorithm: TODO change to validation score when generalization is ok 
-            if avg_score < 2000000000:
+            # TODO: Change the validation score when generalization is ok enough
+            if avg_score < 0.19:
                 solved = False
             if solved:
                 print("Solved.")
                 # save the winners.
-                for n, g in enumerate(best_genomes):
+                for n, g in enumerate(gen_best):
                     name = 'winner-{0}'.format(n)
                     with open(name + '.pickle', 'wb') as f:
                         pickle.dump(g, f)
                 break
         except KeyboardInterrupt:
             print("User break.")
+            env_dict = gym.envs.registration.registry.env_specs.copy()
+            for env in env_dict:
+                if 'ForexTrainingSet-v1' in env:
+                    print("Remove {} from registry".format(env))
+                    del gym.envs.registration.registry.env_specs[env]
+                if 'ForexValidationSet-v1' in env:
+                    print("Remove {} from registry".format(env))
+                    del gym.envs.registration.registry.env_specs[env]
             break
-    env.close()
 
 if __name__ == '__main__':
     run()

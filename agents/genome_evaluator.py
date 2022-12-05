@@ -1,26 +1,12 @@
 # library for ann genome evaluation
 from __future__ import print_function
-from copy import deepcopy
 import gym
 import gym.wrappers
-import gym_forex
-import json
-#import matplotlib.pyplot as plt
 import multiprocessing
 import neat
-from neat.six_util import iteritems
-from neat.six_util import itervalues
 import numpy as np
-import os
-import pickle
-import random
-import sys
 import time
-#import visualize
 from gym.envs.registration import register
-import requests
-#from population_syn import PopulationSyn # extended neat population for synchronizing witn singularity p2p network
-# Multi-core machine support
 NUM_CORES = 1
 
 # class for evaluating the genomes
@@ -129,17 +115,7 @@ class GenomeEvaluator(object):
         avg_score = sum(best_scores) / len(best_scores)
         print("Training Set Score=", score, " avg_score=", avg_score, " num_closes= ", info["num_closes"], 
             " balance=", info["balance"])
-        # upload training set score to data-logger instance
-        api_url = "http://localhost:5000/training_error"
-        # parameters to be sent to the API
-        params = info
-        # sending get request and saving the response as response object
-        session = requests.Session()
-        session.auth = ("test","pass")
-        r = session.post(url = api_url, json = params)
-        
-        # extracting data in json format
-        data = r.json()
+
         # calculate the validation set score
         best_scores = []
         observation = self.env_v.reset()
@@ -157,7 +133,8 @@ class GenomeEvaluator(object):
                 break
         best_scores.append(score)
         avg_score_v = sum(best_scores) / len(best_scores)
-        print("Validation Set Score = ", avg_score_v)
+        print("Validation Set Score = ", score, " avg_score=", avg_score_v, " num_closes= ", info["num_closes"], 
+            " balance=", info["balance"])
 
         print("*********************************************************")
-        return avg_score
+        return avg_score_v

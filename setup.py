@@ -6,7 +6,7 @@ setup (
        packages=find_packages(),
 
        # Declare your packages' dependencies here, for eg:
-       install_requires=['foo>=3'],
+       # install_requires=['foo>=3'],
 
        # Fill in these to make your Egg ready for upload to
        # PyPI
