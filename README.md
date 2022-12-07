@@ -40,7 +40,7 @@ Set the PYTHONPATH venvironment variable, you may add the following line to the 
 
 >python setup.py install
   
-### Step 5 - Start your optimizer that uses the gym-forex environment and an agent.
+### Step 5 - Start your agent optimizer that uses the gym-forex environment.
 
 -Linux:
 
