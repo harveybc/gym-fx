@@ -8,7 +8,7 @@ The environment features discrete action spaces and optionally continuous
 action spaces if the orders dont have fixed take-profit/stop-loss and order
 volume.
 
-# Installation
+## Installation
 
 ### Step 1 - Setup Dependencies
 
@@ -42,9 +42,17 @@ Set the PYTHONPATH venvironment variable, you may add the following line to the 
   
 ### Step 5 - Start your optimizer that uses the gym-forex environment and an agent.
 
->sh ./start.sh
+-Linux:
 
-### Step 8 - Optional: Configure the NEAT parameters
+>sh ./optimize.sh
+
+-Windows:
+
+>optimize.bat
+
+
+
+### Step 6 - Optional: Configure the NEAT parameters
 
 'nano agents/config_20'
 
