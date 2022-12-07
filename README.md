@@ -8,6 +8,49 @@ The environment features discrete action spaces and optionally continuous
 action spaces if the orders dont have fixed take-profit/stop-loss and order
 volume.
 
+# Installation
+
+### Step 1 - Setup Dependencies
+
+Install Python, pip,  OpenAI Gym and other dependencies:  
+
+>sudo apt-get install -y python3-numpy python3-dev cmake zlib1g-dev libjpeg-dev xvfb ffmpeg libboost-all-dev libsdl2-dev python3-pip git gcc make perl 
+
+>pip3 install graphviz neat-python gitpython gym neat-python matplotlib requests
+
+### Step 2 - Get gym-forex from GitHub
+
+>git clone https://github.com/harveybc/gym-fx
+
+### Step 3 - Configure the NEAT parameters
+
+Set the PYTHONPATH venvironment variable, you may add the following line to the .profile file in your home directory to export on start of sessions. Replace <username> with your username.
+
+- Linux:
+
+>export PYTHONPATH=/home/username/gym-fx/:${PYTHONPATH}
+
+- Windows:
+
+>set PYTHONPATH="c:\Users\username\gym-fx";%PYTHONPATH%
+
+### Step 4 - Setup gym-forex
+
+>cd gym-fx
+
+>python setup.py install
+  
+### Step 5 - Start your optimizer that uses the gym-forex environment and an agent.
+
+>sh ./start.sh
+
+### Step 8 - Optional: Configure the NEAT parameters
+
+'nano agents/config_20'
+
+Configure in the file, the population size and other parameters according to your computing 
+capacity or requirements, start with the defaults.  
+
 ## Observation Space
 
 A concatenation of `num_ticks` vectors for the lastest: 
@@ -42,58 +85,3 @@ To run these scripts, open MT4 and in the `Navigator` pane, run the scripts unde
 - Windows
 
 On MT4: `File-> Open Data folder -> MQL4`.
-
-# Installation
-### Step 1 - Setup Dependencies
-
-Install Python, pip,  OpenAI Gym and other dependencies:  
-
-`sudo apt-get install -y python3-numpy python3-dev cmake zlib1g-dev libjpeg-dev xvfb ffmpeg libboost-all-dev libsdl2-dev python3-pip git gcc make perl ` 
-
-`pip3 install graphviz neat-python gitpython gym neat-python matplotlib requests`
-
-### Step 2 - Setup gym-forex from GitHub
-
-`git clone https://github.com/harveybc/gym-fx`
-
-### Step 3 - Configure the NEAT parameters
-
-Set the PYTHONPATH venvironment variable, you may add the following line to the .profile file in your home directory to export on start of sessions. Replace <username> with your username.
-
-- Linux:
-
-`export PYTHONPATH=/home/username/gym-fx/:${PYTHONPATH}`
-
-- Windows:
-
-`set PYTHONPATH="c:\Users\harve\";%PYTHONPATH%`
-
-  
-### Step 4 - Configure the NEAT parameters
-
-cd gym-forex  
-nano agents/config   
-
-Configure the population size and other parameters according to your computing 
-capacity or requirements, start with the defaults.  
-
-### Step 5 - Configure a startup/restart script
-
-nano res  
-
-For example:  
-```
-#!/bin/bash  
-git pull  
-python3 agents/agent_NEAT.py ./datasets/ts_5min_1w.CSV ./datasets/vs_5min_1w.CSV config_20  
-```
-After editing, change the permission of the file to be executable:  
-
-`chmod 777 res`
-
-### Step 6 - Start your optimizer that uses the gym-forex environment and an agent.
-
-`./res`
-
-
-
