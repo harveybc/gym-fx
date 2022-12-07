@@ -22,9 +22,9 @@ Install Python, pip,  OpenAI Gym and other dependencies:
 
 >git clone https://github.com/harveybc/gym-fx
 
-### Step 3 - Configure the NEAT parameters
+### Step 3 - Set the PYTHONPATH variable
 
-Set the PYTHONPATH venvironment variable, you may add the following line to the .profile file in your home directory to export on start of sessions. Replace <username> with your username.
+Set the PYTHONPATH environment variable, you may add the following line to the .profile file in your home directory to export on start of sessions. Replace <username> with your username.
 
 - Linux:
 
