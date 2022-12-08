@@ -92,7 +92,7 @@ class GenomeEvaluator(object):
             i = i + 1
 
     # log the iteration data in data_logger
-    def data_log(validation_score=v_score, avg_score_v=avg_score_v, training_score=score, avg_score=avg_score, info=info)
+    def data_log(self, validation_score, avg_score_v, training_score, avg_score, info):
         return 0
 
 
