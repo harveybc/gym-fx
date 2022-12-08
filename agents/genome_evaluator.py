@@ -105,6 +105,8 @@ class GenomeEvaluator(object):
             response = requests.post(url, data=data, timeout=3, auth=('test', 'pass')) 
         except requests.exceptions.Timeout:
             print("Warning: data-logger request timeout (t>3s)")
+        except:
+            print("Warning: unable to connect to data-logger")
 
     def training_validation_score(self,gen_best,config):
         # calculate training and validation fitness
