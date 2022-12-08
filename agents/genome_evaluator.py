@@ -90,9 +90,14 @@ class GenomeEvaluator(object):
             genome.fitness = scores[i]
             self.genomes_h.append(genome)
             i = i + 1
-            
+
+    # log the iteration data in data_logger
+    def data_log(validation_score=v_score, avg_score_v=avg_score_v, training_score=score, avg_score=avg_score, info=info)
+        return 0
+        
+
     def training_validation_score(self,gen_best,config):
-        # calculate training and validation fitness, also upload data to a data-logger instance via Web API call
+        # calculate training and validation fitness
         best_scores = []
         observation = self.env_t.reset()
         score = 0.0
@@ -119,7 +124,7 @@ class GenomeEvaluator(object):
         # calculate the validation set score
         best_scores = []
         observation = self.env_v.reset()
-        score = 0.0
+        v_score = 0.0
         step = 0
         gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
         while 1:
@@ -131,10 +136,12 @@ class GenomeEvaluator(object):
             #env_v.render()
             if done:
                 break
-        best_scores.append(score)
+        best_scores.append(v_score)
         avg_score_v = sum(best_scores) / len(best_scores)
-        print("Validation Set Score = ", score, " avg_score=", avg_score_v, " num_closes= ", info["num_closes"], 
+        print("Validation Set Score = ", v_score, " avg_score=", avg_score_v, " num_closes= ", info["num_closes"], 
             " balance=", info["balance"])
+
+        data_log(validation_score=v_score, avg_score_v=avg_score_v, training_score=score, avg_score=avg_score, info=info)
 
         print("*********************************************************")
         return avg_score_v

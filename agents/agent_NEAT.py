@@ -1,4 +1,4 @@
-# ANN evolved with NEAT as agent that uses the ForexEnv4 environment
+# ANN evolved with NEAT as agent that uses the ForexEnv4 environmentdata
 from __future__ import print_function
 from copy import deepcopy
 from gym.envs.registration import register
@@ -86,7 +86,7 @@ def run():
     while 1:
         try:
             # if it is not the first iteration calculate training and validation scores
-            if iteration_counter >0:
+            if iteration_counter > 0:
                 avg_score=ec.training_validation_score(gen_best, config)
             # if it is not the first iteration
             if iteration_counter >= 0:
