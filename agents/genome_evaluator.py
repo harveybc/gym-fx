@@ -95,8 +95,8 @@ class GenomeEvaluator(object):
 
     # log the iteration data in data_logger
     def data_log(self, validation_score, avg_score_v, training_score, avg_score, info):
-        #TODO: replace config_id (number at the end of url) if required, same with username and pass
-        url = 'http://localhost:5000/gym-fx/0'
+        #TODO: replace config_id (number at thñe end of url) if required, same with username and pass
+        url = 'http://localhost:60500/gym-fx/0'
         data = {'validation_score': validation_score, 'avg_score_v': avg_score_v, 'training_score': training_score, 'avg_score': avg_score, \
             "action":info["action"],"balance":info["balance"], "tick_count":info["tick_count"], "num_closes":info["num_closes"], \
             "equity":info["equity"], "reward":info["reward"], "order_status":info["order_status"], "margin":info["margin"], \
@@ -109,7 +109,7 @@ class GenomeEvaluator(object):
             print("Warning: unable to connect to data-logger")
         else:
             print("Info: Data logged successfully")
-
+      
     def training_validation_score(self,gen_best,config):
         # calculate training and validation fitness
         best_scores = []
