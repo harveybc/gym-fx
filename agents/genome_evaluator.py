@@ -12,12 +12,6 @@ import json
 
 NUM_CORES = 1
 
-
-You can define your own encoder to solve this problem.
-
-import json
-import numpy as np
-
 class NpEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.integer):
