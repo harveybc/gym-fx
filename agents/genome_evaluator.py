@@ -96,7 +96,7 @@ class GenomeEvaluator(object):
     # log the iteration data in data_logger
     def data_log(self, validation_score, avg_score_v, training_score, avg_score, info):
         #TODO: replace config_id (number at thñe end of url) if required, same with username and pass
-        url = 'http://localhost:60500/gym-fx/0'
+        url = 'http://127.0.0.1:60500/gym-fx/0'
         data = {'validation_score': validation_score, 'avg_score_v': avg_score_v, 'training_score': training_score, 'avg_score': avg_score, \
             "action":info["action"],"balance":info["balance"], "tick_count":info["tick_count"], "num_closes":info["num_closes"], \
             "equity":info["equity"], "reward":info["reward"], "order_status":info["order_status"], "margin":info["margin"], \
@@ -106,8 +106,8 @@ class GenomeEvaluator(object):
             
         except requests.exceptions.Timeout:
             print("Warning: data-logger requaest timeout (t>3s)")
-        except:
-            print("Warning: unable to connect to data-logger")
+        except Exception as e:
+            print("Warning: unable to connect to data-logger : " + str(e))
         else:
             print("Info: Data logged successfully")
       
