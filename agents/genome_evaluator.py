@@ -102,9 +102,10 @@ class GenomeEvaluator(object):
             "equity":info["equity"], "reward":info["reward"], "order_status":info["order_status"], "margin":info["margin"], \
             "initial_capital":info["initial_capital"]}
         try:
-            response = requests.post(url, data=data, timeout=3, auth=('test', 'pass')) 
+            response = requests.post(url, json=data, timeout=3, auth=('test', 'pass')) 
+            
         except requests.exceptions.Timeout:
-            print("Warning: data-logger request timeout (t>3s)")
+            print("Warning: data-logger requaest timeout (t>3s)")
         except:
             print("Warning: unable to connect to data-logger")
         else:
