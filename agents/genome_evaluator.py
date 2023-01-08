@@ -12,6 +12,22 @@ import json
 
 NUM_CORES = 1
 
+
+You can define your own encoder to solve this problem.
+
+import json
+import numpy as np
+
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NpEncoder, self).default(obj)
+
 # class for evaluating the genomes
 class GenomeEvaluator(object):
     genomes_h=[]
@@ -103,7 +119,7 @@ class GenomeEvaluator(object):
             "equity":info["equity"], "reward":info["reward"], "order_status":info["order_status"], "margin":info["margin"], \
             "initial_capital":info["initial_capital"]}
         try:
-            response = requests.post(url, json=json.dumps(data), timeout=3, auth=('test', 'pass')) 
+            response = requests.post(url, json=json.dumps(data, cls=NpEncoder), timeout=3, auth=('test', 'pass')) 
             
         except requests.exceptions.Timeout:
             print("Warning: data-logger requaest timeout (t>3s)")
