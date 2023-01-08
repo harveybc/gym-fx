@@ -132,7 +132,6 @@ class GenomeEvaluator(object):
         while 1:
             step += 1
             output = gen_best_nn.activate(self.nn_format(observation))
-
             action = np.argmax(output)# buy,sell or 
             observation, reward, done, info = self.env_t.step(action)
             score += reward
@@ -146,7 +145,7 @@ class GenomeEvaluator(object):
         print("Training Set Score=", score, " avg_score=", avg_score, " num_closes= ", info["num_closes"], 
             " balance=", info["balance"])
 
-        # calculate the validation set score
+        # calculate the validationset score
         best_scores = []
         observation = self.env_v.reset()
         v_score = 0.0
@@ -157,7 +156,7 @@ class GenomeEvaluator(object):
             output = gen_best_nn.activate(self.nn_format(observation))
             action = np.argmax(output)# buy,sell or 
             observation, reward, done, info = self.env_v.step(action)
-            score += reward
+            v_score += reward
             #env_v.render()
             if done:
                 break
