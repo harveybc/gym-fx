@@ -114,7 +114,6 @@ class GenomeEvaluator(object):
             "initial_capital":info["initial_capital"]}
         try:
             response = requests.post(url, json=json.dumps(data, cls=NpEncoder), timeout=3, auth=('test', 'pass')) 
-            
         except requests.exceptions.Timeout:
             print("Warning: data-logger requaest timeout (t>3s)")
         except Exception as e:

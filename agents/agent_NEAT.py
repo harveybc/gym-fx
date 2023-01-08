@@ -97,7 +97,7 @@ def run():
             # execute num_iterations consecutive iterations of the NEAT algorithm
             gen_best = pop.run(ec.evaluate_genomes, 2)
             # TODO: Change the validation score when generalization is ok enough
-            if avg_score < 0.19:
+            if avg_score < 2000000000:
                 solved = False
             if solved:
                 print("Solved.")
