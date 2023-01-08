@@ -7,7 +7,20 @@ import neat
 import numpy as np
 import time
 from gym.envs.registration import register
+import requests
+import json
+
 NUM_CORES = 1
+
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NpEncoder, self).default(obj)
 
 # class for evaluating the genomes
 class GenomeEvaluator(object):
@@ -90,9 +103,27 @@ class GenomeEvaluator(object):
             genome.fitness = scores[i]
             self.genomes_h.append(genome)
             i = i + 1
+
+    # log the iteration data in data_logger
+    def data_log(self, validation_score, avg_score_v, training_score, avg_score, info):
+        #TODO: replace config_id (number at thñe end of url) if required, same with username and pass
+        url = 'http://127.0.0.1:60500/gym-fx/0'
+        data = {'validation_score': validation_score, 'avg_score_v': avg_score_v, 'training_score': training_score, 'avg_score': avg_score, \
+            "action":info["action"],"balance":info["balance"], "tick_count":info["tick_count"], "num_closes":info["num_closes"], \
+            "equity":info["equity"], "reward":info["reward"], "order_status":info["order_status"], "margin":info["margin"], \
+            "initial_capital":info["initial_capital"]}
+        try:
+            response = requests.post(url, json=json.dumps(data, cls=NpEncoder), timeout=3, auth=('test', 'pass')) 
             
+        except requests.exceptions.Timeout:
+            print("Warning: data-logger requaest timeout (t>3s)")
+        except Exception as e:
+            print("Warning: unable to connect to data-logger : " + str(e))
+        else:
+            print("Info: Data logged successfully")
+      
     def training_validation_score(self,gen_best,config):
-        # calculate training and validation fitness, also upload data to a data-logger instance via Web API call
+        # calculate training and validation fitness
         best_scores = []
         observation = self.env_t.reset()
         score = 0.0
@@ -119,7 +150,7 @@ class GenomeEvaluator(object):
         # calculate the validation set score
         best_scores = []
         observation = self.env_v.reset()
-        score = 0.0
+        v_score = 0.0
         step = 0
         gen_best_nn = neat.nn.FeedForwardNetwork.create(gen_best, config)
         while 1:
@@ -131,10 +162,12 @@ class GenomeEvaluator(object):
             #env_v.render()
             if done:
                 break
-        best_scores.append(score)
+        best_scores.append(v_score)
         avg_score_v = sum(best_scores) / len(best_scores)
-        print("Validation Set Score = ", score, " avg_score=", avg_score_v, " num_closes= ", info["num_closes"], 
+        print("Validation Set Score = ", v_score, " avg_score=", avg_score_v, " num_closes= ", info["num_closes"], 
             " balance=", info["balance"])
+
+        self.data_log(validation_score=v_score, avg_score_v=avg_score_v, training_score=score, avg_score=avg_score, info=info)
 
         print("*********************************************************")
         return avg_score_v
