@@ -8,6 +8,7 @@ import numpy as np
 import time
 from gym.envs.registration import register
 import requests
+import json
 
 NUM_CORES = 1
 
