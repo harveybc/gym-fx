@@ -329,6 +329,7 @@ class ForexEnv4(gym.Env):
         balance_increment = self.balance - self.balance_ant
         if self.reward_function == 0:
             # TODO: REWARD FUNCTION:  1=Tabla
+            # TODO: NEAT OPTIMIZABLE REWARD FUNCTION AS PLUGIN?
             bonus = ((self.equity - self.initial_capital) / self.num_ticks)
             # reward = reward + bonus
             reward = (balance_increment + bonus) / 2
