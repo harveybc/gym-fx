@@ -400,7 +400,10 @@ class ForexEnv4(gym.Env):
             # self._reset()
             # self.__init__()
         # end of step function.
-        info = {"action":action,"observation":ob, "episode_over":self.episode_over,"balance":self.balance, "tick_count":self.tick_count, "num_closes":self.num_closes, "equity":self.equity, "reward":self.reward, "order_status":self.order_status, "margin":self.margin, "initial_capital":self.initial_capital}
+        info = {"action":action,"observation":ob, "episode_over":self.episode_over,"balance":self.balance, 
+                "tick_count":self.tick_count, "num_closes":self.num_closes, "equity":self.equity, 
+                "reward":self.reward, "order_status":self.order_status, "margin":self.margin, 
+                "initial_capital":self.initial_capital, "MoY": MoY, "DoM": DoM, "HoD": HoD,"MoH":MoH}
         return ob, reward, self.episode_over, info
 
     """
