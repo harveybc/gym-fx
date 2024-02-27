@@ -118,7 +118,7 @@ class GenomeEvaluator(object):
         except Exception as e:
             print("Warning: unable to connect to data-logger : " + str(e))
         else:
-            print("Info: Data logged successfully")
+            print("Info: Data logged successfully in data-logger. Response: " + response.text)
       
     def training_validation_score(self,gen_best,config):
         # calculate training and validation fitness
