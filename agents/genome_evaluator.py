@@ -105,17 +105,17 @@ class GenomeEvaluator(object):
             i = i + 1
 
     # log the iteration data in data_logger
+    # TODO: replace config_id (number at thñe end of url) if required, same with username and pass
+    # TODO: cambiar para usar la tabla gym_fx_data del proceso gym_fx en dataalogger, que requiere: reward,balance,equity,score,score_v,avg_score,avg_score_v,margin y el config_id (verificar que existe y luego implementar carga de params desde gym_fx_config)
     def data_log(self, validation_score, avg_score_v, training_score, avg_score, info):
-        #TODO: replace config_id (number at thñe end of url) if required, same with username and pass
-        url = 'http://127.0.0.1:60500/gym-fx/0'
-        data = {'validation_score': validation_score, 'avg_score_v': avg_score_v, 'training_score': training_score, 'avg_score': avg_score, \
-            "action":info["action"],"balance":info["balance"], "tick_count":info["tick_count"], "num_closes":info["num_closes"], \
-            "equity":info["equity"], "reward":info["reward"], "order_status":info["order_status"], "margin":info["margin"], \
+        url = 'http://127.0.0.1:60500/gym_fx/gym_fx_data/create'
+        data = {"validation_score": validation_score, "avg_score_v": avg_score_v, "training_score": training_score, "avg_score": avg_score, \
+            "balance":info["balance"], "equity":info["equity"], "reward":info["reward"], "margin":info["margin"], \
             "initial_capital":info["initial_capital"]}
         try:
             response = requests.post(url, json=json.dumps(data, cls=NpEncoder), timeout=3, auth=('test', 'pass')) 
         except requests.exceptions.Timeout:
-            print("Warning: data-logger requaest timeout (t>3s)")
+            print("Warning: data-logger request timeout (t>3s)")
         except Exception as e:
             print("Warning: unable to connect to data-logger : " + str(e))
         else:
