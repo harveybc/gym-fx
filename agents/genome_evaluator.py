@@ -109,9 +109,8 @@ class GenomeEvaluator(object):
     # TODO: cambiar para usar la tabla gym_fx_data del proceso gym_fx en dataalogger, que requiere: reward,balance,equity,score,score_v,avg_score,avg_score_v,margin y el config_id (verificar que existe y luego implementar carga de params desde gym_fx_config)
     def data_log(self, validation_score, avg_score_v, training_score, avg_score, info):
         url = 'http://127.0.0.1:60500/gym_fx/gym_fx_data/create'
-        data = {"validation_score": validation_score, "avg_score_v": avg_score_v, "training_score": training_score, "avg_score": avg_score, \
-            "balance":info["balance"], "equity":info["equity"], "reward":info["reward"], "margin":info["margin"], \
-            "initial_capital":info["initial_capital"]}
+        data = {"score_v": validation_score, "avg_score_v": avg_score_v, "score": training_score, "avg_score": avg_score, \
+            "balance":info["balance"], "equity":info["equity"], "reward":info["reward"], "margin":info["margin"], "config_id": 1}
         try:
             response = requests.post(url, json=json.dumps(data, cls=NpEncoder), timeout=3, auth=('test', 'pass')) 
         except requests.exceptions.Timeout:
