@@ -106,7 +106,9 @@ class GenomeEvaluator(object):
 
     # log the iteration data in data_logger
     # TODO: replace config_id (number at thñe end of url) if required, same with username and pass
-    # TODO: cambiar para usar la tabla gym_fx_data del proceso gym_fx en dataalogger, que requiere: reward,balance,equity,score,score_v,avg_score,avg_score_v,margin y el config_id (verificar que existe y luego implementar carga de params desde gym_fx_config)
+    # TODO: perform query to clean all registers  from the same config_id before logging new data, just the first time if the clean_first option in gym_fx_config is not present or it is set to TRUE
+    # TODO : Paginacion, filtro por config_id, scoreboard, rt_plot y plot en index.            
+                    
     def data_log(self, validation_score, avg_score_v, training_score, avg_score, info):
         url = 'http://127.0.0.1:60500/gym_fx/gym_fx_data/create'
         data = {"score_v": validation_score, "avg_score_v": avg_score_v, "score": training_score, "avg_score": avg_score, \
@@ -116,9 +118,9 @@ class GenomeEvaluator(object):
         except requests.exceptions.Timeout:
             print("Warning: data-logger request timeout (t>3s)")
         except Exception as e:
-            print("Warning: unable to connect to data-logger : " + str(e))
+            print("Warning: unable to connect to data-logger: " + str(e))
         else:
-            print("Info: Data logged successfully in data-logger. Response: " + response.text)
+            print("Info: Data logged successfully in data-logger. ")
       
     def training_validation_score(self,gen_best,config):
         # calculate training and validation fitness
