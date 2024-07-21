@@ -1,24 +1,28 @@
 from setuptools import setup, find_packages
 
-setup (
-       name='gym-forex',
-       version='0.1',
-       packages=find_packages(),
-
-       # Declare your packages' dependencies here, for eg:
-       # install_requires=['foo>=3'],
-
-       # Fill in these to make your Egg ready for upload to
-       # PyPI
-       author='HarveyD',
-       author_email='',
-
-       #summary = 'Just another Python package for the cheese shop',
-       url='',
-       license='',
-       long_description='Long description of the package',
-
-       # could also include long_description, download_url, classifiers, etc.
-
-  
-       )
+setup(
+    name='gym-fx',
+    version='1.0.0',
+    packages=find_packages(),
+    entry_points={
+        'rl_optimizer.environments': [
+            'prediction=app.plugins.environment_plugin_prediction:Plugin'
+        ]
+    },
+    install_requires=[
+        'numpy',
+        'pandas',
+        'scikit-learn',
+        'gym'
+    ],
+    author='Harvey Bastidas',
+    author_email='your.email@example.com',
+    description='An environment plugin for rl-optimizer using the gym library.',
+    url='https://github.com/harveybc/gym-fx',
+    classifiers=[
+        'Programming Language :: Python :: 3',
+        'License :: OSI Approved :: MIT License',
+        'Operating System :: OS Independent',
+    ],
+    python_requires='>=3.8',
+)
