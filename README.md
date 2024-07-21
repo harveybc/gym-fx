@@ -1,95 +1,74 @@
-# gym-forex
 
-The [Forex environment](https://github.com/harveybc/gym-fx) is a forex
-trading simulator for OpenAI Gym, allowing to test the performace of a custom trading agent. Featuring: configurable initial capital, dynamic or dataset-based spread, CSV history timeseries for trading
-currencies and observations for the agent, fixed or agent-controlled take-profit, stop-loss and order volume.
+# Gym-FX
 
-The environment features discrete action spaces and optionally continuous
-action spaces if the orders dont have fixed take-profit/stop-loss and order
-volume.
+## Description
+
+Gym-FX is an environment plugin for the `rl-optimizer` project, designed to facilitate the simulation and testing of trading strategies using the Gym library. This environment supports multiple asset trading and can be used with various optimization techniques and agent configurations provided by `rl-optimizer`.
 
 ## Installation
 
-### Step 1 - Setup Dependencies
+### Prerequisites
 
-Install Python, pip,  OpenAI Gym and other dependencies:  
+Before installing `gym-fx`, ensure you have `rl-optimizer` installed. You can follow the installation instructions in the [rl-optimizer README](https://github.com/harveybc/rl-optimizer#readme).
 
->sudo apt-get install -y python3-numpy python3-dev cmake zlib1g-dev libjpeg-dev xvfb ffmpeg libboost-all-dev libsdl2-dev python3-pip git gcc make perl 
+### Installing Gym-FX
 
->pip3 install graphviz neat-python gitpython gym neat-python matplotlib requests
+1. **Clone the Repository**:
 
-### Step 2 - Get gym-forex from GitHub
+    ```bash
+    git clone https://github.com/harveybc/gym-fx.git
+    cd gym-fx
+    ```
 
->git clone https://github.com/harveybc/gym-fx
+2. **Install Dependencies**:
 
-### Step 3 - Set the PYTHONPATH variable
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-Set the PYTHONPATH environment variable, you may add the following line to the .profile file in your home directory to export on start of sessions. Replace <username> with your username.
+3. **Build the Package**:
 
-- Linux:
+    ```bash
+    python -m build
+    ```
 
->export PYTHONPATH=/home/username/gym-fx/:${PYTHONPATH}
+4. **Install the Package**:
 
-- Windows:
+    ```bash
+    pip install .
+    ```
 
->set PYTHONPATH="c:\Users\username\gym-fx";%PYTHONPATH%
+## Usage
 
-### Step 4 - Setup gym-forex
+Once `gym-fx` is installed, you can use it as an environment plugin in `rl-optimizer`. Specify `gym-fx` as the environment plugin using the `--environment_plugin` parameter:
 
->cd gym-fx
+```bash
+rl-optimizer.bat tests\data\x_training_EURUSD_hour_2010_2015.csv --y_train_file tests\data\y_training_encoder_eval.csv --environment_plugin gym-fx
+```
 
->python setup.py install
-  
-### Step 5 - Start your agent optimizer that uses the gym-forex environment.
+## Project Structure
 
--Linux:
+```plaintext
+gym-fx/
+├── app/
+│   └── plugins/
+│         └── environment_plugin_automation.py  # Main environment plugin for automation tasks.
+├── README.md                                   # Project documentation.
+├── requirements.txt                            # List of dependencies for the project.
+├── setup.py                                    # Setup script for packaging and installing the project.
+└── pyproject.toml                              # Build system requirements and package metadata.
+```
 
->sh ./optimize.sh
+### File Descriptions
 
--Windows:
+- **app/plugins/environment_plugin_automation.py**: This file contains the main environment plugin class for automation tasks, implementing the necessary methods to interact with `rl-optimizer`.
 
->optimize.bat
+- **README.md**: Provides an overview of the project, installation instructions, usage guidelines, and a description of the project structure.
 
+- **requirements.txt**: Lists the Python package dependencies required for the `gym-fx` project.
 
+- **setup.py**: Script for packaging and installing the `gym-fx` project, including defining entry points for integration with `rl-optimizer`.
 
-### Step 6 - Optional: Configure the NEAT parameters
+- **pyproject.toml**: Specifies build system requirements and package metadata to support modern Python packaging standards.
 
-'nano agents/config_20'
-
-Configure in the file, the population size and other parameters according to your computing 
-capacity or requirements, start with the defaults.  
-
-## Observation Space
-
-A concatenation of `num_ticks` vectors for the lastest: 
-vector of values from timeseries, equity and its variation, 
-order_status( -1=closed,1=opened),time_opened (normalized with
-max_order_time), order_profit and its variation, order_drawdown
-/order_volume_pips,  consecutive_drawdown/max_consecutive_dd
-
-## Action Space
-
-discrete action 0: 0=nop,1=close,2=buy,3=sell  
-discrete action 0 parameter: symbol  
-(optional) continuous action 0 parameter: percent_tp, percent_sl,percent_max  
-
-## Reward Function
-
-The reward function is the average of the area under the curve of equity and the 
-balance variation.
-
-## MQL4 Dataset Generator
-
-Download and install Metatrader 4.
-
-- Mac 
-
-Navigate to `Library -> Application -> Support -> MetaTrader 4 -> Bottles -> metatrader64 -> drive_c -> Program Files(x86) -> MetaTrader 4 > MQL4.`
-
-Copy the `*.mq4` files from datasets into the `Scripts` folder. 
-
-To run these scripts, open MT4 and in the `Navigator` pane, run the scripts under the "Scripts" folder. Right click the file and click `Modify`. Run, edit, and debug scripts here as you see fit. The `.csv` files generated with these scripts will appear in `Files`.
-
-- Windows
-
-On MT4: `File-> Open Data folder -> MQL4`.
+By following these steps, you can integrate `gym-fx` with `rl-optimizer` and utilize it to simulate and optimize trading strategies efficiently. If you encounter any issues or have further questions, feel free to reach out through the repository's issue tracker.
