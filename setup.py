@@ -1,12 +1,13 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='gym-fx',
+    name='gym-fx-env',
     version='1.0.0',
     packages=find_packages(),
     entry_points={
         'rl_optimizer.environments': [
-            'prediction=app.plugins.environment_plugin_prediction:Plugin'
+            'gym-fx-env = app.plugins.environment_plugin_automation:Plugin',
+            'gym_fx_env = app.plugins.environment_plugin_automation:Plugin'
         ]
     },
     install_requires=[
