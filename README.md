@@ -38,9 +38,62 @@ Before installing `gym-fx`, ensure you have `rl-optimizer` installed. You can fo
     pip install .
     ```
 
+### Setting Environment Variables
+
+To ensure that the external plugins are recognized, you need to set the `PYTHONPATH` environment variable to include the directory where `rl-optimizer` is installed. Here are the instructions for both Windows and Linux.
+
+#### Windows
+
+1. **Temporary Setting**:
+
+    Open Command Prompt and navigate to your project directory:
+
+    ```cmd
+    cd path\to\your\rl-optimizer
+    set PYTHONPATH=%CD%
+    ```
+
+2. **Permanent Setting**:
+
+    - Open the Start Search, type in "env", and select "Edit the system environment variables"
+    - In the System Properties window, click on the "Environment Variables" button
+    - Under "System variables", click "New" and add a variable name `PYTHONPATH` and variable value as the path to your `rl-optimizer` directory
+    - Click OK to apply
+
+#### Linux
+
+1. **Temporary Setting**:
+
+    Open Terminal and navigate to your project directory:
+
+    ```bash
+    cd /path/to/your/rl-optimizer
+    export PYTHONPATH=$(pwd)
+    ```
+
+2. **Permanent Setting**:
+
+    - Open your `~/.bashrc` file in a text editor:
+
+        ```bash
+        nano ~/.bashrc
+        ```
+
+    - Add the following line at the end of the file:
+
+        ```bash
+        export PYTHONPATH=/path/to/your/rl-optimizer
+        ```
+
+    - Save the file and run:
+
+        ```bash
+        source ~/.bashrc
+        ```
+
 ## Usage
 
-Once `gym-fx` is installed, you can use it as an environment plugin in `rl-optimizer`. Specify `gym-fx` as the environment plugin using the `--environment_plugin` parameter:
+Once `gym-fx` is installed and the environment variables are set, you can use it as an environment plugin in `rl-optimizer`. Specify `gym-fx` as the environment plugin using the `--environment_plugin` parameter:
 
 ```bash
 rl-optimizer.bat tests\data\x_training_EURUSD_hour_2010_2015.csv --y_train_file tests\data\y_training_encoder_eval.csv --environment_plugin gym-fx
