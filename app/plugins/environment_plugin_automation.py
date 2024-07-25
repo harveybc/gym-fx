@@ -18,7 +18,7 @@ class Plugin:
         'max_order_volume': 1000000, # Maximum order volume = 10 lots (1 lot = 100,000 units)
         'min_order_volume': 10000, # Minimum order volume = 0.1 lots (1 lot = 100,000 units)
         'leverage': 100,
-        'pip_cost': 0.0001,
+        'pip_cost': 0.00001,
         'min_order_time': 5,  #  Minimum Order Time to allow manual closing by an action inverse to the current order.
         'spread': 0.002  # Default spread value
     }
