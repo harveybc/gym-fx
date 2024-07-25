@@ -6,8 +6,8 @@ setup(
     packages=find_packages(),
     entry_points={
         'rl_optimizer.environments': [
-            'gym-fx-env = app.plugins.environment_plugin_automation:Plugin',
-            'gym_fx_env = app.plugins.environment_plugin_automation:Plugin'
+            'gym-fx-env = environment_plugin_automation:Plugin',
+            'gym_fx_env = environment_plugin_automation:Plugin'
         ]
     },
     install_requires=[
