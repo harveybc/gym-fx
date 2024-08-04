@@ -194,9 +194,9 @@ class AutomationEnv(gym.Env):
         self.equity = self.balance + self.real_profit
 
         
-
+        # TODO: Implement the margin call logic based on a pr0operly calculated margin, since now margin looks bad calculated
         # Verify if Margin Call
-        if self.equity < self.margin:
+        if self.equity <= 0:
             self.order_status = 0
             self.profit_pips = (self.equity - self.balance)/self.pip_cost
             self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
