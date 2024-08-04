@@ -324,9 +324,12 @@ class AutomationEnv(gym.Env):
             balance_increment = self.balance - self.balance_ant 
             reward = (balance_increment + equity_increment) / 2
             reward = (reward / self.initial_balance) / self.max_steps # Normalize the reward
+            if (self.order_status == 0) and (action==0):
+                reward = -self.pip_cost  #Penalize inaction
         else:
             reward = 0
 
+        
         # set the observation as y_train if not None, else x_train
         ob = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
         self.equity_ant = self.equity
