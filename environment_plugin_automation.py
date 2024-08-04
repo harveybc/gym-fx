@@ -343,6 +343,7 @@ class AutomationEnv(gym.Env):
 
         if self.current_step >= (self.num_ticks - 1):
             self.done = True
+            
 
         info = {
             "date": self.x_train[self.current_step-1, 0],
