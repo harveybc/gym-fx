@@ -199,7 +199,7 @@ class AutomationEnv(gym.Env):
         if self.equity < self.margin:
             self.order_status = 0
             self.profit_pips = (self.equity - self.balance)/self.pip_cost
-            self.real_profit = self.order_profit_pips * self.pip_cost * self.order_volume
+            self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
             self.balance = 0.0
             self.equity = 0.0
             self.margin = 0.0
