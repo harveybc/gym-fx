@@ -334,7 +334,6 @@ class AutomationEnv(gym.Env):
             reward = -(self.max_steps - self.current_step)/self.max_steps
 
 
-
         # set the observation as y_train if not None, else x_train
         ob = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
         self.equity_ant = self.equity
