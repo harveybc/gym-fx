@@ -325,7 +325,7 @@ class AutomationEnv(gym.Env):
             reward = (balance_increment + equity_increment) / 2
             reward = (reward / self.initial_balance) / self.max_steps # Normalize the reward
             if (self.order_status == 0) and (action==0):
-                reward = -self.pip_cost  #Penalize inaction
+                reward = -(self.max_steps - self.current_step)*self.pip_cost  #Penalize inaction
             else:
                 reward = reward + self.pip_cost  #Reward action    
         else:
@@ -343,7 +343,7 @@ class AutomationEnv(gym.Env):
 
         if self.current_step >= (self.num_ticks - 1):
             self.done = True
-            
+
 
         info = {
             "date": self.x_train[self.current_step-1, 0],
