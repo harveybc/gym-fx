@@ -326,6 +326,8 @@ class AutomationEnv(gym.Env):
             reward = (reward / self.initial_balance) / self.max_steps # Normalize the reward
             if (self.order_status == 0) and (action==0):
                 reward = -self.pip_cost  #Penalize inaction
+            else:
+                reward = reward + self.pip_cost  #Reward action    
         else:
             reward = 0
 
