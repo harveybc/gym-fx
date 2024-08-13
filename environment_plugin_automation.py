@@ -164,6 +164,46 @@ class AutomationEnv(gym.Env):
             "initial_balance": self.initial_balance
         }
         return observation, info
+    
+
+    def _open_buy_order(self, High, verbose=True):
+        """
+        Open a buy order, update the order status, order price, and volume.
+        """
+        self.order_status = 1
+        self.order_price = High + self.spread
+        self.order_volume = self.equity * self.rel_volume * self.leverage
+        if self.order_volume > self.max_order_volume:
+            self.order_volume = self.max_order_volume
+        if self.order_volume < self.min_order_volume:
+            self.order_volume = self.min_order_volume
+        self.margin += (self.order_volume / self.leverage)
+        self.order_time = self.current_step
+        if verbose:
+            print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Buy, Price: {self.order_price}, Volume: {self.order_volume}")
+            print(f"Current balance (after BUY action): {self.balance}, Number of closes: {self.num_closes}")
+            print(f"Order Status after buy action: {self.order_status}")
+
+
+    def _open_sell_order(self, Low, verbose=True):
+        """
+        Open a sell order, update the order status, order price, and volume.
+        """
+        self.order_status = 2
+        self.order_price = Low
+        self.order_volume = self.equity * self.rel_volume * self.leverage
+        if self.order_volume > self.max_order_volume:
+            self.order_volume = self.max_order_volume
+        if self.order_volume < self.min_order_volume:
+            self.order_volume = self.min_order_volume
+        self.margin += (self.order_volume / self.leverage)
+        self.order_time = self.current_step
+        if verbose:
+            print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Sell, Price: {self.order_price}, Volume: {self.order_volume}")
+            print(f"Current balance (after SELL action): {self.balance}, Number of closes: {self.num_closes}")
+            print(f"Order Status after sell action: {self.order_status}")
+
+
     def _handle_margin_call(self, Close, verbose=True):
         """
         Handle the margin call scenario, resetting order status, and updating balance and equity to zero.
