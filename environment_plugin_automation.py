@@ -179,7 +179,8 @@ class AutomationEnv(gym.Env):
             reward = (reward / self.initial_balance) / self.max_steps  # Normalize the reward
         else:
             reward = 0
-
+        if self.order_status == 0 and self.current_step > self.min_order_time:
+            reward -= 0.00000001  # Penalize slight inaction
         # Additional conditions can be added here, for example:
         # - Penalize inaction
         # - Penalize margin calls or poor trades
