@@ -165,6 +165,27 @@ class AutomationEnv(gym.Env):
         }
         return observation, info
     
+    def _calculate_reward(self):
+        """
+        Calculate the reward based on the balance and equity changes.
+
+        Returns:
+            float: The calculated reward for the current step.
+        """
+        if self.current_step > 1:
+            equity_increment = self.equity - self.equity_ant
+            balance_increment = self.balance - self.balance_ant 
+            reward = (balance_increment + equity_increment) / 2
+            reward = (reward / self.initial_balance) / self.max_steps  # Normalize the reward
+        else:
+            reward = 0
+
+        # Additional conditions can be added here, for example:
+        # - Penalize inaction
+        # - Penalize margin calls or poor trades
+
+        return reward
+
 
     def _open_buy_order(self, High, verbose=True):
         """
