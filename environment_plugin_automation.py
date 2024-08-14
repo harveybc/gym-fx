@@ -364,6 +364,8 @@ class AutomationEnv(gym.Env):
 
         if self.current_step >= (self.num_ticks - 1):
             self.done = True
+
+        if self.done:
             print(f"Kormogorov complexity: {self.kolmogorov_c} , Balance: {self.balance}, Increment: {self.balance/self.initial_balance}")
 
 
