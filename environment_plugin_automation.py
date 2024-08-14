@@ -327,10 +327,10 @@ class AutomationEnv(gym.Env):
             reward = (balance_increment + equity_increment) / 2
             reward = reward / self.max_steps # Normalize the reward
             penalty_cost = -1*(self.initial_balance) / self.max_steps # Normalize the reward
-            if (self.order_status == 0) and (self.c_c==4) and (self.real_profit > 0): #Normal close
-                reward = 10*reward # reward Normal close
-            if (self.order_status == 0) and (self.c_c==3) and (self.real_profit > 0): #TakeProfit
-                reward = 5*reward # reward Normal close
+            #if (self.order_status == 0) and (self.c_c==4) and (self.real_profit > 0): #Normal close
+            #    reward = 10*reward # reward Normal close
+            #if (self.order_status == 0) and (self.c_c==3) and (self.real_profit > 0): #TakeProfit
+            #    reward = 5*reward # reward Normal close
             if (self.order_status == 0) and (action==0):
                 reward = 10*penalty_cost  #Penalize inaction
             else:
