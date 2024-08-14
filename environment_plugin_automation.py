@@ -331,14 +331,15 @@ class AutomationEnv(gym.Env):
         # Composite reward calculation using penalty by inaction and optionally reward for balance increase and kormogorov complexity
 
         if self.current_step > 1:
+            sqr_max_steps = (self.max_steps*self.max_steps)
             equity_increment = self.equity - self.equity_ant
             balance_increment = (self.balance - self.balance_ant)
-            profit_metric = (2*balance_increment + equity_increment) / 3
+            profit_metric = (4*balance_increment + equity_increment) / 5
             reward = (profit_metric)/(self.initial_balance*self.max_steps)  # Reward for balance increase
         #   Kormogorov complexity (constant for all steps)
-            reward += self.kolmogorov_c/(self.max_steps*self.max_steps)
+            reward += self.kolmogorov_c/(sqr_max_steps)
             
-            penalty_cost = -1/self.max_steps # Normalize the reward
+            penalty_cost = -1/sqr_max_steps # Normalize the reward
         #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips>0): #Normal close for profit
         #        reward = 30*reward # reward Normal close
         #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips<=0): #Normal close for loss  
@@ -352,7 +353,7 @@ class AutomationEnv(gym.Env):
             #else:
             #    reward = -10*penalty_cost  #Reward action
             if self.done and self.c_c == 1: #Closed by margin call
-                reward = 2*(self.max_steps - self.current_step)*penalty_cost #Penalize 500x for margin call
+                reward = 2*(self.max_steps - self.current_step)*penalty_cost #Penalize for margin call
         else:
             reward = 0
         
