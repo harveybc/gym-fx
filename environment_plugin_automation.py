@@ -326,13 +326,13 @@ class AutomationEnv(gym.Env):
             reward = (self.profit_pips)/10 
             penalty_cost = -1 # Normalize the reward
             if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips>0): #Normal close for profit
-                reward = 3*reward # reward Normal close
+                reward = 30*reward # reward Normal close
             if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips<=0): #Normal close for loss  
-                reward = 2*(reward-1) # reward Normal close   
+                reward = 10*(reward-1) # reward Normal close   
             if (self.order_status == 0) and (self.c_c==3): #TakeProfit
-                reward = 2*reward # reward tp
+                reward = 20*reward # reward tp
             if (self.order_status == 0) and (self.c_c==2): #StopLoss
-                reward = 4*reward # reward sl
+                reward = 15*reward # reward sl
             if (self.order_status == 0) and (action==0): #Penalize inaction 10x
                 reward = 500*penalty_cost  
             #else:
