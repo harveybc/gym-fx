@@ -324,11 +324,11 @@ class AutomationEnv(gym.Env):
             balance_increment = self.balance - self.balance_ant 
             reward = (balance_increment + equity_increment) / 2
             reward = reward / self.max_steps # Normalize the reward
-            penalty_cost = (self.initial_balance) / self.max_steps # Normalize the reward
+            penalty_cost = -1*(self.initial_balance) / self.max_steps # Normalize the reward
             if (self.order_status == 0) and (action==0):
-                reward = 10*penalty_cost  #Penalize inaction
+                reward = penalty_cost  #Penalize inaction
             if self.done and self.c_c == 1: #Closed by margin call
-                reward = 100*(self.max_steps - self.current_step)*penalty_cost
+                reward = (self.max_steps - self.current_step)*penalty_cost
         else:
             reward = 0
         
