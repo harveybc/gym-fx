@@ -337,7 +337,7 @@ class AutomationEnv(gym.Env):
             profit_metric = self.balance-self.initial_balance 
             reward = (profit_metric)/(self.initial_balance*self.max_steps)  # Reward for balance increase
         #   Kormogorov complexity (constant for all steps)
-            reward += self.kolmogorov_c/(4*sqr_max_steps)
+            reward += self.kolmogorov_c/(10*sqr_max_steps)
             
             penalty_cost = -1/sqr_max_steps # Normalize the reward
         #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips>0): #Normal close for profit
@@ -375,7 +375,7 @@ class AutomationEnv(gym.Env):
 
 
         if self.done and self.c_c != 1:
-            print(f"id:{genome_id}, Kormogorov: {self.kolmogorov_c} , Balance: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Orders:{num_closes}, Fitness: {step_fitness} ")
+            print(f"id:{genome_id}, Kormogorov: {self.kolmogorov_c} , Balance: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Orders:{num_closes}, Fitness: {step_fitness+reward} ")
 
         info = {
             "date": self.x_train[self.current_step-1, 0],
