@@ -331,8 +331,8 @@ class AutomationEnv(gym.Env):
         # Composite reward calculation using penalty by inaction and optionally reward for balance increase and kormogorov complexity
 
         if self.current_step > 1:
-            equity_increment = self.profit_pips
-            balance_increment = (self.balance - self.balance)
+            equity_increment = self.equity - self.equity_ant
+            balance_increment = (self.balance - self.balance_ant)
             profit_metric = (2*balance_increment + equity_increment) / 3
             reward = (profit_metric)/(self.initial_balance*self.max_steps)  # Reward for balance increase
         #   Kormogorov complexity (constant for all steps)
@@ -362,10 +362,16 @@ class AutomationEnv(gym.Env):
         self.equity_ant = self.equity
         
         self.balance_ant = self.balance
-        self.reward = reward
-
+        
         if self.current_step >= (self.num_ticks - 1):
             self.done = True
+
+        
+        if (self.done and self.c_c !=1) and (self.balance == self.initial_balance):
+            reward = -1 * self.initial_balance     
+
+        self.reward = reward
+
 
         if self.done and self.c_c != 1:
             print(f"Kormogorov complexity: {self.kolmogorov_c} , Balance: {self.balance}, Increment: {self.balance/self.initial_balance}")
