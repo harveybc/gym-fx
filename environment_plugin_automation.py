@@ -192,7 +192,9 @@ class AutomationEnv(gym.Env):
 
         # Calculate equity
         self.equity = self.balance + self.real_profit
-
+    
+        #set closeing cause to none in this tick
+        self.c_c = 0
         
         # TODO: Implement the margin call logic based on a pr0operly calculated margin, since now margin looks bad calculated
         # Verify if Margin Call
@@ -212,55 +214,6 @@ class AutomationEnv(gym.Env):
                 print(f"Order Status after margin call check: {self.order_status}")
 
         if not self.done:
-            # Verify if close by SL
-            if self.profit_pips <= (-1 * self.sl):
-                # Calculate for existing BUY order (status=1)
-                if self.order_status == 1:
-                    self.profit_pips = ((Low - self.order_price) / self.pip_cost)
-                    self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
-                    self.order_close = Low
-                # Calculate for existing SELL order (status=2)
-                if self.order_status == 2:
-                    self.profit_pips = ((self.order_price - (High + self.spread)) / self.pip_cost)
-                    self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
-                    self.order_close = High + self.spread
-                self.order_status = 0
-                # Calculate equity
-                self.equity = self.balance + self.real_profit
-                self.balance = self.equity
-                self.margin = 0.0
-                self.c_c = 2  # Set closing cause to stop loss
-                self.order_volume = 0.0
-                self.num_closes += 1
-                if verbose:
-                    print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Stop Loss")
-                    print(f"Current balance 6: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
-                    print(f"Order Status after stop loss check: {self.order_status}")
-
-            # Verify if close by TP
-            if self.profit_pips >= self.tp:
-                # Calculate for existing BUY order (status=1)
-                if self.order_status == 1:
-                    self.profit_pips = ((Low - self.order_price) / self.pip_cost)
-                    self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
-                    self.order_close = Low
-                # Calculate for existing SELL order (status=2)
-                if self.order_status == 2:
-                    self.profit_pips = ((self.order_price - (High + self.spread)) / self.pip_cost)
-                    self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
-                    self.order_close = High + self.spread
-                self.order_status = 0
-                self.equity = self.balance + self.real_profit
-                self.balance = self.equity
-                self.margin = 0.0
-                self.c_c = 3  # Set closing cause to take profit
-                self.order_volume = 0.0
-                self.num_closes += 1
-                if verbose:
-                    print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Take Profit")
-                    print(f"Current balance 5: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
-                    print(f"Order Status after take profit check: {self.order_status}")
-
             # Executes BUY action, order status = 1
             if (self.order_status == 0) and action == 1:
                 self.order_status = 1
@@ -310,13 +263,63 @@ class AutomationEnv(gym.Env):
                     self.equity = self.balance + self.real_profit
                     self.balance = self.equity
                     self.margin = 0.0
-                    self.c_c = 0  # Set closing cause to normal close
+                    self.c_c = 4  # Set closing cause to normal close
                     self.order_volume = 0.0
                     self.num_closes += 1
                     if verbose:
                         print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Normal Close")
                         print(f"Current balance 4: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                         print(f"Order Status after normal close: {self.order_status}")
+
+            # Verify if close by SL
+            if self.profit_pips <= (-1 * self.sl):
+                # Calculate for existing BUY order (status=1)
+                if self.order_status == 1:
+                    self.profit_pips = ((Low - self.order_price) / self.pip_cost)
+                    self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
+                    self.order_close = Low
+                # Calculate for existing SELL order (status=2)
+                if self.order_status == 2:
+                    self.profit_pips = ((self.order_price - (High + self.spread)) / self.pip_cost)
+                    self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
+                    self.order_close = High + self.spread
+                self.order_status = 0
+                # Calculate equity
+                self.equity = self.balance + self.real_profit
+                self.balance = self.equity
+                self.margin = 0.0
+                self.c_c = 2  # Set closing cause to stop loss
+                self.order_volume = 0.0
+                self.num_closes += 1
+                if verbose:
+                    print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Stop Loss")
+                    print(f"Current balance 6: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
+                    print(f"Order Status after stop loss check: {self.order_status}")
+
+            # Verify if close by TP
+            if self.profit_pips >= self.tp:
+                # Calculate for existing BUY order (status=1)
+                if self.order_status == 1:
+                    self.profit_pips = ((Low - self.order_price) / self.pip_cost)
+                    self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
+                    self.order_close = Low
+                # Calculate for existing SELL order (status=2)
+                if self.order_status == 2:
+                    self.profit_pips = ((self.order_price - (High + self.spread)) / self.pip_cost)
+                    self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
+                    self.order_close = High + self.spread
+                self.order_status = 0
+                self.equity = self.balance + self.real_profit
+                self.balance = self.equity
+                self.margin = 0.0
+                self.c_c =  3  # Set closing cause to take profit
+                self.order_volume = 0.0
+                self.num_closes += 1
+                if verbose:
+                    print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Take Profit")
+                    print(f"Current balance 5: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
+                    print(f"Order Status after take profit check: {self.order_status}")
+
 
         # Simplified reward calculation
         if self.current_step > 1:
@@ -325,6 +328,10 @@ class AutomationEnv(gym.Env):
             reward = (balance_increment + equity_increment) / 2
             reward = reward / self.max_steps # Normalize the reward
             penalty_cost = -1*(self.initial_balance) / self.max_steps # Normalize the reward
+            if (self.order_status == 0) and (self.c_c==4) and (self.real_profit > 0): #Normal close
+                reward = 10*reward # reward Normal close
+            if (self.order_status == 0) and (self.c_c==3) and (self.real_profit > 0): #TakeProfit
+                reward = 5*reward # reward Normal close
             if (self.order_status == 0) and (action==0):
                 reward = 10*penalty_cost  #Penalize inaction
             else:
