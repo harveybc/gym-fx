@@ -368,7 +368,7 @@ class AutomationEnv(gym.Env):
 
         
         if (self.done and self.c_c !=1) and (self.balance == self.initial_balance):
-            reward = -1 * self.initial_balance     
+            reward = -2 * self.initial_balance     
 
         self.reward = reward
 
