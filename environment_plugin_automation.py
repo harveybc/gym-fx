@@ -323,10 +323,12 @@ class AutomationEnv(gym.Env):
         # Simplified reward calculation
         if self.current_step > 1:
             equity_increment = self.profit_pips
-            reward = (self.profit_pips) 
+            reward = (self.profit_pips)/10 
             penalty_cost = -1 # Normalize the reward
-            if (self.order_status == 0) and (self.c_c==4): #Normal close
+            if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips>0): #Normal close for profit
                 reward = 3*reward # reward Normal close
+            if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips<=0): #Normal close for loss  
+                reward = 2*(reward-1) # reward Normal close   
             if (self.order_status == 0) and (self.c_c==3): #TakeProfit
                 reward = 2*reward # reward tp
             if (self.order_status == 0) and (self.c_c==2): #StopLoss
