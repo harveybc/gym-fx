@@ -2,6 +2,7 @@ import gym
 import numpy as np
 import pandas as pd
 from collections import deque
+import zlib, pickle
 
 class Plugin:
     """
@@ -54,8 +55,9 @@ class Plugin:
         self.spread = config.get('spread', self.params['spread'])
         self.max_order_volume = config.get('max_order_volume', self.params['max_order_volume'])
         self.min_order_volume = config.get('min_order_volume', self.params['min_order_volume'])
+        self.genome = config.get('genome', None)
         self.env = AutomationEnv(x_train, y_train, self.initial_balance, self.max_steps, self.fitness_function,
-                                 self.min_orders, self.sl, self.tp, self.rel_volume, self.leverage, self.pip_cost, self.min_order_time, self.spread, self.max_order_volume, self.min_order_volume)
+                                 self.min_orders, self.sl, self.tp, self.rel_volume, self.leverage, self.pip_cost, self.min_order_time, self.spread, self.max_order_volume, self.min_order_volume, self.genome)
 
     def reset(self):
         observation, info = self.env.reset()
@@ -80,7 +82,7 @@ class Plugin:
 
 class AutomationEnv(gym.Env):
     def __init__(self, x_train, y_train, initial_balance, max_steps, fitness_function,
-                 min_orders, sl, tp, rel_volume, leverage, pip_cost, min_order_time, spread, max_order_volume, min_order_volume):
+                 min_orders, sl, tp, rel_volume, leverage, pip_cost, min_order_time, spread, max_order_volume, min_order_volume, genome):
         super(AutomationEnv, self).__init__()
         self.max_steps = max_steps
         self.x_train = x_train.to_numpy() if isinstance(x_train, pd.DataFrame) else x_train
@@ -125,6 +127,7 @@ class AutomationEnv(gym.Env):
             self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.y_train.shape[1],), dtype=np.float32)
 
         self.action_space = gym.spaces.Discrete(3)  # Buy, sell, hold
+        self.genome = genome
         self.reset()
 
     def reset(self):
@@ -141,6 +144,10 @@ class AutomationEnv(gym.Env):
         self.ant_c_c = 0  # Track previous closing cause
         self.margin = 0.0
         self.order_time = 0
+        self.genome = None
+        self.genome = self.genome if self.genome is not None else None
+        self.kolmogorov_c = self.kolmogorov_complexity(self.genome) if self.genome is not None else 0
+        print(f"Kormogorov complexity: {self.kolmogorov_c} ")
 
         self.equity_curve = [self.initial_balance]
         observation = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
@@ -320,25 +327,30 @@ class AutomationEnv(gym.Env):
                     print(f"Current balance 5: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                     print(f"Order Status after take profit check: {self.order_status}")
 
-        # Simplified reward calculation
+        
+
+        # Composite reward calculation using penalty by inaction and optionally reward for balance increase and kormogorov complexity
         if self.current_step > 1:
-            equity_increment = self.profit_pips
-            reward = (self.profit_pips)/10 
-            penalty_cost = -1 # Normalize the reward
-            if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips>0): #Normal close for profit
-                reward = 30*reward # reward Normal close
-            if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips<=0): #Normal close for loss  
-                reward = 10*(reward-1) # reward Normal close   
-            if (self.order_status == 0) and (self.c_c==3): #TakeProfit
-                reward = 20*reward # reward tp
-            if (self.order_status == 0) and (self.c_c==2): #StopLoss
-                reward = 15*reward # reward sl
+        #    equity_increment = self.profit_pips
+            reward = (self.profit_pips)/(self.sl*self.max_steps)
+        #   Kormogorov complexity
+            reward += self.kolmogorov_c/(self.sl*self.max_steps)
+            
+            penalty_cost = -1/self.max_steps # Normalize the reward
+        #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips>0): #Normal close for profit
+        #        reward = 30*reward # reward Normal close
+        #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips<=0): #Normal close for loss  
+        #        reward = 10*(reward-1) # reward Normal close   
+        #    if (self.order_status == 0) and (self.c_c==3): #TakeProfit
+        #        reward = 20*reward # reward tp
+        #    if (self.order_status == 0) and (self.c_c==2): #StopLoss
+        #        reward = 15*reward # reward sl
             if (self.order_status == 0) and (action==0): #Penalize inaction 10x
-                reward = 100*penalty_cost  
+                reward = penalty_cost  
             #else:
             #    reward = -10*penalty_cost  #Reward action
             if self.done and self.c_c == 1: #Closed by margin call
-                reward = 100*(self.max_steps - self.current_step)*penalty_cost #Penalize 500x for margin call
+                reward = (self.max_steps - self.current_step)*penalty_cost #Penalize 500x for margin call
         else:
             reward = 0
         
@@ -381,6 +393,13 @@ class AutomationEnv(gym.Env):
         
         return ob, reward, self.done, info
 
+    def kolmogorov_complexity(self, genome):
+        # Convert the genome to a string representation
+        genome_bytes = pickle.dumps(genome)
+        # Compress the genome
+        compressed_data = zlib.compress(genome_bytes)
+        # Return the length of the compressed data as an estimate of Kolmogorov complexity
+        return len(compressed_data)
 
     def render(self, mode='human'):
         pass
