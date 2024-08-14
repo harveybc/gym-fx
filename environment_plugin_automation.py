@@ -324,21 +324,22 @@ class AutomationEnv(gym.Env):
         if self.current_step > 1:
             equity_increment = self.equity - self.equity_ant
             balance_increment = self.balance - self.balance_ant 
-            reward = (balance_increment + equity_increment) / 2
-            reward = reward / (4*self.max_steps) # Normalize the reward
+            #reward = (balance_increment + equity_increment) / 2
+            reward = (balance_increment)
+            reward = reward / (self.total_balance) # Normalize the reward
             penalty_cost = -1*(self.initial_balance) / self.max_steps # Normalize the reward
-            if (self.order_status == 0) and (self.c_c==4) and (self.real_profit > 0): #Normal close
-                reward = 4*reward # reward Normal close
-            if (self.order_status == 0) and (self.c_c==3): #TakeProfit
-                reward = 2*reward # reward tp
-            if (self.order_status == 0) and (self.c_c==4): #StopLoss
-                reward = 2*reward # reward sl
+            #if (self.order_status == 0) and (self.c_c==4) and (self.real_profit > 0): #Normal close
+            #    reward = 4*reward # reward Normal close
+            #if (self.order_status == 0) and (self.c_c==3): #TakeProfit
+            #    reward = 2*reward # reward tp
+            #if (self.order_status == 0) and (self.c_c==4): #StopLoss
+            #    reward = 2*reward # reward sl
             if (self.order_status == 0) and (action==0):
-                reward = 10*penalty_cost  #Penalize inaction
-            else:
-                reward = -10*penalty_cost  #Reward action
+                reward = 10*penalty_cost  #Penalize inaction 10x
+            #else:
+            #    reward = -10*penalty_cost  #Reward action
             if self.done and self.c_c == 1: #Closed by margin call
-                reward = 100*(self.max_steps - self.current_step)*penalty_cost
+                reward = 100*(self.max_steps - self.current_step)*penalty_cost #Penalize 100x for margin call
         else:
             reward = 0
         
