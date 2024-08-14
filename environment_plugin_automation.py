@@ -171,7 +171,7 @@ class AutomationEnv(gym.Env):
         }
         return observation, info
 
-    def step(self, action, verbose=True):
+    def step(self, action, verbose=True, step_fitness=0.0, genome_id=0, num_closes=0 ):
         if self.done:
             return np.zeros(self.x_train.shape[1]), self.reward, self.done, {}
 
@@ -334,7 +334,7 @@ class AutomationEnv(gym.Env):
             sqr_max_steps = (self.max_steps*self.max_steps)
             #equity_increment = self.equity - self.equity_ant
             
-            profit_metric = self.balance 
+            profit_metric = self.balance-self.initial_balance 
             reward = (profit_metric)/(self.initial_balance*self.max_steps)  # Reward for balance increase
         #   Kormogorov complexity (constant for all steps)
             reward += self.kolmogorov_c/(4*sqr_max_steps)
@@ -375,7 +375,7 @@ class AutomationEnv(gym.Env):
 
 
         if self.done and self.c_c != 1:
-            print(f"Kormogorov complexity: {self.kolmogorov_c} , Balance: {self.balance}, Increment: {self.balance/self.initial_balance}")
+            print(f"id:{genome_id}, Kormogorov: {self.kolmogorov_c} , Balance: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Orders:{num_closes}, Fitness: {step_fitness} ")
 
         info = {
             "date": self.x_train[self.current_step-1, 0],
