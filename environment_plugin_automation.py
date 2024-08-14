@@ -334,11 +334,11 @@ class AutomationEnv(gym.Env):
             if (self.order_status == 0) and (self.c_c==2): #StopLoss
                 reward = 15*reward # reward sl
             if (self.order_status == 0) and (action==0): #Penalize inaction 10x
-                reward = 500*penalty_cost  
+                reward = 100*penalty_cost  
             #else:
             #    reward = -10*penalty_cost  #Reward action
             if self.done and self.c_c == 1: #Closed by margin call
-                reward = 500*(self.max_steps - self.current_step)*penalty_cost #Penalize 500x for margin call
+                reward = 100*(self.max_steps - self.current_step)*penalty_cost #Penalize 500x for margin call
         else:
             reward = 0
         
