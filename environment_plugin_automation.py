@@ -12,8 +12,8 @@ class Plugin:
         'initial_balance': 10000,
         'fitness_function': 'brute_profit',  # 'sharpe_ratio' can be another option
         'min_orders': 4,
-        'sl': 1000,  # Adjusted Stop Loss
-        'tp': 1000,  # Adjusted Take Profit
+        'sl': 200,  # Adjusted Stop Loss
+        'tp': 200,  # Adjusted Take Profit
         'rel_volume': 0.1, # size of the new orders relative to the current balance
         'max_order_volume': 1000000, # Maximum order volume = 10 lots (1 lot = 100,000 units)
         'min_order_volume': 10000, # Minimum order volume = 0.1 lots (1 lot = 100,000 units)
@@ -324,16 +324,15 @@ class AutomationEnv(gym.Env):
         if self.current_step > 1:
             equity_increment = self.equity - self.equity_ant
             balance_increment = self.balance - self.balance_ant 
-            #reward = (balance_increment + equity_increment) / 2
-            reward = (equity_increment)
+            reward = (balance_increment + equity_increment) / 2
             reward = reward / (self.initial_balance) # Normalize the reward
             penalty_cost = -1*(self.initial_balance) / self.max_steps # Normalize the reward
-            #if (self.order_status == 0) and (self.c_c==4) and (self.real_profit > 0): #Normal close
-            #    reward = 4*reward # reward Normal close
+            if (self.order_status == 0) and (self.c_c==4): #Normal close
+                reward = 2*reward # reward Normal close
             #if (self.order_status == 0) and (self.c_c==3): #TakeProfit
             #    reward = 2*reward # reward tp
-            #if (self.order_status == 0) and (self.c_c==4): #StopLoss
-            #    reward = 2*reward # reward sl
+            if (self.order_status == 0) and (self.c_c==4): #StopLoss
+                reward = 4*reward # reward sl
             if (self.order_status == 0) and (action==0):
                 reward = 10*penalty_cost  #Penalize inaction 10x
             #else:
