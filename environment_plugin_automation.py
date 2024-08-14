@@ -332,9 +332,9 @@ class AutomationEnv(gym.Env):
 
         if self.current_step > 1:
             sqr_max_steps = (self.max_steps*self.max_steps)
-            equity_increment = self.equity - self.equity_ant
-            balance_increment = (self.balance - self.balance_ant)
-            profit_metric = (4*balance_increment + equity_increment) / 5
+            #equity_increment = self.equity - self.equity_ant
+            
+            profit_metric = self.balance 
             reward = (profit_metric)/(self.initial_balance*self.max_steps)  # Reward for balance increase
         #   Kormogorov complexity (constant for all steps)
             reward += self.kolmogorov_c/(4*sqr_max_steps)
