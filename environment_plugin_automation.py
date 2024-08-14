@@ -337,7 +337,7 @@ class AutomationEnv(gym.Env):
             profit_metric = (4*balance_increment + equity_increment) / 5
             reward = (profit_metric)/(self.initial_balance*self.max_steps)  # Reward for balance increase
         #   Kormogorov complexity (constant for all steps)
-            reward += self.kolmogorov_c/(sqr_max_steps)
+            reward += self.kolmogorov_c/(4*sqr_max_steps)
             
             penalty_cost = -1/sqr_max_steps # Normalize the reward
         #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips>0): #Normal close for profit
