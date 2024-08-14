@@ -320,7 +320,6 @@ class AutomationEnv(gym.Env):
                     print(f"Current balance 5: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                     print(f"Order Status after take profit check: {self.order_status}")
 
-
         # Simplified reward calculation
         if self.current_step > 1:
             equity_increment = self.equity - self.equity_ant
