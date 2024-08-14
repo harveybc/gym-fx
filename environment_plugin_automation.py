@@ -146,7 +146,7 @@ class AutomationEnv(gym.Env):
         self.order_time = 0
         self.genome = genome 
         self.kolmogorov_c = self.kolmogorov_complexity(self.genome) if self.genome is not None else 0
-        print(f"Kormogorov complexity: {self.kolmogorov_c} ")
+        
 
         self.equity_curve = [self.initial_balance]
         observation = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
@@ -329,11 +329,12 @@ class AutomationEnv(gym.Env):
         
 
         # Composite reward calculation using penalty by inaction and optionally reward for balance increase and kormogorov complexity
+
         if self.current_step > 1:
         #    equity_increment = self.profit_pips
             reward = (self.profit_pips)/(self.sl*self.max_steps)
         #   Kormogorov complexity (constant for all steps)
-            reward += self.kolmogorov_c/(self.max_steps)
+            reward += self.kolmogorov_c/(self.sl*self.max_steps)
             
             penalty_cost = -1/self.max_steps # Normalize the reward
         #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips>0): #Normal close for profit
@@ -363,6 +364,7 @@ class AutomationEnv(gym.Env):
 
         if self.current_step >= (self.num_ticks - 1):
             self.done = True
+            print(f"Kormogorov complexity: {self.kolmogorov_c} , Balance: {self.balance}, Increment: {self.balance/self.initial_balance}")
 
 
         info = {
