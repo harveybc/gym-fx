@@ -332,8 +332,8 @@ class AutomationEnv(gym.Env):
         if self.current_step > 1:
         #    equity_increment = self.profit_pips
             reward = (self.profit_pips)/(self.sl*self.max_steps)
-        #   Kormogorov complexity
-            reward += self.kolmogorov_c/(self.sl*self.max_steps)
+        #   Kormogorov complexity (constant for all steps)
+            reward += self.kolmogorov_c/(self.max_steps)
             
             penalty_cost = -1/self.max_steps # Normalize the reward
         #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips>0): #Normal close for profit
@@ -349,7 +349,7 @@ class AutomationEnv(gym.Env):
             #else:
             #    reward = -10*penalty_cost  #Reward action
             if self.done and self.c_c == 1: #Closed by margin call
-                reward = (self.max_steps - self.current_step)*penalty_cost #Penalize 500x for margin call
+                reward = 2*(self.max_steps - self.current_step)*penalty_cost #Penalize 500x for margin call
         else:
             reward = 0
         
