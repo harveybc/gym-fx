@@ -370,7 +370,6 @@ class AutomationEnv(gym.Env):
         if self.done and self.c_c != 1:
             print(f"Kormogorov complexity: {self.kolmogorov_c} , Balance: {self.balance}, Increment: {self.balance/self.initial_balance}")
 
-
         info = {
             "date": self.x_train[self.current_step-1, 0],
             "close": self.x_train[self.current_step-1, 4],
