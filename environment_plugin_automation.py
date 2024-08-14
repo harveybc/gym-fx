@@ -59,8 +59,8 @@ class Plugin:
         self.env = AutomationEnv(x_train, y_train, self.initial_balance, self.max_steps, self.fitness_function,
                                  self.min_orders, self.sl, self.tp, self.rel_volume, self.leverage, self.pip_cost, self.min_order_time, self.spread, self.max_order_volume, self.min_order_volume, self.genome)
 
-    def reset(self):
-        observation, info = self.env.reset()
+    def reset(self, genome=None):
+        observation, info = self.env.reset(genome)
         return observation, info
 
     def step(self, action):
@@ -128,9 +128,9 @@ class AutomationEnv(gym.Env):
 
         self.action_space = gym.spaces.Discrete(3)  # Buy, sell, hold
         self.genome = genome
-        self.reset()
+        self.reset(genome)
 
-    def reset(self):
+    def reset(self, genome=None):
         self.current_step = 0
         self.balance = self.initial_balance
         self.equity = self.initial_balance
@@ -144,8 +144,7 @@ class AutomationEnv(gym.Env):
         self.ant_c_c = 0  # Track previous closing cause
         self.margin = 0.0
         self.order_time = 0
-        self.genome = None
-        self.genome = self.genome if self.genome is not None else None
+        self.genome = genome 
         self.kolmogorov_c = self.kolmogorov_complexity(self.genome) if self.genome is not None else 0
         print(f"Kormogorov complexity: {self.kolmogorov_c} ")
 
