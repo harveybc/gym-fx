@@ -343,7 +343,7 @@ class AutomationEnv(gym.Env):
             reward_kormogorov = -self.kolmogorov_c/(sqr_max_steps)
             #  reward a large number of orders
             desired_min_orders = 100
-            reward_orders = (self.num_closes-desired_min_orders)/(30*self.max_steps)
+            reward_orders = (self.num_closes-desired_min_orders)/(3000*self.max_steps)
             # penalty cost
             penalty_cost = -1/sqr_max_steps # Normalize the reward
         #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips>0): #Normal close for profit
