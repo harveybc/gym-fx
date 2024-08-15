@@ -334,11 +334,12 @@ class AutomationEnv(gym.Env):
             sqr_max_steps = (self.max_steps*self.max_steps)
             #equity_increment = self.equity - self.equity_ant
             profit_metric = self.balance 
-            reward = (profit_metric)/(self.initial_balance*self.max_steps)  # Reward for balance increase
+            reward_balance = (profit_metric)/(self.initial_balance*self.max_steps)  # Reward for balance increase
             # Penalize complexity for avoiding overfitting Kormogorov complexity (constant for all steps)
-            reward -= self.kolmogorov_c/(10*sqr_max_steps)
+            reward_kormogorov = self.kolmogorov_c/(10*sqr_max_steps)
             #  reward a large number of orders
-            reward += (self.num_closes/(3000*self.max_steps))            
+            reward_orders = (self.num_closes/(3000*self.max_steps))            
+            # penalty cost
             penalty_cost = -1/sqr_max_steps # Normalize the reward
         #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips>0): #Normal close for profit
         #        reward = 30*reward # reward Normal close
@@ -352,8 +353,9 @@ class AutomationEnv(gym.Env):
             #    reward = penalty_cost  
             #else:
             #    reward = -10*penalty_cost  #Reward action
+            reward_margin_call = 0
             if self.done and self.c_c == 1: #Closed by margin call
-                reward = 2*(self.max_steps - self.current_step)*penalty_cost #Penalize for margin call
+                reward_margin_call = reward = 2*(self.max_steps - self.current_step)*penalty_cost #Penalize for margin call
         else:
             reward = 0
         
@@ -367,15 +369,16 @@ class AutomationEnv(gym.Env):
         if self.current_step >= (self.num_ticks - 1):
             self.done = True
 
-        
+        reward_inaction_cc = 0
         if (self.done and self.c_c !=1) and (self.balance == self.initial_balance):
-            reward = -2 * self.initial_balance/self.max_steps     
+            reward_inaction = -2 * self.initial_balance/self.max_steps     
 
+        reward = reward_balance + reward_kormogorov + reward_orders + reward_margin_call + reward_inaction_cc
         self.reward = reward
 
 
         if self.done and self.c_c != 1:
-            print(f"id:{genome_id}, Kormogorov: {self.kolmogorov_c} , Balance: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Orders:{num_closes}, Fitness: {step_fitness+reward} ")
+            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Orders:{num_closes},rb:{reward_balance}, rk:{reward_kormogorov}, ro:{reward_orders}, rm:{reward_margin_call}, ri:{reward_inaction_cc}, Fitness: {step_fitness+reward} ")
 
         info = {
             "date": self.x_train[self.current_step-1, 0],
