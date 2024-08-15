@@ -342,7 +342,8 @@ class AutomationEnv(gym.Env):
             # Penalize complexity for avoiding overfitting Kormogorov complexity (constant for all steps)
             reward_kormogorov = -self.kolmogorov_c/(sqr_max_steps)
             #  reward a large number of orders
-            reward_orders = (self.num_closes/(300*self.max_steps))            
+            desired_min_orders = 50
+            reward_orders = (self.num_closes-50/(30*self.max_steps))            
             # penalty cost
             penalty_cost = -1/sqr_max_steps # Normalize the reward
         #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips>0): #Normal close for profit
