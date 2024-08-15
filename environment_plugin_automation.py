@@ -358,7 +358,7 @@ class AutomationEnv(gym.Env):
             #    reward = penalty_cost  
             #else:
             #    reward = -10*penalty_cost  #Reward action
-            reward_margin_call = 0
+            reward_margin_call = 0 
             if self.done and self.c_c == 1: #Closed by margin call
                 reward_margin_call = reward = 2*(self.max_steps - self.current_step)*penalty_cost #Penalize for margin call
         else:
