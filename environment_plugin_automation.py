@@ -338,7 +338,7 @@ class AutomationEnv(gym.Env):
             # Penalize complexity for avoiding overfitting Kormogorov complexity (constant for all steps)
             reward -= self.kolmogorov_c/(10*sqr_max_steps)
             #  reward a large number of orders
-            reward += (self.num_closes/(300*self.max_steps))            
+            reward += (self.num_closes/(3000*self.max_steps))            
             penalty_cost = -1/sqr_max_steps # Normalize the reward
         #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips>0): #Normal close for profit
         #        reward = 30*reward # reward Normal close
@@ -348,8 +348,8 @@ class AutomationEnv(gym.Env):
         #        reward = 20*reward # reward tp
         #    if (self.order_status == 0) and (self.c_c==2): #StopLoss
         #        reward = 15*reward # reward sl
-            if (self.order_status == 0) and (action==0): #Penalize inaction 10x
-                reward = penalty_cost  
+            #if (self.order_status == 0) and (action==0): #Penalize inaction 10x
+            #    reward = penalty_cost  
             #else:
             #    reward = -10*penalty_cost  #Reward action
             if self.done and self.c_c == 1: #Closed by margin call
