@@ -329,7 +329,11 @@ class AutomationEnv(gym.Env):
         
 
         # Composite reward calculation using penalty by inaction and optionally reward for balance increase and kormogorov complexity
-
+        reward_balance = 0
+        reward_kormogorov = 0
+        reward_orders = 0
+        reward_margin_call = 0
+        reward_inaction_cc = 0
         if self.current_step > 1:
             sqr_max_steps = (self.max_steps*self.max_steps)
             #equity_increment = self.equity - self.equity_ant
@@ -359,7 +363,7 @@ class AutomationEnv(gym.Env):
         else:
             reward = 0
         
-
+        
         # set the observation as y_train if not None, else x_train
         ob = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
         self.equity_ant = self.equity
