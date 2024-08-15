@@ -340,9 +340,9 @@ class AutomationEnv(gym.Env):
             profit_metric = self.balance 
             reward_balance = (profit_metric)/(self.initial_balance*self.max_steps)  # Reward for balance increase
             # Penalize complexity for avoiding overfitting Kormogorov complexity (constant for all steps)
-            reward_kormogorov = -self.kolmogorov_c/(10*sqr_max_steps)
+            reward_kormogorov = -self.kolmogorov_c/(sqr_max_steps)
             #  reward a large number of orders
-            reward_orders = (self.num_closes/(3000*self.max_steps))            
+            reward_orders = (self.num_closes/(30*self.max_steps))            
             # penalty cost
             penalty_cost = -1/sqr_max_steps # Normalize the reward
         #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips>0): #Normal close for profit
