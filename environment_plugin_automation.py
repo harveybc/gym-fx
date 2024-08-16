@@ -374,12 +374,15 @@ class AutomationEnv(gym.Env):
                 total_orders_reward = self.num_closes* orders_lambda
                 # Calculate the reward for profit
                 total_profit_reward = (self.balance/self.initial_balance)  * profit_lambda
+                if self.c_c == 1: # Margin Call
+                    total_l2_penalty = 1
+                    total_complexity_penalty = 1    
             else:
                 total_l2_penalty = 1
                 total_complexity_penalty = 1    
                 total_orders_reward = -1*orders_lambda
                 total_profit_reward = -1*profit_lambda
-            total_fitness_rewards = (total_orders_reward * total_profit_reward) - total_l2_penalty - total_complexity_penalty 
+            total_fitness_rewards = (total_orders_reward * total_profit_reward) + total_orders_reward - total_l2_penalty - total_complexity_penalty 
             print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, ro:{total_orders_reward}, rm:{reward_margin_call}, l2:{-total_l2_penalty}, tc:{-total_complexity_penalty}, Fitness: {step_fitness+reward+total_fitness_rewards} ")
 
         info = {
@@ -400,7 +403,8 @@ class AutomationEnv(gym.Env):
             "order_volume": self.order_volume,
             "spread": self.spread,
             "margin": self.margin,
-            "initial_balance": self.initial_balance
+            "initial_balance": self.initial_balance,
+            "c_c": self.c_c
         }
 
         if self.order_status == 0:
