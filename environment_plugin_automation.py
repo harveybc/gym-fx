@@ -376,7 +376,7 @@ class AutomationEnv(gym.Env):
         self.reward = reward
 
 
-        if self.done and self.c_c != 1 and self.num_closes>0:
+        if self.done and self.c_c != 1:
             # Calculate L2 penalty (sum of squared weights)
             l2_penalty = 0.0
             for connection in self.genome.connections.values():
@@ -385,7 +385,7 @@ class AutomationEnv(gym.Env):
             complexity_lambda = 0.01  # Complexity penalty strength
             fitness_l2 = -lambda_l2 * l2_penalty
             reward_kormogorov = -self.kolmogorov_c * complexity_lambda/self.max_steps
-            
+
             print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{reward_balance}, ro:{reward_orders}, rm:{reward_margin_call}, ri:{reward_inaction_cc}, l2:{fitness_l2}, tr-k:{reward_kormogorov}, Fitness: {step_fitness+reward} ")
 
         info = {
