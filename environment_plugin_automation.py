@@ -336,26 +336,7 @@ class AutomationEnv(gym.Env):
         reward_margin_call = 0
         reward_inaction_cc = 0
         if self.current_step > 1:
-            sqr_max_steps = (self.max_steps*self.max_steps)
-            #equity_increment = self.equity - self.equity_ant
-            profit_metric = self.balance - self.balance_ant
-            reward_balance = (profit_metric)/(self.initial_balance*self.max_steps)  # Reward for balance increase
-            # Penalize complexity for avoiding overfitting Kormogorov complexity (constant for all steps)
-            #  reward a large number of orders
-            desired_min_orders = 100
-            reward_orders = (self.num_closes-desired_min_orders)/(200*self.max_steps)
-            # penalty cost
             penalty_cost = -1/self.max_steps # Normalize the reward
-        #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips>0): #Normal close for profit
-        #        reward = 30*reward # reward Normal close
-        #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips<=0): #Normal close for loss  
-        #        reward = 10*(reward-1) # reward Normal close   
-        #    if (self.order_status == 0) and (self.c_c==3): #TakeProfit
-        #        reward = 20*reward # reward tp
-        #    if (self.order_status == 0) and (self.c_c==2): #StopLoss
-        #        reward = 15*reward # reward sl
-            if (self.order_status == 0) and (action==0): #Penalize inaction 10x
-                reward_inaction_cc = penalty_cost  
             reward_margin_call = 0 
             if self.done and self.c_c == 1: #Closed by margin call
                 reward_margin_call = 0.5*(self.max_steps - self.current_step)*penalty_cost #Penalize for margin call
@@ -372,21 +353,37 @@ class AutomationEnv(gym.Env):
         if self.current_step >= (self.num_ticks - 1):
             self.done = True
 
-        reward = reward_balance + reward_orders + reward_margin_call + reward_inaction_cc
+        reward =  reward_margin_call
         self.reward = reward
+
+        
 
 
         if self.done and self.c_c != 1:
-            # Calculate L2 penalty (sum of squared weights)
-            l2_penalty = 0.0
-            for connection in self.genome.connections.values():
-                l2_penalty += connection.weight ** 2
-            lambda_l2 = 0.01  # Regularization strength
-            complexity_lambda = 0.01  # Complexity penalty strength
-            fitness_l2 = -lambda_l2 * l2_penalty
-            reward_kormogorov = -self.kolmogorov_c * complexity_lambda/self.max_steps
+            if self.num_closes > 0:
+                #set the lambda values\
+                profit_lambda = 1.0    # Reward for profit
+                orders_lambda = 0.01    # Reward for closing orders
+                complexity_lambda = 0.001  # Complexity penalty strength
+                l2_lambda = 0.0001  # Regularization strength
+                # Calculate the Kolmogorov complexity penalty of the genome
+                complexity_penalty = self.kolmogorov_complexity(self.genome)/self.max_steps
+                total_complexity_penalty = complexity_lambda * complexity_penalty
+                # Calculate L2 penalty (sum of squared weights)
+                for connection in self.genome.connections.values():
+                    l2_penalty += connection.weight ** 2
+                total_l2_penalty = l2_lambda * l2_penalty 
+                # calculate the reward for closing orders
+                total_orders_reward = info['num_closes']* orders_lambda
+                # Calculate the reward for profit
+                total_profit_reward = info['balance']/info['initial_balance'] * profit_lambda
+            else:
+                total_l2_penalty = 2
+                total_complexity_penalty = 2    
+                total_orders_reward = -1*orders_lambda
+                total_profit_reward = -1*profit_lambda
 
-            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{reward_balance}, ro:{reward_orders}, rm:{reward_margin_call}, ri:{reward_inaction_cc}, l2:{fitness_l2}, tr-k:{reward_kormogorov}, Fitness: {step_fitness+reward} ")
+            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, ro:{total_orders_reward}, rm:{reward_margin_call}, l2:{total_l2_penalty}, tr-k:{total_complexity_penalty}, Fitness: {step_fitness+reward} ")
 
         info = {
             "date": self.x_train[self.current_step-1, 0],
