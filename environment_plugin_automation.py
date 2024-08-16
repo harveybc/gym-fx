@@ -379,7 +379,7 @@ class AutomationEnv(gym.Env):
                 total_complexity_penalty = 2    
                 total_orders_reward = -1*orders_lambda
                 total_profit_reward = -1*profit_lambda
-            total_fitness_rewards = (total_orders_reward * total_profit_reward) - total_l2_penalty - total_complexity_penalty 
+            total_fitness_rewards = (self.num_closes * total_profit_reward) - total_l2_penalty - total_complexity_penalty 
             print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, ro:{total_orders_reward}, rm:{reward_margin_call}, l2:{-total_l2_penalty}, tc:{-total_complexity_penalty}, Fitness: {step_fitness+reward+total_fitness_rewards} ")
 
         info = {
