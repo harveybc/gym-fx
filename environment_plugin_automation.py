@@ -60,7 +60,7 @@ class Plugin:
                                  self.min_orders, self.sl, self.tp, self.rel_volume, self.leverage, self.pip_cost, self.min_order_time, self.spread, self.max_order_volume, self.min_order_volume, self.genome)
 
     def reset(self, genome=None):
-        observation, info = self.env.reset(genome)
+        observation, info, max_steps = self.env.reset(genome)
         return observation, info
 
     def step(self, action):
