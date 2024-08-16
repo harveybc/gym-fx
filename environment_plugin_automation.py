@@ -343,7 +343,7 @@ class AutomationEnv(gym.Env):
             reward_kormogorov = -self.kolmogorov_c/(sqr_max_steps)
             #  reward a large number of orders
             desired_min_orders = 100
-            reward_orders = (self.num_closes-desired_min_orders)/(150*self.max_steps)
+            reward_orders = (self.num_closes-desired_min_orders)/(300*self.max_steps)
             # penalty cost
             penalty_cost = -1/sqr_max_steps # Normalize the reward
         #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips>0): #Normal close for profit
@@ -387,7 +387,7 @@ class AutomationEnv(gym.Env):
             l2_penalty = 0.0
             for connection in self.genome.connections.values():
                 l2_penalty += connection.weight ** 2
-            lambda_l2 = 0.1  # Regularization strength
+            lambda_l2 = 0.01  # Regularization strength
             fitness_l2 = -lambda_l2 * l2_penalty
 
             print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{reward_balance}, rk:{reward_kormogorov}, ro:{reward_orders}, rm:{reward_margin_call}, ri:{reward_inaction_cc}, l2:{fitness_l2}, Fitness: {step_fitness+reward} ")
