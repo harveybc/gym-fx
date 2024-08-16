@@ -330,44 +330,38 @@ class AutomationEnv(gym.Env):
         
 
         # Composite reward calculation using penalty by inaction and optionally reward for balance increase and kormogorov complexity
-        reward_balance = 0
-        reward_kormogorov = 0
-        reward_orders = 0
         reward_margin_call = 0
-        reward_inaction_cc = 0
-        if self.current_step > 1:
+        if self.current_step > 0:
             penalty_cost = -1/self.max_steps # Normalize the reward
-            reward_margin_call = 0 
             if self.done and self.c_c == 1: #Closed by margin call
-                reward_margin_call = 0.5*(self.max_steps - self.current_step)*penalty_cost #Penalize for margin call
+                reward_margin_call = (self.max_steps - self.current_step)*penalty_cost #Penalize for margin call
         else:
             reward = 0
-        
         
         # set the observation as y_train if not None, else x_train
         ob = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
         self.equity_ant = self.equity
-        
-        self.balance_ant = self.balance
-        
+        # Check if the episode is over       
         if self.current_step >= (self.num_ticks - 1):
             self.done = True
-
-        reward =  reward_margin_call
-        self.reward = reward
-
+            self.balance = self.equity
+        # upptdate balance_ant
+        self.balance_ant = self.balance
         
-
         #set the lambda values (just for showing, please verify the actual values in optimizer)
         profit_lambda = 1.0    # Reward for profit
         orders_lambda = 0.01    # Reward for closing orders
         complexity_lambda = 0.0001  # Complexity penalty strength
         l2_lambda = 0.001  # Regularization strength
+        margin_call_lambda = 0.01 # Reward for margin call
 
-        #
-        if self.done and self.c_c != 1:
+        #updatre reward
+        reward =  reward_margin_call * margin_call_lambda
+        self.reward = reward
+
+        # calculate aditional fitness reward and penalties
+        if self.done:
             if self.num_closes > 0:
-
                 # Calculate the Kolmogorov complexity penalty of the genome
                 complexity_penalty = self.kolmogorov_complexity(self.genome)
                 total_complexity_penalty = complexity_lambda * complexity_penalty
@@ -385,7 +379,7 @@ class AutomationEnv(gym.Env):
                 total_complexity_penalty = 2    
                 total_orders_reward = -1*orders_lambda
                 total_profit_reward = -1*profit_lambda
-            total_fitness_rewards = total_orders_reward + total_profit_reward - total_l2_penalty - total_complexity_penalty 
+            total_fitness_rewards = (total_orders_reward * total_profit_reward) - total_l2_penalty - total_complexity_penalty 
             print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, ro:{total_orders_reward}, rm:{reward_margin_call}, l2:{-total_l2_penalty}, tc:{-total_complexity_penalty}, Fitness: {step_fitness+reward+total_fitness_rewards} ")
 
         info = {
