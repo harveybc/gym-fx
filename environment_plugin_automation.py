@@ -349,11 +349,11 @@ class AutomationEnv(gym.Env):
         self.balance_ant = self.balance
         
         #set the lambda values (just for showing, please verify the actual values in optimizer)
-        profit_lambda = 1.0    # Reward for profit
+        profit_lambda = 100.0    # Reward for profit
         orders_lambda = 0.01    # Reward for closing orders
         complexity_lambda = 0.0001  # Complexity penalty strength
         l2_lambda = 0.001  # Regularization strength
-        margin_call_lambda = 0.01 # Reward for margin call
+        margin_call_lambda = 0.1 # Reward for margin call
 
         #updatre reward
         reward =  reward_margin_call * margin_call_lambda
@@ -375,11 +375,11 @@ class AutomationEnv(gym.Env):
                 # Calculate the reward for profit
                 total_profit_reward = (self.balance/self.initial_balance)  * profit_lambda
             else:
-                total_l2_penalty = 2
-                total_complexity_penalty = 2    
+                total_l2_penalty = 1
+                total_complexity_penalty = 1    
                 total_orders_reward = -1*orders_lambda
                 total_profit_reward = -1*profit_lambda
-            total_fitness_rewards = (self.num_closes * total_profit_reward) - total_l2_penalty - total_complexity_penalty 
+            total_fitness_rewards = (total_orders_reward * total_profit_reward) - total_l2_penalty - total_complexity_penalty 
             print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, ro:{total_orders_reward}, rm:{reward_margin_call}, l2:{-total_l2_penalty}, tc:{-total_complexity_penalty}, Fitness: {step_fitness+reward+total_fitness_rewards} ")
 
         info = {
