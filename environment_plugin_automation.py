@@ -377,16 +377,16 @@ class AutomationEnv(gym.Env):
                     l2_penalty += connection.weight ** 2
                 total_l2_penalty = l2_lambda * l2_penalty 
                 # calculate the reward for closing orders
-                total_orders_reward = info['num_closes']* orders_lambda
+                total_orders_reward = self.num_closes* orders_lambda
                 # Calculate the reward for profit
-                total_profit_reward = info['balance']/info['initial_balance'] * profit_lambda
+                total_profit_reward = (self.balance/self.initial_balance)  * profit_lambda
             else:
                 total_l2_penalty = 2
                 total_complexity_penalty = 2    
                 total_orders_reward = -1*orders_lambda
                 total_profit_reward = -1*profit_lambda
             total_fitness_rewards = total_orders_reward + total_profit_reward - total_l2_penalty - total_complexity_penalty 
-            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, ro:{total_orders_reward}, rm:{reward_margin_call}, l2:{total_l2_penalty}, tr-k:{total_complexity_penalty}, Fitness: {step_fitness+reward+total_fitness_rewards} ")
+            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, ro:{total_orders_reward}, rm:{reward_margin_call}, l2:{-total_l2_penalty}, tc:{-total_complexity_penalty}, Fitness: {step_fitness+reward+total_fitness_rewards} ")
 
         info = {
             "date": self.x_train[self.current_step-1, 0],
