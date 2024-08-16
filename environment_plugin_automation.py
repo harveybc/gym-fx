@@ -388,7 +388,7 @@ class AutomationEnv(gym.Env):
             for connection in self.genome.connections.values():
                 l2_penalty += connection.weight ** 2
             lambda_l2 = 0.001  # Regularization strength
-            fitness_l2 = lambda_l2 * l2_penalty
+            fitness_l2 = -lambda_l2 * l2_penalty
 
             print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{reward_balance}, rk:{reward_kormogorov}, ro:{reward_orders}, rm:{reward_margin_call}, ri:{reward_inaction_cc}, l2:{fitness_l2}, Fitness: {step_fitness+reward} ")
 
