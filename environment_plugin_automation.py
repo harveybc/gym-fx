@@ -337,7 +337,7 @@ class AutomationEnv(gym.Env):
         if self.current_step > 1:
             sqr_max_steps = (self.max_steps*self.max_steps)
             #equity_increment = self.equity - self.equity_ant
-            profit_metric = self.balance 
+            profit_metric = self.balance - self.balance_ant
             reward_balance = (profit_metric)/(self.initial_balance*self.max_steps)  # Reward for balance increase
             # Penalize complexity for avoiding overfitting Kormogorov complexity (constant for all steps)
             reward_kormogorov = -self.kolmogorov_c/(sqr_max_steps)
@@ -389,7 +389,6 @@ class AutomationEnv(gym.Env):
                 l2_penalty += connection.weight ** 2
             lambda_l2 = 0.01  # Regularization strength
             fitness_l2 = -lambda_l2 * l2_penalty
-
             print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{reward_balance}, rk:{reward_kormogorov}, ro:{reward_orders}, rm:{reward_margin_call}, ri:{reward_inaction_cc}, l2:{fitness_l2}, Fitness: {step_fitness+reward} ")
 
         info = {
