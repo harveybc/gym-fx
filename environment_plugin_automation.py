@@ -340,10 +340,10 @@ class AutomationEnv(gym.Env):
             profit_metric = self.balance - self.balance_ant
             reward_balance = (profit_metric)/(self.initial_balance*self.max_steps)  # Reward for balance increase
             # Penalize complexity for avoiding overfitting Kormogorov complexity (constant for all steps)
-            #reward_kormogorov = -self.kolmogorov_c/(sqr_max_steps)
+            reward_kormogorov = -self.kolmogorov_c/(sqr_max_steps)
             #  reward a large number of orders
             desired_min_orders = 100
-            #reward_orders = (self.num_closes-desired_min_orders)/(300*self.max_steps)
+            reward_orders = (self.num_closes-desired_min_orders)/(200*self.max_steps)
             # penalty cost
             penalty_cost = -1/sqr_max_steps # Normalize the reward
         #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips>0): #Normal close for profit
@@ -355,10 +355,10 @@ class AutomationEnv(gym.Env):
         #    if (self.order_status == 0) and (self.c_c==2): #StopLoss
         #        reward = 15*reward # reward sl
             if (self.order_status == 0) and (action==0): #Penalize inaction 10x
-                reward = 2*penalty_cost  
+                reward_inaction_cc = penalty_cost  
             reward_margin_call = 0 
             if self.done and self.c_c == 1: #Closed by margin call
-                reward_margin_call = reward = (self.max_steps - self.current_step)*penalty_cost #Penalize for margin call
+                reward_margin_call = 0.5*(self.max_steps - self.current_step)*penalty_cost #Penalize for margin call
         else:
             reward = 0
         
@@ -371,10 +371,6 @@ class AutomationEnv(gym.Env):
         
         if self.current_step >= (self.num_ticks - 1):
             self.done = True
-
-        reward_inaction_cc = 0
-        if (self.done and self.c_c !=1) and (self.balance == self.initial_balance):
-            reward_inaction_cc = -2 * self.initial_balance/self.max_steps     
 
         reward = reward_balance + reward_kormogorov + reward_orders + reward_margin_call + reward_inaction_cc
         self.reward = reward
