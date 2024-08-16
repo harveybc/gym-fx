@@ -340,10 +340,10 @@ class AutomationEnv(gym.Env):
             profit_metric = self.balance - self.balance_ant
             reward_balance = (profit_metric)/(self.initial_balance*self.max_steps)  # Reward for balance increase
             # Penalize complexity for avoiding overfitting Kormogorov complexity (constant for all steps)
-            reward_kormogorov = -self.kolmogorov_c/(sqr_max_steps)
+            #reward_kormogorov = -self.kolmogorov_c/(sqr_max_steps)
             #  reward a large number of orders
             desired_min_orders = 100
-            reward_orders = (self.num_closes-desired_min_orders)/(300*self.max_steps)
+            #reward_orders = (self.num_closes-desired_min_orders)/(300*self.max_steps)
             # penalty cost
             penalty_cost = -1/sqr_max_steps # Normalize the reward
         #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips>0): #Normal close for profit
@@ -354,13 +354,11 @@ class AutomationEnv(gym.Env):
         #        reward = 20*reward # reward tp
         #    if (self.order_status == 0) and (self.c_c==2): #StopLoss
         #        reward = 15*reward # reward sl
-            #if (self.order_status == 0) and (action==0): #Penalize inaction 10x
-            #    reward = penalty_cost  
-            #else:
-            #    reward = -10*penalty_cost  #Reward action
+            if (self.order_status == 0) and (action==0): #Penalize inaction 10x
+                reward = 2*penalty_cost  
             reward_margin_call = 0 
             if self.done and self.c_c == 1: #Closed by margin call
-                reward_margin_call = reward = 2*(self.max_steps - self.current_step)*penalty_cost #Penalize for margin call
+                reward_margin_call = reward = (self.max_steps - self.current_step)*penalty_cost #Penalize for margin call
         else:
             reward = 0
         
