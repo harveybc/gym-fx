@@ -345,7 +345,7 @@ class AutomationEnv(gym.Env):
             desired_min_orders = 100
             reward_orders = (self.num_closes-desired_min_orders)/(200*self.max_steps)
             # penalty cost
-            penalty_cost = -1/sqr_max_steps # Normalize the reward
+            penalty_cost = -1/self.max_steps # Normalize the reward
         #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips>0): #Normal close for profit
         #        reward = 30*reward # reward Normal close
         #    if (self.order_status == 0) and (self.c_c==4) and (self.profit_pips<=0): #Normal close for loss  
