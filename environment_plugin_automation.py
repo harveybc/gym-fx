@@ -169,7 +169,8 @@ class AutomationEnv(gym.Env):
             "spread": self.spread,
             "initial_balance": self.initial_balance
         }
-        return observation, info
+        max_steps = self.max_steps
+        return observation, info, max_steps
 
     def step(self, action, verbose=True, step_fitness=0.0, genome_id=0, num_closes=0 ):
         if self.done:
@@ -340,7 +341,6 @@ class AutomationEnv(gym.Env):
             profit_metric = self.balance - self.balance_ant
             reward_balance = (profit_metric)/(self.initial_balance*self.max_steps)  # Reward for balance increase
             # Penalize complexity for avoiding overfitting Kormogorov complexity (constant for all steps)
-            reward_kormogorov = -self.kolmogorov_c/(sqr_max_steps)
             #  reward a large number of orders
             desired_min_orders = 100
             reward_orders = (self.num_closes-desired_min_orders)/(200*self.max_steps)
@@ -372,18 +372,21 @@ class AutomationEnv(gym.Env):
         if self.current_step >= (self.num_ticks - 1):
             self.done = True
 
-        reward = reward_balance + reward_kormogorov + reward_orders + reward_margin_call + reward_inaction_cc
+        reward = reward_balance + reward_orders + reward_margin_call + reward_inaction_cc
         self.reward = reward
 
 
-        if self.done and self.c_c != 1:
+        if self.done and self.c_c != 1 and self.num_closes>0:
             # Calculate L2 penalty (sum of squared weights)
             l2_penalty = 0.0
             for connection in self.genome.connections.values():
                 l2_penalty += connection.weight ** 2
             lambda_l2 = 0.01  # Regularization strength
+            complexity_lambda = 0.01  # Complexity penalty strength
             fitness_l2 = -lambda_l2 * l2_penalty
-            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{reward_balance}, rk:{reward_kormogorov}, ro:{reward_orders}, rm:{reward_margin_call}, ri:{reward_inaction_cc}, l2:{fitness_l2}, Fitness: {step_fitness+reward} ")
+            reward_kormogorov = -self.kolmogorov_c * complexity_lambda/self.max_steps
+            
+            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{reward_balance}, ro:{reward_orders}, rm:{reward_margin_call}, ri:{reward_inaction_cc}, l2:{fitness_l2}, tr-k:{reward_kormogorov}, Fitness: {step_fitness+reward} ")
 
         info = {
             "date": self.x_train[self.current_step-1, 0],
