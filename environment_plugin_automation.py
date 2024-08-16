@@ -359,9 +359,9 @@ class AutomationEnv(gym.Env):
         
 
         #set the lambda values (just for showing, please verify the actual values in optimizer)
-        profit_lambda = 1.0    # Reward for profit
-        orders_lambda = 0.01    # Reward for closing orders
-        complexity_lambda = 0.001  # Complexity penalty strength
+        profit_lambda = 100.0    # Reward for profit
+        orders_lambda = 0.1    # Reward for closing orders
+        complexity_lambda = 0.1  # Complexity penalty strength
         l2_lambda = 0.0001  # Regularization strength
 
         #
