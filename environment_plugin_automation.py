@@ -172,7 +172,7 @@ class AutomationEnv(gym.Env):
         max_steps = self.max_steps
         return observation, info, max_steps
 
-    def step(self, action, verbose=True, step_fitness=0.0, genome_id=0, num_closes=0 ):
+    def step(self, action, verbose=True, step_fitness=0.0, genome_id=0, num_closes=0, reward_auc_prev=0.0):
         if self.done:
             return np.zeros(self.x_train.shape[1]), self.reward, self.done, {}
 
@@ -330,11 +330,13 @@ class AutomationEnv(gym.Env):
         
 
         # Composite reward calculation using penalty by inaction and optionally reward for balance increase and kormogorov complexity
-        reward_margin_call = 0
+        reward_margin_call = 0.0
+        reward_auc = 0.0
         if self.current_step > 0:
             penalty_cost = -1/self.max_steps # Normalize the reward
             if self.done and self.c_c == 1: #Closed by margin call
                 reward_margin_call = (self.max_steps - self.current_step)*penalty_cost #Penalize for margin call
+            reward_auc = (self.balance/(self.initial_balance*self.max_steps))  # Reward for area under curve of balance
         else:
             reward = 0
         
@@ -354,10 +356,14 @@ class AutomationEnv(gym.Env):
         complexity_lambda = 0.001  # Complexity penalty strength
         l2_lambda = 0.01  # Regularization strength
         margin_call_lambda = 0.1 # Reward for margin call
+        reward_auc_lambda = 0.1 # Reward for balance increase
 
         #updatre reward
         reward =  reward_margin_call * margin_call_lambda
-        self.reward = reward
+        #conditionally aadd auc reward only if the first order is closed
+        if self.num_closes > 0:
+            reward += reward_auc * reward_auc_lambda
+            self.reward = reward
 
         # calculate aditional fitness reward and penalties
         if self.done:
@@ -375,15 +381,17 @@ class AutomationEnv(gym.Env):
                 # Calculate the reward for profit
                 total_profit_reward = (self.balance/self.initial_balance)  * profit_lambda
                 if self.c_c == 1: # Margin Call
-                    total_l2_penalty = 1
-                    total_complexity_penalty = 1    
+                    total_l2_penalty = 10
+                    total_complexity_penalty = 10
             else:
                 total_l2_penalty = 10
                 total_complexity_penalty = 10    
                 total_orders_reward = -10*orders_lambda
                 total_profit_reward = -10*profit_lambda
+                reward_auc = -10*reward_auc_lambda
+
             total_fitness_rewards = (total_orders_reward * total_profit_reward) + total_orders_reward - total_l2_penalty - total_complexity_penalty 
-            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, ro:{total_orders_reward}, rm:{reward_margin_call}, l2:{-total_l2_penalty}, tc:{-total_complexity_penalty}, Fitness: {step_fitness+reward+total_fitness_rewards} ")
+            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, auc: {reward_auc_prev+(reward_auc * reward_auc_lambda)}, ro:{total_orders_reward}, rm:{reward_margin_call * margin_call_lambda}, l2:{-total_l2_penalty}, tc:{-total_complexity_penalty}, Fitness: {step_fitness+reward+total_fitness_rewards} ")
 
         info = {
             "date": self.x_train[self.current_step-1, 0],
@@ -404,7 +412,8 @@ class AutomationEnv(gym.Env):
             "spread": self.spread,
             "margin": self.margin,
             "initial_balance": self.initial_balance,
-            "c_c": self.c_c
+            "c_c": self.c_c,
+            "reward_auc": reward_auc*reward_auc_lambda
         }
 
         if self.order_status == 0:
