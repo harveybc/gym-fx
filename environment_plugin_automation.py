@@ -15,7 +15,7 @@ class Plugin:
         'min_orders': 4,
         'sl': 2000,  # Adjusted Stop Loss
         'tp': 2000,  # Adjusted Take Profit
-        'rel_volume': 0.1, # size of the new orders relative to the current balance
+        'rel_volume': 0.01, # size of the new orders relative to the current balance
         'max_order_volume': 1000000, # Maximum order volume = 10 lots (1 lot = 100,000 units)
         'min_order_volume': 10000, # Minimum order volume = 0.1 lots (1 lot = 100,000 units)
         'leverage': 100,
@@ -350,12 +350,12 @@ class AutomationEnv(gym.Env):
         self.balance_ant = self.balance
         
         #set the lambda values (just for showing, please verify the actual values in optimizer)
-        profit_lambda = 100.0    # Reward for profit
+        profit_lambda = 1.0    # Reward for profit
         orders_lambda = 0.1    # Reward for closing orders
-        complexity_lambda = 0.001  # Complexity penalty strength
-        l2_lambda = 0.01  # Regularization strength
-        margin_call_lambda = 10 # Reward for margin call
-        reward_auc_lambda = 100 # Reward for balance increase
+        complexity_lambda = 0.00001  # Complexity penalty strength
+        l2_lambda = 0.001  # Regularization strength
+        margin_call_lambda = 100 # Reward for margin call
+        reward_auc_lambda = 10 # Reward for balance increase
 
         #updatre reward
         reward =  reward_margin_call * margin_call_lambda
@@ -381,16 +381,16 @@ class AutomationEnv(gym.Env):
                 total_orders_reward = self.num_closes* orders_lambda
                 # Calculate the reward for profit
                 total_profit_reward = (self.balance/self.initial_balance)  * profit_lambda
-                if self.c_c == 1: # Margin Call
-                    total_l2_penalty = 10
-                    total_complexity_penalty = 10
+                #if self.c_c == 1: # Margin Call
+                #    total_l2_penalty = 10
+                #    total_complexity_penalty = 10
             else:
                 total_l2_penalty = 20
                 total_complexity_penalty = 20    
                 total_orders_reward = -20
                 total_profit_reward = 0
                 
-            total_fitness_rewards = (total_orders_reward * total_profit_reward) + total_orders_reward - total_l2_penalty - total_complexity_penalty 
+            total_fitness_rewards = total_orders_reward + total_profit_reward + total_orders_reward - total_l2_penalty - total_complexity_penalty 
             print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, auc: {(reward_auc_prev)}, ro:{total_orders_reward}, rm:{reward_margin_call * margin_call_lambda}, l2:{-total_l2_penalty}, tc:{-total_complexity_penalty}, Fitness: {step_fitness+reward+total_fitness_rewards} ")
 
         info = {
