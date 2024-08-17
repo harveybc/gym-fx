@@ -331,12 +331,11 @@ class AutomationEnv(gym.Env):
 
         # Composite reward calculation using penalty by inaction and optionally reward for balance increase and kormogorov complexity
         reward_margin_call = 0.0
-        reward_auc = 0.0
+  
         if self.current_step > 0:
             penalty_cost = -1/self.max_steps # Normalize the reward
             if self.done and self.c_c == 1: #Closed by margin call
                 reward_margin_call = (self.max_steps - self.current_step)*penalty_cost #Penalize for margin call
-            reward_auc = (self.balance/(self.initial_balance*self.max_steps))  # Reward for area under curve of balance
         else:
             reward = 0
         
@@ -361,8 +360,10 @@ class AutomationEnv(gym.Env):
         #updatre reward
         reward =  reward_margin_call * margin_call_lambda
         #conditionally aadd auc reward only if the first order is closed
+        reward_auc = 0.0
         if self.num_closes > 0:
-            reward += reward_auc * reward_auc_lambda
+            reward_auc = (self.balance/(self.initial_balance*self.max_steps))  # Reward for area under curve of balance
+            reward += (reward_auc * reward_auc_lambda)
         self.reward = reward
 
         # calculate aditional fitness reward and penalties
@@ -390,7 +391,7 @@ class AutomationEnv(gym.Env):
                 total_profit_reward = -10*profit_lambda
                 
             total_fitness_rewards = (total_orders_reward * total_profit_reward) + total_orders_reward - total_l2_penalty - total_complexity_penalty 
-            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, auc: {reward_auc_prev+(reward_auc * reward_auc_lambda)}, ro:{total_orders_reward}, rm:{reward_margin_call * margin_call_lambda}, l2:{-total_l2_penalty}, tc:{-total_complexity_penalty}, Fitness: {step_fitness+reward+total_fitness_rewards} ")
+            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, auc: {(reward_auc_prev)}, ro:{total_orders_reward}, rm:{reward_margin_call * margin_call_lambda}, l2:{-total_l2_penalty}, tc:{-total_complexity_penalty}, Fitness: {step_fitness+reward+total_fitness_rewards} ")
 
         info = {
             "date": self.x_train[self.current_step-1, 0],
