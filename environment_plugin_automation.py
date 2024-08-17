@@ -355,7 +355,7 @@ class AutomationEnv(gym.Env):
         complexity_lambda = 0.001  # Complexity penalty strength
         l2_lambda = 0.01  # Regularization strength
         margin_call_lambda = 0.1 # Reward for margin call
-        reward_auc_lambda = 0.1 # Reward for balance increase
+        reward_auc_lambda = 100 # Reward for balance increase
 
         #updatre reward
         reward =  reward_margin_call * margin_call_lambda
