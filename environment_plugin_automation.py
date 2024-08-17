@@ -363,7 +363,7 @@ class AutomationEnv(gym.Env):
         #conditionally aadd auc reward only if the first order is closed
         if self.num_closes > 0:
             reward += reward_auc * reward_auc_lambda
-            self.reward = reward
+        self.reward = reward
 
         # calculate aditional fitness reward and penalties
         if self.done:
