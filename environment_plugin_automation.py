@@ -15,7 +15,7 @@ class Plugin:
         'min_orders': 4,
         'sl': 2000,  # Adjusted Stop Loss
         'tp': 2000,  # Adjusted Take Profit
-        'rel_volume': 0.01, # size of the new orders relative to the current balance
+        'rel_volume': 0.1, # size of the new orders relative to the current balance
         'max_order_volume': 1000000, # Maximum order volume = 10 lots (1 lot = 100,000 units)
         'min_order_volume': 10000, # Minimum order volume = 0.1 lots (1 lot = 100,000 units)
         'leverage': 100,
