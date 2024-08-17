@@ -354,7 +354,7 @@ class AutomationEnv(gym.Env):
         orders_lambda = 0.1    # Reward for closing orders
         complexity_lambda = 0.001  # Complexity penalty strength
         l2_lambda = 0.01  # Regularization strength
-        margin_call_lambda = 0.1 # Reward for margin call
+        margin_call_lambda = 10 # Reward for margin call
         reward_auc_lambda = 100 # Reward for balance increase
 
         #updatre reward
