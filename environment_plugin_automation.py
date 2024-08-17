@@ -385,9 +385,9 @@ class AutomationEnv(gym.Env):
                     total_l2_penalty = 10
                     total_complexity_penalty = 10
             else:
-                total_l2_penalty = 10
-                total_complexity_penalty = 10    
-                total_orders_reward = -10
+                total_l2_penalty = 20
+                total_complexity_penalty = 20    
+                total_orders_reward = -20
                 total_profit_reward = 0
                 
             total_fitness_rewards = (total_orders_reward * total_profit_reward) + total_orders_reward - total_l2_penalty - total_complexity_penalty 
