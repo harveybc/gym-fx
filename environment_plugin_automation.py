@@ -15,7 +15,7 @@ class Plugin:
         'min_orders': 4,
         'sl': 2000,  # Adjusted Stop Loss
         'tp': 2000,  # Adjusted Take Profit
-        'rel_volume': 0.1, # size of the new orders relative to the current balance
+        'rel_volume': 0.02, # size of the new orders relative to the current balance
         'max_order_volume': 1000000, # Maximum order volume = 10 lots (1 lot = 100,000 units)
         'min_order_volume': 10000, # Minimum order volume = 0.1 lots (1 lot = 100,000 units)
         'leverage': 100,
@@ -397,7 +397,7 @@ class AutomationEnv(gym.Env):
                 total_profit_reward = 0
                 
             reward_auc_prev = reward_auc_prev + total_reward_auc
-            total_fitness_rewards = (total_orders_reward*total_profit_reward*reward_auc_prev) + reward_auc_prev + total_orders_reward + total_l2_penalty - total_complexity_penalty 
+            total_fitness_rewards = (total_orders_reward*total_profit_reward*reward_auc_prev) + total_profit_reward + reward_auc_prev + total_orders_reward + total_l2_penalty - total_complexity_penalty 
             print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, auc: {(reward_auc_prev)}, ro:{total_orders_reward}, rm:{reward_margin_call * margin_call_lambda}, l2:{-total_l2_penalty}, tc:{-total_complexity_penalty}, Fitness: {step_fitness+total_fitness_rewards+reward} ")
 
         info = {
