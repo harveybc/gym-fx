@@ -350,7 +350,7 @@ class AutomationEnv(gym.Env):
         self.balance_ant = self.balance
         
         #set the lambda values (just for showing, please verify the actual values in optimizer)
-        profit_lambda = 100.0    # Reward for profit
+        profit_lambda = 10.0    # Reward for profit
         orders_lambda = 0.01    # Reward for closing orders
         complexity_lambda = 0.001  # Complexity penalty strength
         l2_lambda = 0.1  # Regularization strength
