@@ -377,10 +377,10 @@ class AutomationEnv(gym.Env):
                 #total_complexity_penalty = complexity_lambda * complexity_penalty
                 
                 # Calculate L2 penalty (sum of squared weights)
-                #l2_penalty = 0.0
-                #for connection in self.genome.connections.values():
-                #    l2_penalty += connection.weight ** 2
-                #total_l2_penalty = l2_lambda * l2_penalty 
+                l2_penalty = 0.0
+                for connection in self.genome.connections.values():
+                    l2_penalty += connection.weight ** 2
+                total_l2_penalty = l2_lambda * l2_penalty 
                 
                 # calculate the reward for closing orders
                 total_orders_reward = self.num_closes* orders_lambda
@@ -390,14 +390,14 @@ class AutomationEnv(gym.Env):
                 #    total_l2_penalty = 10
                 #    total_complexity_penalty = -5
             else:
-                total_l2_penalty = 200
-                total_complexity_penalty = -200
+                total_l2_penalty = 20
+                total_complexity_penalty = -20
                 total_orders_reward = 0
                 total_profit_reward = 0
                 
             reward_auc_prev = reward_auc_prev + total_reward_auc
             #total_fitness_rewards = (total_orders_reward*total_profit_reward*reward_auc_prev) + total_profit_reward + reward_auc_prev + total_orders_reward - total_l2_penalty + total_complexity_penalty 
-            total_fitness_rewards = total_profit_reward - total_l2_penalty + total_complexity_penalty 
+            total_fitness_rewards = total_profit_reward - total_l2_penalty + total_complexity_penalty - total_l2_penalty
             print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, auc: {(reward_auc_prev)}, ro:{total_orders_reward}, rm:{reward_margin_call * margin_call_lambda}, l2:{-total_l2_penalty}, tc:{total_complexity_penalty}, Fitness: {step_fitness+total_fitness_rewards+reward} ")
 
         info = {
