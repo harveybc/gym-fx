@@ -352,7 +352,7 @@ class AutomationEnv(gym.Env):
         #set the lambda values (just for showing, please verify the actual values in optimizer)
         profit_lambda = 10.0    # Reward for profit
         orders_lambda = 0.01    # Reward for closing orders
-        complexity_lambda = 0.001  # Complexity penalty strength
+        complexity_lambda = 0.01  # Complexity penalty strength
         l2_lambda = 0.1  # Regularization strength
         margin_call_lambda = 10 # Reward for margin call
         reward_auc_lambda = 0.1 # Reward for balance increase
@@ -374,8 +374,8 @@ class AutomationEnv(gym.Env):
         if self.done:
             if self.num_closes > 0:
                 # Calculate the Kolmogorov complexity penalty of the genome
-                #complexity_penalty = self.kolmogorov_complexity(self.genome)
-                #total_complexity_penalty = complexity_lambda * complexity_penalty
+                complexity_penalty = self.kolmogorov_complexity(self.genome)
+                total_complexity_penalty = complexity_lambda * complexity_penalty
                 
                 # Calculate L2 penalty (sum of squared weights)
                 #l2_penalty = 0.0
@@ -387,17 +387,17 @@ class AutomationEnv(gym.Env):
                 total_orders_reward = self.num_closes* orders_lambda
                 # Calculate the reward for profit
                 total_profit_reward = (self.balance/self.initial_balance)  * profit_lambda
-                #if self.c_c == 1: # Margin Call
+                if self.c_c == 1: # Margin Call
                 #    total_l2_penalty = 10
-                #    total_complexity_penalty = 10
+                    total_complexity_penalty = -10
             else:
                 total_l2_penalty = 10
-                total_complexity_penalty = 10    
+                total_complexity_penalty = -10
                 total_orders_reward = 0
                 total_profit_reward = 0
                 
             reward_auc_prev = reward_auc_prev + total_reward_auc
-            total_fitness_rewards = (total_orders_reward*total_profit_reward*reward_auc_prev) + total_profit_reward + reward_auc_prev + total_orders_reward + total_l2_penalty - total_complexity_penalty 
+            total_fitness_rewards = (total_orders_reward*total_profit_reward*reward_auc_prev) + total_profit_reward + reward_auc_prev + total_orders_reward + total_l2_penalty + total_complexity_penalty 
             print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, auc: {(reward_auc_prev)}, ro:{total_orders_reward}, rm:{reward_margin_call * margin_call_lambda}, l2:{-total_l2_penalty}, tc:{-total_complexity_penalty}, Fitness: {step_fitness+total_fitness_rewards+reward} ")
 
         info = {
