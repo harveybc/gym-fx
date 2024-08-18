@@ -20,7 +20,7 @@ class Plugin:
         'min_order_volume': 10000, # Minimum order volume = 0.1 lots (1 lot = 100,000 units)
         'leverage': 100,
         'pip_cost': 0.00001,
-        'min_order_time': 5,  #  Minimum Order Time to allow manual closing by an action inverse to the current order.
+        'min_order_time': 3,  #  Minimum Order Time to allow manual closing by an action inverse to the current order.
         'spread': 0.002  # Default spread value
     }
 
@@ -385,9 +385,9 @@ class AutomationEnv(gym.Env):
                 #    total_l2_penalty = 10
                 #    total_complexity_penalty = 10
             else:
-                total_l2_penalty = 20
-                total_complexity_penalty = 20    
-                total_orders_reward = -20
+                total_l2_penalty = 200
+                total_complexity_penalty = 200    
+                total_orders_reward = -200
                 total_profit_reward = 0
                 
             total_fitness_rewards = total_orders_reward + total_profit_reward + total_orders_reward - total_l2_penalty - total_complexity_penalty 
