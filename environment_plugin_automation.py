@@ -371,17 +371,16 @@ class AutomationEnv(gym.Env):
         total_complexity_penalty = 0.0   
         total_l2_penalty = 0.0
         if self.done:
-            # Calculate the Kolmogorov complexity penalty of the genome
-            complexity_penalty = self.kolmogorov_complexity(self.genome)
-            total_complexity_penalty = complexity_lambda * complexity_penalty
-            
-            # Calculate L2 penalty (sum of squared weights)
-            #l2_penalty = 0.0
-            #for connection in self.genome.connections.values():
-            #    l2_penalty += connection.weight ** 2
-            #total_l2_penalty = l2_lambda * l2_penalty 
             if self.num_closes > 0:
+                # Calculate the Kolmogorov complexity penalty of the genome
+                complexity_penalty = self.kolmogorov_complexity(self.genome)
+                total_complexity_penalty = complexity_lambda * complexity_penalty
                 
+                # Calculate L2 penalty (sum of squared weights)
+                #l2_penalty = 0.0
+                #for connection in self.genome.connections.values():
+                #    l2_penalty += connection.weight ** 2
+                #total_l2_penalty = l2_lambda * l2_penalty 
                 
                 # calculate the reward for closing orders
                 total_orders_reward = self.num_closes* orders_lambda
@@ -391,8 +390,8 @@ class AutomationEnv(gym.Env):
                 #    total_l2_penalty = 10
                 #    total_complexity_penalty = -5
             else:
-                total_l2_penalty = 20
-                #total_complexity_penalty = -20
+                total_l2_penalty = 200
+                total_complexity_penalty = -200
                 total_orders_reward = 0
                 total_profit_reward = 0
                 
