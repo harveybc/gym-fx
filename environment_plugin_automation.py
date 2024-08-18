@@ -350,7 +350,7 @@ class AutomationEnv(gym.Env):
         self.balance_ant = self.balance
         
         #set the lambda values (just for showing, please verify the actual values in optimizer)
-        profit_lambda = 1.0    # Reward for profit
+        profit_lambda = 100.0    # Reward for profit
         orders_lambda = 0.01    # Reward for closing orders
         complexity_lambda = 0.001  # Complexity penalty strength
         l2_lambda = 0.1  # Regularization strength
@@ -395,7 +395,7 @@ class AutomationEnv(gym.Env):
                 total_orders_reward = 0
                 total_profit_reward = 0
                 
-            total_fitness_rewards = total_orders_reward + total_profit_reward + total_l2_penalty - total_complexity_penalty 
+            total_fitness_rewards = (total_orders_reward*total_profit_reward) + total_orders_reward + total_l2_penalty - total_complexity_penalty 
             print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, auc: {(reward_auc_prev)}, ro:{total_orders_reward}, rm:{reward_margin_call * margin_call_lambda}, l2:{-total_l2_penalty}, tc:{-total_complexity_penalty}, Fitness: {step_fitness+total_fitness_rewards} ")
 
         info = {
