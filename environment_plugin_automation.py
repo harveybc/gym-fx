@@ -352,8 +352,8 @@ class AutomationEnv(gym.Env):
         #set the lambda values (just for showing, please verify the actual values in optimizer)
         profit_lambda = 1.0    # Reward for profit
         orders_lambda = 0.1    # Reward for closing orders
-        complexity_lambda = 0.00001  # Complexity penalty strength
-        l2_lambda = 0.001  # Regularization strength
+        complexity_lambda = 0.001  # Complexity penalty strength
+        l2_lambda = 0.1  # Regularization strength
         margin_call_lambda = 10 # Reward for margin call
         reward_auc_lambda = 10 # Reward for balance increase
 
@@ -363,20 +363,24 @@ class AutomationEnv(gym.Env):
         reward_auc = 0.0
         if self.num_closes > 0:
             reward_auc = (self.balance/(self.initial_balance*self.max_steps))  # Reward for area under curve of balance
-            reward += (reward_auc * reward_auc_lambda)
+            reward = reward + (reward_auc * reward_auc_lambda)
         self.reward = reward
 
         # calculate aditional fitness reward and penalties
+        total_complexity_penalty = 0.0   
+        total_l2_penalty = 0.0
         if self.done:
             if self.num_closes > 0:
                 # Calculate the Kolmogorov complexity penalty of the genome
                 complexity_penalty = self.kolmogorov_complexity(self.genome)
-                total_complexity_penalty = complexity_lambda * complexity_penalty
+                #total_complexity_penalty = complexity_lambda * complexity_penalty
+                
                 # Calculate L2 penalty (sum of squared weights)
                 l2_penalty = 0.0
                 for connection in self.genome.connections.values():
                     l2_penalty += connection.weight ** 2
-                total_l2_penalty = l2_lambda * l2_penalty 
+                #total_l2_penalty = l2_lambda * l2_penalty 
+                
                 # calculate the reward for closing orders
                 total_orders_reward = self.num_closes* orders_lambda
                 # Calculate the reward for profit
@@ -385,9 +389,9 @@ class AutomationEnv(gym.Env):
                 #    total_l2_penalty = 10
                 #    total_complexity_penalty = 10
             else:
-                total_l2_penalty = 2000
-                total_complexity_penalty = 2000    
-                total_orders_reward = -2000
+                total_l2_penalty = 10
+                total_complexity_penalty = 10    
+                total_orders_reward = 0
                 total_profit_reward = 0
                 
             total_fitness_rewards = total_orders_reward + total_profit_reward + total_orders_reward - total_l2_penalty - total_complexity_penalty 
