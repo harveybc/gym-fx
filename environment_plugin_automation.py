@@ -365,7 +365,6 @@ class AutomationEnv(gym.Env):
         if self.num_closes > 0:
             reward_auc = (self.balance/(self.initial_balance*self.max_steps))  # Reward for area under curve of balance
             total_reward_auc =  (reward_auc * reward_auc_lambda)
-            #reward += total_reward_auc
         self.reward = reward
 
         # calculate aditional fitness reward and penalties
@@ -398,7 +397,7 @@ class AutomationEnv(gym.Env):
                 
             reward_auc_prev = reward_auc_prev + total_reward_auc
             total_fitness_rewards = (total_orders_reward*total_profit_reward*reward_auc_prev) + total_profit_reward + reward_auc_prev + total_orders_reward + total_l2_penalty + total_complexity_penalty 
-            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, auc: {(reward_auc_prev)}, ro:{total_orders_reward}, rm:{reward_margin_call * margin_call_lambda}, l2:{-total_l2_penalty}, tc:{-total_complexity_penalty}, Fitness: {step_fitness+total_fitness_rewards+reward} ")
+            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, auc: {(reward_auc_prev)}, ro:{total_orders_reward}, rm:{reward_margin_call * margin_call_lambda}, l2:{-total_l2_penalty}, tc:{total_complexity_penalty}, Fitness: {step_fitness+total_fitness_rewards+reward} ")
 
         info = {
             "date": self.x_train[self.current_step-1, 0],
