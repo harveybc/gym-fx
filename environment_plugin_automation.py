@@ -354,7 +354,7 @@ class AutomationEnv(gym.Env):
         orders_lambda = 0.1    # Reward for closing orders
         complexity_lambda = 0.00001  # Complexity penalty strength
         l2_lambda = 0.001  # Regularization strength
-        margin_call_lambda = 100 # Reward for margin call
+        margin_call_lambda = 10 # Reward for margin call
         reward_auc_lambda = 10 # Reward for balance increase
 
         #updatre reward
@@ -385,9 +385,9 @@ class AutomationEnv(gym.Env):
                 #    total_l2_penalty = 10
                 #    total_complexity_penalty = 10
             else:
-                total_l2_penalty = 200
-                total_complexity_penalty = 200    
-                total_orders_reward = -200
+                total_l2_penalty = 2000
+                total_complexity_penalty = 2000    
+                total_orders_reward = -2000
                 total_profit_reward = 0
                 
             total_fitness_rewards = total_orders_reward + total_profit_reward + total_orders_reward - total_l2_penalty - total_complexity_penalty 
