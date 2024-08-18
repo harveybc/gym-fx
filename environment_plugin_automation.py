@@ -15,7 +15,7 @@ class Plugin:
         'min_orders': 4,
         'sl': 2000,  # Adjusted Stop Loss
         'tp': 2000,  # Adjusted Take Profit
-        'rel_volume': 0.01, # size of the new orders relative to the current balance
+        'rel_volume': 0.1, # size of the new orders relative to the current balance
         'max_order_volume': 1000000, # Maximum order volume = 10 lots (1 lot = 100,000 units)
         'min_order_volume': 10000, # Minimum order volume = 0.1 lots (1 lot = 100,000 units)
         'leverage': 100,
@@ -355,7 +355,7 @@ class AutomationEnv(gym.Env):
         complexity_lambda = 0.001  # Complexity penalty strength
         l2_lambda = 0.1  # Regularization strength
         margin_call_lambda = 10 # Reward for margin call
-        reward_auc_lambda = 1 # Reward for balance increase
+        reward_auc_lambda = 0.1 # Reward for balance increase
 
         #updatre reward
         reward =  reward_margin_call * margin_call_lambda
@@ -363,7 +363,8 @@ class AutomationEnv(gym.Env):
         reward_auc = 0.0
         if self.num_closes > 0:
             reward_auc = (self.balance/(self.initial_balance*self.max_steps))  # Reward for area under curve of balance
-            reward = reward + (reward_auc * reward_auc_lambda)
+            total_reward_auc =  (reward_auc * reward_auc_lambda)
+            reward += total_reward_auc
         self.reward = reward
 
         # calculate aditional fitness reward and penalties
@@ -394,8 +395,8 @@ class AutomationEnv(gym.Env):
                 total_orders_reward = 0
                 total_profit_reward = 0
                 
-            total_fitness_rewards = total_orders_reward + total_profit_reward + total_orders_reward - total_l2_penalty - total_complexity_penalty 
-            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, auc: {(reward_auc_prev)}, ro:{total_orders_reward}, rm:{reward_margin_call * margin_call_lambda}, l2:{-total_l2_penalty}, tc:{-total_complexity_penalty}, Fitness: {step_fitness+reward} ")
+            total_fitness_rewards = total_orders_reward + total_profit_reward + total_l2_penalty - total_complexity_penalty 
+            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes},rb:{total_profit_reward}, auc: {(reward_auc_prev)}, ro:{total_orders_reward}, rm:{reward_margin_call * margin_call_lambda}, l2:{-total_l2_penalty}, tc:{-total_complexity_penalty}, Fitness: {step_fitness+total_fitness_rewards} ")
 
         info = {
             "date": self.x_train[self.current_step-1, 0],
