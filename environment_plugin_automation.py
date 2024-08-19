@@ -356,7 +356,7 @@ class AutomationEnv(gym.Env):
         l2_lambda = 0.4  # Regularization strength (best overfitting with 1)
         margin_call_lambda = 10 # Reward for margin call
         reward_auc_lambda = 1.0 # Reward for balance increase
-        action_values_lambda = 1.0  # Reward for action values
+        action_values_lambda = 10.0  # Reward for action values
 
         #updatre reward
         reward =  reward_margin_call * margin_call_lambda
@@ -395,13 +395,13 @@ class AutomationEnv(gym.Env):
                     total_orders_reward = total_orders_reward * 0.1
                     total_profit_reward = 0
             else:
-                total_l2_penalty = -50
-                total_complexity_penalty = -50
+                total_l2_penalty = -100
+                total_complexity_penalty = -100
                 total_orders_reward = 0
                 total_profit_reward = 0
                 # add the action_values based reward to the fitness, the action_values contains the NEAT agent network 3 outputs (nope, buy, sell)  beforre executing the argmax to select the action
                 # this reward is calculated as the sum of the buy and sell outputs, since it represent the confidence of the agent to take the actions instead of nope
-                total_action_values = (act_values[1] + act_values[2])*action_values_lambda
+                total_action_values = ((act_values[1]+1) + (act_values[2]+1))*action_values_lambda
                 
             reward_auc_prev = reward_auc_prev + total_reward_auc
             #total_fitness_rewards = (total_orders_reward*total_profit_reward*reward_auc_prev) + total_profit_reward + reward_auc_prev + total_orders_reward - total_l2_penalty + total_complexity_penalty 
