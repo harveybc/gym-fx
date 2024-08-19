@@ -386,9 +386,9 @@ class AutomationEnv(gym.Env):
                 total_orders_reward = self.num_closes* orders_lambda
                 # Calculate the reward for profit
                 total_profit_reward = (self.balance/self.initial_balance)  * profit_lambda
-                #if self.c_c == 1: # Margin Call
-                #    total_l2_penalty = 10
-                #    total_complexity_penalty = -5
+                if self.c_c == 1: # Margin Call
+                    total_l2_penalty = -5
+                    total_complexity_penalty = -5
             else:
                 total_l2_penalty = -50
                 total_complexity_penalty = -50
