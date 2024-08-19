@@ -172,7 +172,7 @@ class AutomationEnv(gym.Env):
         max_steps = self.max_steps
         return observation, info, max_steps
 
-    def step(self, action, verbose=True, step_fitness=0.0, genome_id=0, num_closes=0, reward_auc_prev=0.0):
+    def step(self, action, verbose=True, step_fitness=0.0, genome_id=0, num_closes=0, reward_auc_prev=0.0, act_values=[0.0, 0.0, 0.0]):
         if self.done:
             return np.zeros(self.x_train.shape[1]), self.reward, self.done, {}
 
@@ -351,11 +351,12 @@ class AutomationEnv(gym.Env):
         
         #set the lambda values (just for showing, please verify the actual values in optimizer)
         profit_lambda = 50.0    # Reward for profit
-        orders_lambda = 0.5    # Reward for closing orders
+        orders_lambda = 0.1    # Reward for closing orders
         complexity_lambda = 0.03  # Complexity penalty strength (best overfitting with 0.1)
         l2_lambda = 0.4  # Regularization strength (best overfitting with 1)
         margin_call_lambda = 10 # Reward for margin call
         reward_auc_lambda = 1.0 # Reward for balance increase
+        action_values_lambda = 1.0  # Reward for action values
 
         #updatre reward
         reward =  reward_margin_call * margin_call_lambda
@@ -370,6 +371,8 @@ class AutomationEnv(gym.Env):
         # calculate aditional fitness reward and penalties
         total_complexity_penalty = 0.0   
         total_l2_penalty = 0.0
+        total_action_values = 0.0
+
         if self.done:
             if self.num_closes > 0:
                 # Calculate the Kolmogorov complexity penalty of the genome
@@ -396,11 +399,14 @@ class AutomationEnv(gym.Env):
                 total_complexity_penalty = -50
                 total_orders_reward = 0
                 total_profit_reward = 0
+                # add the action_values based reward to the fitness, the action_values contains the NEAT agent network 3 outputs (nope, buy, sell)  beforre executing the argmax to select the action
+                # this reward is calculated as the sum of the buy and sell outputs, since it represent the confidence of the agent to take the actions instead of nope
+                total_action_values = (act_values[1] + act_values[2])*action_values_lambda
                 
             reward_auc_prev = reward_auc_prev + total_reward_auc
             #total_fitness_rewards = (total_orders_reward*total_profit_reward*reward_auc_prev) + total_profit_reward + reward_auc_prev + total_orders_reward - total_l2_penalty + total_complexity_penalty 
-            total_fitness_rewards = total_profit_reward + total_orders_reward + total_l2_penalty + total_complexity_penalty 
-            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes}, rb:{total_profit_reward}, auc: {(reward_auc_prev)}, ro:{total_orders_reward}, rm:{reward_margin_call * margin_call_lambda}, l2:{total_l2_penalty}, tc:{total_complexity_penalty}, Fitness: {step_fitness+total_fitness_rewards+reward} ")
+            total_fitness_rewards = total_profit_reward + total_orders_reward + total_l2_penalty + total_complexity_penalty + total_action_values
+            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes}, rb:{total_profit_reward}, tav: {(total_action_values)}, ro:{total_orders_reward}, rm:{reward_margin_call * margin_call_lambda}, l2:{total_l2_penalty}, tc:{total_complexity_penalty}, Fitness: {step_fitness+total_fitness_rewards+reward} ")
 
         info = {
             "date": self.x_train[self.current_step-1, 0],
