@@ -401,7 +401,7 @@ class AutomationEnv(gym.Env):
                 total_profit_reward = 0
                 # add the action_values based reward to the fitness, the action_values contains the NEAT agent network 3 outputs (nope, buy, sell)  beforre executing the argmax to select the action
                 # this reward is calculated as the sum of the buy and sell outputs, since it represent the confidence of the agent to take the actions instead of nope
-                total_action_values = ((act_values[1]+1) + (act_values[2]+1))*action_values_lambda
+                total_action_values = ((act_values[1]+1) + (act_values[2]+1) - 2*(act_values[0]+1))*action_values_lambda
                 
             reward_auc_prev = reward_auc_prev + total_reward_auc
             #total_fitness_rewards = (total_orders_reward*total_profit_reward*reward_auc_prev) + total_profit_reward + reward_auc_prev + total_orders_reward - total_l2_penalty + total_complexity_penalty 
