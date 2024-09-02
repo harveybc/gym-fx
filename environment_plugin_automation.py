@@ -253,8 +253,8 @@ class AutomationEnv(gym.Env):
                     print(f"Current balance (after SELL action): {self.balance}, Number of closes: {self.num_closes}")
                     print(f"Order Status after sell action: {self.order_status}")
 
-            # Manual close by action (Buy -> Sell or Sell -> Buy) if min_order_time has passed
-            if (self.order_status == 1 and action == 2) or (self.order_status == 2 and action == 1):
+            # Manual close by action (Nop or Buy -> Sell or Sell -> Buy) if min_order_time has passed
+            if((self.order_status == 1 and action == 2) or (self.order_status == 2 and action == 1)) or (self.order_status == 1 and action == 0) or (self.order_status == 2 and action == 0):
                 if (self.current_step - self.order_time) > self.min_order_time:
                     # Calculate for existing BUY order (status=1)
                     if self.order_status == 1:
