@@ -352,7 +352,7 @@ class AutomationEnv(gym.Env):
         #set the lambda values (just for showing, please verify the actual values in optimizer)
         profit_lambda = 30.0    # Reward for profit
         orders_lambda = 0.1    # Reward for closing orders
-        complexity_lambda = -0.07  # Complexity penalty strength (best overfitting with 0.1)
+        complexity_lambda = 0.001  # Complexity penalty strength (best overfitting with 0.1)
         l2_lambda = 0.7  # Regularization strength (best overfitting with 1)
         margin_call_lambda = 50 # Reward for margin call
         reward_auc_lambda = 1.0 # Reward for balance increase
@@ -376,8 +376,8 @@ class AutomationEnv(gym.Env):
         if self.done:
             if self.num_closes > 0:
                 # Calculate the Kolmogorov complexity penalty of the genome
-                #complexity_penalty = self.kolmogorov_complexity(self.genome)
-                #total_complexity_penalty = complexity_lambda * complexity_penalty
+                complexity_penalty = self.kolmogorov_complexity(self.genome)
+                total_complexity_penalty = complexity_lambda * complexity_penalty
                 
                 # Calculate L2 penalty (sum of squared weights)
                 #l2_penalty = 0.0
