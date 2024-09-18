@@ -15,10 +15,10 @@ class Plugin:
         'min_orders': 4,
         'sl': 3000,  # Adjusted Stop Loss
         'tp': 3000,  # Adjusted Take Profit
-        'rel_volume': 0.02, # size of the new orders relative to the current balance
+        'rel_volume': 0.05, # size of the new orders relative to the current balance
         'max_order_volume': 1000000, # Maximum order volume = 10 lots (1 lot = 100,000 units)
         'min_order_volume': 10000, # Minimum order volume = 0.1 lots (1 lot = 100,000 units)
-        'leverage': 100,
+        'leverage': 1000,
         'pip_cost': 0.00001,
         'min_order_time': 3,  #  Minimum Order Time to allow manual closing by an action inverse to the current order.
         'spread': 0.002  # Default spread value
