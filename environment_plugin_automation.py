@@ -390,8 +390,8 @@ class AutomationEnv(gym.Env):
                 # Calculate the reward for profit
                 total_profit_reward = (self.balance/self.initial_balance)  * profit_lambda
                 if self.c_c == 1: # Margin Call
-                    total_l2_penalty = -3
-                    total_complexity_penalty = -3
+                    total_l2_penalty = 0
+                    total_complexity_penalty = 0
                     total_orders_reward = 0
                     total_profit_reward = 0
             else:
@@ -404,6 +404,9 @@ class AutomationEnv(gym.Env):
                 total_action_values = ((act_values[1]+1) + (act_values[2]+1) - 2*(act_values[0]+1))*action_values_lambda
                 if total_action_values == 0.0 :
                     total_action_values = -300
+
+            # TODO: test
+            total_orders_reward = 0
 
             reward_auc_prev = reward_auc_prev + total_reward_auc
             #total_fitness_rewards = (total_orders_reward*total_profit_reward*reward_auc_prev) + total_profit_reward + reward_auc_prev + total_orders_reward - total_l2_penalty + total_complexity_penalty 
