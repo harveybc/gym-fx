@@ -376,8 +376,8 @@ class AutomationEnv(gym.Env):
         if self.done:
             if self.num_closes > 0:
                 # Calculate the Kolmogorov complexity penalty of the genome
-                complexity_penalty = self.kolmogorov_complexity(self.genome)
-                total_complexity_penalty = complexity_lambda * complexity_penalty
+                #complexity_penalty = self.kolmogorov_complexity(self.genome)
+                #total_complexity_penalty = complexity_lambda * complexity_penalty
                 
                 # Calculate L2 penalty (sum of squared weights)
                 #l2_penalty = 0.0
