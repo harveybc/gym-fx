@@ -356,7 +356,7 @@ class AutomationEnv(gym.Env):
         l2_lambda = 0.7  # Regularization strength (best overfitting with 1)
         margin_call_lambda = 50 # Reward for margin call
         reward_auc_lambda = 1.0 # Reward for balance increase
-        action_values_lambda = 10.0  # Reward for action values
+        action_values_lambda = 0.01  # Reward for action values
 
         #updatre reward
         reward =  reward_margin_call * margin_call_lambda
@@ -408,7 +408,7 @@ class AutomationEnv(gym.Env):
             
             reward_auc_prev = reward_auc_prev + total_reward_auc
             #total_fitness_rewards = (total_orders_reward*total_profit_reward*reward_auc_prev) + total_profit_reward + reward_auc_prev + total_orders_reward - total_l2_penalty + total_complexity_penalty 
-            total_fitness_rewards = (total_profit_reward*total_profit_reward*total_orders_reward) + total_l2_penalty + total_complexity_penalty 
+            total_fitness_rewards = (total_profit_reward*total_profit_reward*total_orders_reward) + total_l2_penalty + total_complexity_penalty + total_action_values
             print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes}, rb:{total_profit_reward}, tav: {(total_action_values)}, ro:{total_orders_reward}, rm:{reward_margin_call * margin_call_lambda}, l2:{total_l2_penalty}, tc:{total_complexity_penalty}, Fitness: {step_fitness+total_fitness_rewards+reward} ")
 
         info = {
