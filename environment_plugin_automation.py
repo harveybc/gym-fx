@@ -376,6 +376,7 @@ class AutomationEnv(gym.Env):
             "equity": self.equity,
             "reward": reward,
             "c_c": self.c_c,
+            "initial_balance": self.initial_balance,  # Ensure initial balance is included in the info
         }
 
         # If the episode is done, calculate and print the final Sharpe ratio
