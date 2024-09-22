@@ -60,7 +60,9 @@ class Plugin:
                                  self.min_orders, self.sl, self.tp, self.rel_volume, self.leverage, self.pip_cost, self.min_order_time, self.spread, self.max_order_volume, self.min_order_volume, self.genome)
 
     def reset(self, genome=None):
+        self.returns = []  # Initialize returns to track rewards
         observation, info, max_steps = self.env.reset(genome)
+        
         return observation, info
 
     def step(self, action):
@@ -146,7 +148,7 @@ class AutomationEnv(gym.Env):
         self.order_time = 0
         self.genome = genome 
         self.kolmogorov_c = self.kolmogorov_complexity(self.genome) if self.genome is not None else 0
-        
+        self.returns = []  # Initialize returns to track rewards
 
         self.equity_curve = [self.initial_balance]
         observation = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
