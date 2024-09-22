@@ -373,14 +373,12 @@ class AutomationEnv(gym.Env):
             if verbose:
                 print(f"[DEBUG] Margin call return: {reward}")
 
-
-
         # If the episode is done, calculate and print the final Sharpe ratio
         if self.done:
             duration_hours = self.current_step / self.ticks_per_hour
             sharpe_ratio = self.calculate_sharpe_ratio(self.returns, duration_hours)
             
-            # Ensure fitness calculation is the same as in the optimizer
+            # Asegurar que el cálculo del fitness es el mismo que en el optimizer
             fitness = reward + sharpe_ratio
             print(f"id:{genome_id}, Bal: {self.balance}, Sharpe Ratio: {sharpe_ratio}, Fitness: {fitness}")
 
