@@ -329,55 +329,57 @@ class AutomationEnv(gym.Env):
 
         
 
-        # Ensure returns are being collected correctly
-        if not hasattr(self, 'returns'):
-            self.returns = []
+        # Define relevant lambda values
+        margin_call_lambda = 50  # Penalty for margin call
 
-        # Append current return (difference in balance) to returns list
-        current_return = self.balance - self.balance_ant
-        self.returns.append(current_return)
-
-        # Composite reward calculation using penalty by inaction and optionally reward for balance increase and Kolmogorov complexity
+        # Initialize the reward for this step
         reward_margin_call = 0.0
+        reward = 0.0
 
+  
         if self.current_step > 0:
-            penalty_cost = -1/self.max_steps  # Normalize the reward
-            if self.done and self.c_c == 1:  # Closed by margin call
-                reward_margin_call = (self.max_steps - self.current_step) * penalty_cost  # Penalize for margin call
+            penalty_cost = -1/self.max_steps # Normalize the reward
+            if self.done and self.c_c == 1: #Closed by margin call
+                reward_margin_call = (self.max_steps - self.current_step)*penalty_cost #Penalize for margin call
         else:
             reward = 0
-
-        # Set the observation as y_train if not None, else x_train
+        
+        # set the observation as y_train if not None, else x_train
         ob = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
         self.equity_ant = self.equity
+        # Calculate the profit/loss as the change in balance
+        balance_change = self.balance - self.balance_ant
 
-        # Check if the episode is over
-        if self.current_step >= (self.num_ticks - 1):
-            self.done = True
-            self.balance = self.equity
+        # If no margin call, the reward is the balance change (profit/loss)
+        if not (self.done and self.c_c == 1):  # If not margin call
+            reward = balance_change
 
-        # Update balance_ant
+        # If margin call, add the margin call penalty
+        reward += reward_margin_call * margin_call_lambda
+
+        # Update the previous balance for the next step
         self.balance_ant = self.balance
 
-        # Set the lambda values (just for showing, please verify the actual values in optimizer)
-        profit_lambda = 10.0    # Reward for profit
-        orders_lambda = 0.01    # Reward for closing orders
-        complexity_lambda = 0.0001  # Complexity penalty strength (best overfitting with 0.1)
-        l2_lambda = 0.7  # Regularization strength (best overfitting with 1)
-        margin_call_lambda = 50  # Reward for margin call
-        reward_auc_lambda = 1.0  # Reward for balance increase
-        action_values_lambda = 0.01  # Reward for action values
-
-        # Update reward
-        reward = reward_margin_call * margin_call_lambda
-
-        # Calculate additional fitness rewards and penalties
-        total_complexity_penalty = 0.0   
-        total_l2_penalty = 0.0
-        total_action_values = 0.0
-
-        # Calculate Sharpe Ratio if the episode is done
+        # If the episode is done, finalize the balance
         if self.done:
+            self.balance = self.equity  # Set final balance to equity
+
+        # Information dictionary that includes the final balance and other metrics
+        info = {
+            "date": self.x_train[self.current_step - 1, 0],
+            "close": self.x_train[self.current_step - 1, 4],
+            "balance": self.balance,
+            "equity": self.equity,
+            "reward": reward,
+            "c_c": self.c_c,
+        }
+
+        # If the episode is done, calculate and print the final Sharpe ratio
+        if self.done:
+            # Collect the reward as a return for Sharpe ratio calculation
+            self.returns.append(reward)
+            
+            # Calculate Sharpe ratio if returns have been tracked
             if len(self.returns) > 1:
                 mean_return = np.mean(self.returns)
                 return_std = np.std(self.returns)
@@ -386,14 +388,9 @@ class AutomationEnv(gym.Env):
             else:
                 sharpe_ratio = 0
 
-            if self.num_closes > 0:
-                # Calculate the reward for closing orders
-                total_orders_reward = self.num_closes * orders_lambda
-                # Calculate the reward for profit
-                total_profit_reward = (self.balance / self.initial_balance) * profit_lambda
-                if self.c_c == 1: 
+            print(f"id:{genome_id}, Bal: {self.balance}, Sharpe Ratio: {sharpe_ratio}, Fitness: {reward}")
 
-
+        return ob, reward, self.done, info
 
     def kolmogorov_complexity(self, genome):
         # Convert the genome to a string representation
