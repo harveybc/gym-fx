@@ -98,7 +98,7 @@ class AutomationEnv(gym.Env):
         self.order_status = 0  # 0 = no order, 1 = buy, 2 = sell
         self.order_price = 0.0
         self.order_close = 0.0
-        
+        self.ticks_per_hour = 1
 
         self.profit_pips = 0.0
         self.real_profit = 0.0
@@ -332,6 +332,7 @@ class AutomationEnv(gym.Env):
         
 
         # Define relevant lambda values
+        # Define relevant lambda values
         margin_call_lambda = 50  # Penalty for margin call
 
         # Initialize the reward for this step
@@ -360,20 +361,25 @@ class AutomationEnv(gym.Env):
         # Update the previous balance for the next step
         self.balance_ant = self.balance
 
-        # Append the reward to returns for Sharpe ratio calculation
-        self.returns.append(reward)
+        # Only consider a return when an order is closed (stop loss, take profit, manual close)
+        if self.done and self.c_c in [2, 3, 4]:  # Stop loss, Take profit, Manual close
+            self.returns.append(reward)
+            if verbose:
+                print(f"[DEBUG] Return added for Sharpe calculation: {reward}")
+
+        # If margin call, penalize and add as return
+        elif self.done and self.c_c == 1:  # Margin Call
+            self.returns.append(reward)
+            if verbose:
+                print(f"[DEBUG] Margin call return: {reward}")
+
+
 
         # If the episode is done, calculate and print the final Sharpe ratio
         if self.done:
-            # Calculate Sharpe ratio if returns have been tracked
-            if len(self.returns) > 1:
-                mean_return = np.mean(self.returns)
-                return_std = np.std(self.returns)
-                risk_free_rate = 0.01  # Example risk-free rate
-                sharpe_ratio = (mean_return - risk_free_rate) / return_std if return_std != 0 else 0
-            else:
-                sharpe_ratio = 0
-
+            duration_hours = self.current_step / self.ticks_per_hour
+            sharpe_ratio = self.calculate_sharpe_ratio(self.returns, duration_hours)
+            
             # Ensure fitness calculation is the same as in the optimizer
             fitness = reward + sharpe_ratio
             print(f"id:{genome_id}, Bal: {self.balance}, Sharpe Ratio: {sharpe_ratio}, Fitness: {fitness}")
@@ -391,6 +397,26 @@ class AutomationEnv(gym.Env):
 
         return ob, reward, self.done, info
 
+
+
+
+    def calculate_sharpe_ratio(self, returns, duration_hours, annual_risk_free_rate=0.1):
+        """
+        Calcula el Sharpe Ratio ajustando la tasa libre de riesgo anual a la duración de la operación.
+        """
+        if len(returns) <= 1:
+            return 0
+
+        # Calcula la tasa libre de riesgo ajustada para la duración de la operación
+        hourly_risk_free_rate = (1 + annual_risk_free_rate) ** (1 / 8760) - 1
+        adjusted_risk_free_rate = (1 + hourly_risk_free_rate) ** duration_hours - 1
+
+        # Calcula el Sharpe Ratio
+        mean_return = np.mean(returns)
+        return_std = np.std(returns)
+        sharpe_ratio = (mean_return - adjusted_risk_free_rate) / return_std if return_std != 0 else 0
+
+        return sharpe_ratio
 
 
     def kolmogorov_complexity(self, genome):
