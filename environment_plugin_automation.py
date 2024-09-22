@@ -102,7 +102,7 @@ class AutomationEnv(gym.Env):
 
         self.profit_pips = 0.0
         self.real_profit = 0.0
-        
+        self.orders_list = []
         self.order_volume = 0.0
         self.done = False
         self.reward = 0.0
@@ -149,7 +149,7 @@ class AutomationEnv(gym.Env):
         self.genome = genome 
         self.kolmogorov_c = self.kolmogorov_complexity(self.genome) if self.genome is not None else 0
         self.returns = []  # Initialize returns to track rewards
-
+        self.orders_list = []  # Initialize list to track orders
         self.equity_curve = [self.initial_balance]
         observation = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
         info = {
@@ -182,7 +182,8 @@ class AutomationEnv(gym.Env):
         if self.current_step >= self.max_steps:
             self.done = True
 
-        # Read time variables from CSV (Format: 0 = HighBid, 1 = Low, 2 = Close, 3 = NextOpen, 4 = v)
+        # Get the relevant values for the current step
+        current_date = self.x_train[self.current_step, 0]
         High = self.x_train[self.current_step, 3]
         Low = self.x_train[self.current_step, 2]
         Close = self.x_train[self.current_step, 4]
@@ -216,6 +217,8 @@ class AutomationEnv(gym.Env):
             self.margin = 0.0
             self.order_close = Close
             self.c_c = 1  # Set closing cause to margin call
+            # Append the order to the orders list, it includes: current_date (close date), open_date, order_type, order_price, order_close, profit_pips, real_profit, closing_cause)
+            self.orders_list.append( 
             self.done = True
             if verbose:
                 print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Margin Call")
@@ -382,6 +385,7 @@ class AutomationEnv(gym.Env):
             "reward": reward,
             "c_c": self.c_c,
             "sharpe_ratio": sharpe_ratio if self.done else 0,  # Add Sharpe ratio to info
+            "orders": self.orders_list
         }
 
         return ob, reward, self.done, info
