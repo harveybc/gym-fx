@@ -382,6 +382,9 @@ class AutomationEnv(gym.Env):
         total_l2_penalty = 0.0
         total_action_values = 0.0
 
+        # Initialize sharpe_ratio as 0
+        sharpe_ratio = 0.0
+
         if self.done:
             if self.num_closes > 0:
                 # Calculate the reward for closing orders
@@ -410,10 +413,11 @@ class AutomationEnv(gym.Env):
                 total_fitness_rewards = (total_profit_reward * total_profit_reward * total_orders_reward * reward_auc) + total_l2_penalty + total_complexity_penalty + total_action_values
 
             # Calculate the Sharpe Ratio at the end of the episode
-            mean_return = np.mean(self.returns)
-            return_std = np.std(self.returns)
-            risk_free_rate = 0.01  # Example risk-free rate
-            sharpe_ratio = (mean_return - risk_free_rate) / return_std if return_std != 0 else 0
+            if len(self.returns) > 1:
+                mean_return = np.mean(self.returns)
+                return_std = np.std(self.returns)
+                risk_free_rate = 0.01  # Example risk-free rate
+                sharpe_ratio = (mean_return - risk_free_rate) / return_std if return_std != 0 else 0
 
             # Add the Sharpe ratio to the final fitness
             step_fitness = step_fitness + sharpe_ratio
