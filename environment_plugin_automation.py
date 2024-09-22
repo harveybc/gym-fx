@@ -339,7 +339,7 @@ class AutomationEnv(gym.Env):
         reward = 0.0
 
         if self.current_step > 0:
-            penalty_cost = -1/self.max_steps  # Normalize the reward
+            penalty_cost = -1 / self.max_steps  # Normalize the reward
             if self.done and self.c_c == 1:  # Closed by margin call
                 reward_margin_call = (self.max_steps - self.current_step) * penalty_cost  # Penalize for margin call
 
@@ -374,7 +374,9 @@ class AutomationEnv(gym.Env):
             else:
                 sharpe_ratio = 0
 
-            print(f"id:{genome_id}, Bal: {self.balance}, Sharpe Ratio: {sharpe_ratio}, Fitness: {reward}")
+            # Ensure fitness calculation is the same as in the optimizer
+            fitness = reward + sharpe_ratio
+            print(f"id:{genome_id}, Bal: {self.balance}, Sharpe Ratio: {sharpe_ratio}, Fitness: {fitness}")
 
         # Information dictionary that includes the final balance and other metrics
         info = {
@@ -388,6 +390,7 @@ class AutomationEnv(gym.Env):
         }
 
         return ob, reward, self.done, info
+
 
 
     def kolmogorov_complexity(self, genome):
