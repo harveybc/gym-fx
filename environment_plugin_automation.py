@@ -393,7 +393,7 @@ class AutomationEnv(gym.Env):
             else:
                 sharpe_ratio = 0
 
-            print(f"id:{genome_id}, Bal: {self.balance}, Sharpe Ratio: {sharpe_ratio}, Fitness: {reward}")
+            print(f"id:{genome_id}, Bal: {self.balance}, rm: {reward_margin_call}, Sharpe : {sharpe_ratio}, Fitness: {reward}")
 
         return ob, reward, self.done, info
 
