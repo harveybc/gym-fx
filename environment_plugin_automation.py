@@ -341,53 +341,60 @@ class AutomationEnv(gym.Env):
         
         # set the observation as y_train if not None, else x_train
         ob = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
-
-        # Update balance and equity
         self.equity_ant = self.equity
+        # Check if the episode is over       
         if self.current_step >= (self.num_ticks - 1):
             self.done = True
             self.balance = self.equity
+        # upptdate balance_ant
         self.balance_ant = self.balance
+        
+        #set the lambda values (just for showing, please verify the actual values in optimizer)
+        # Set lambda values (should match those in the optimizer)
+        profit_lambda = 10.0
+        orders_lambda = 0.01
+        margin_call_lambda = 50
 
-        # Lambda values for tuning rewards
-        profit_lambda = 10.0  # Reward for profit
-        margin_call_lambda = 50  # Penalty for margin call
-        reward_auc_lambda = 1.0  # Reward for balance increase
-
-        # Update reward
-        reward = reward_margin_call * margin_call_lambda
-
-        # AUC reward only if the first order is closed
+        # Initialize rewards and penalties
+        reward = 0.0
+        total_profit_reward = 0.0
         reward_auc = 0.0
+
+        # Calculate margin call penalty or reward
+        if self.done and self.c_c == 1:  # Closed by margin call
+            reward = (self.max_steps - self.current_step) * (-1 / self.max_steps) * margin_call_lambda
+
+        # Calculate reward for profit if no margin call
         if self.num_closes > 0:
-            reward_auc = (self.balance / (self.initial_balance * self.max_steps))  # AUC reward for balance
-            reward += reward_auc * reward_auc_lambda
+            total_profit_reward = (self.balance / self.initial_balance) * profit_lambda
+            reward_auc = (self.balance / (self.initial_balance * self.max_steps)) * 1.0  # AUC reward calculation
 
-        # Apply final fitness reward and penalties at the end of the episode
-        if self.done:
-            if self.num_closes > 0:
-                total_profit_reward = (self.balance / self.initial_balance) * profit_lambda
-                if self.c_c == 1:  # Margin Call
-                    total_profit_reward = 0  # Zero out profit if margin call occurred
-            else:
-                total_profit_reward = 0
+            if self.c_c == 1:  # Margin Call
+                total_profit_reward = 0.0  # Zero out profit if margin call occurred
 
-            reward += total_profit_reward
+        # Calculate total fitness rewards (simplified)
+        if self.balance <= self.initial_balance:
+            total_fitness_rewards = (total_profit_reward * total_profit_reward * self.num_closes * orders_lambda)
+        else:
+            total_fitness_rewards = (total_profit_reward * total_profit_reward * self.num_closes * orders_lambda * reward_auc)
 
-            # Track the fitness within the environment
-            self.fitness = reward  # Accumulate the fitness
+        # The final fitness value is calculated as follows:
+        fitness = step_fitness + total_fitness_rewards + reward
 
-            # Debug output for the step with the exact fitness used in the optimizer
-            print(f"id:{genome_id}, Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), "
-                f"Ord:{self.num_closes}, Profit Reward: {total_profit_reward}, AUC: {reward_auc}, "
-                f"Margin Call Penalty: {reward_margin_call * margin_call_lambda}, Fitness: {self.fitness}")
+        # Ensure that the printed fitness is exactly what is used in the optimizer
+        print(
+            f"id:{genome_id}, Bal: {self.balance} "
+            f"({(self.balance - self.initial_balance) / self.initial_balance}), "
+            f"Ord:{self.num_closes}, rb:{total_profit_reward}, auc: {reward_auc}, "
+            f"Fitness: {fitness}"
+        )
 
         info = {
-            "date": self.x_train[self.current_step-1, 0],
-            "close": self.x_train[self.current_step-1, 4],
-            "high": self.x_train[self.current_step-1, 3],
-            "low": self.x_train[self.current_step-1, 2],
-            "open": self.x_train[self.current_step-1, 1],
+            "date": self.x_train[self.current_step - 1, 0],
+            "close": self.x_train[self.current_step - 1, 4],
+            "high": self.x_train[self.current_step - 1, 3],
+            "low": self.x_train[self.current_step - 1, 2],
+            "open": self.x_train[self.current_step - 1, 1],
             "action": action,
             "observation": ob,
             "episode_over": self.done,
@@ -395,15 +402,11 @@ class AutomationEnv(gym.Env):
             "num_closes": self.num_closes,
             "balance": self.balance,
             "equity": self.equity,
-            "reward": self.reward,
-            "order_status": self.order_status,
-            "order_volume": self.order_volume,
-            "spread": self.spread,
-            "margin": self.margin,
+            "reward": reward,
             "initial_balance": self.initial_balance,
             "c_c": self.c_c,
             "reward_auc": reward_auc,
-            "fitness": self.fitness  # Pass the exact fitness used in the optimizer
+            "fitness": fitness  # Pass the exact fitness used in the optimizer
         }
 
         if self.order_status == 0:
