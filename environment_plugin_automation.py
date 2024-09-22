@@ -341,81 +341,43 @@ class AutomationEnv(gym.Env):
         
         # set the observation as y_train if not None, else x_train
         ob = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
+
+        # Update balance and equity
         self.equity_ant = self.equity
-        # Check if the episode is over       
         if self.current_step >= (self.num_ticks - 1):
             self.done = True
             self.balance = self.equity
-        # upptdate balance_ant
         self.balance_ant = self.balance
-        
-        #set the lambda values (just for showing, please verify the actual values in optimizer)
-        profit_lambda = 10.0    # Reward for profit
-        orders_lambda = 0.01    # Reward for closing orders
-        complexity_lambda = 0.0001  # Complexity penalty strength (best overfitting with 0.1)
-        l2_lambda = 0.7  # Regularization strength (best overfitting with 1)
-        margin_call_lambda = 50 # Reward for margin call
-        reward_auc_lambda = 1.0 # Reward for balance increase
-        action_values_lambda = 0.01  # Reward for action values
 
-        #updatre reward
-        reward =  reward_margin_call * margin_call_lambda
-        #conditionally aadd auc reward only if the first order is closed
+        # Lambda values for tuning rewards
+        profit_lambda = 10.0  # Reward for profit
+        margin_call_lambda = 50  # Penalty for margin call
+        reward_auc_lambda = 1.0  # Reward for balance increase
+
+        # Update reward
+        reward = reward_margin_call * margin_call_lambda
+
+        # AUC reward only if the first order is closed
         reward_auc = 0.0
-        total_reward_auc = 0.0
         if self.num_closes > 0:
-            reward_auc = (self.balance/(self.initial_balance*self.max_steps))  # Reward for area under curve of balance
-            total_reward_auc =  (reward_auc * reward_auc_lambda)
-        self.reward = reward
+            reward_auc = (self.balance / (self.initial_balance * self.max_steps))  # AUC reward for balance
+            reward += reward_auc * reward_auc_lambda
 
-        # calculate aditional fitness reward and penalties
-        total_complexity_penalty = 0.0   
-        total_l2_penalty = 0.0
-        total_action_values = 0.0
-
+        # Apply final fitness reward and penalties at the end of the episode
         if self.done:
             if self.num_closes > 0:
-                # Calculate the Kolmogorov complexity penalty of the genome
-                #complexity_penalty = self.kolmogorov_complexity(self.genome)
-                #total_complexity_penalty = complexity_lambda * complexity_penalty
-                
-                # Calculate L2 penalty (sum of squared weights)
-                #l2_penalty = 0.0
-                #for connection in self.genome.connections.values():
-                #    l2_penalty += connection.weight ** 2
-                #total_l2_penalty = l2_lambda * l2_penalty 
-                
-                # calculate the reward for closing orders
-                total_orders_reward = self.num_closes* orders_lambda
-                # Calculate the reward for profit
-                total_profit_reward = (self.balance/self.initial_balance)  * profit_lambda
-                if self.c_c == 1: # Margin Call
-                    total_l2_penalty = 0
-                    total_complexity_penalty = 0
-                    total_orders_reward = 0
-                    total_profit_reward = 0
+                total_profit_reward = (self.balance / self.initial_balance) * profit_lambda
+                if self.c_c == 1:  # Margin Call
+                    total_profit_reward = 0  # Zero out profit if margin call occurred
             else:
-                total_l2_penalty = -50
-                total_complexity_penalty = -50
-                total_orders_reward = 0
                 total_profit_reward = 0
-                # add the action_values based reward to the fitness, the action_values contains the NEAT agent network 3 outputs (nope, buy, sell)  beforre executing the argmax to select the action
-                # this reward is calculated as the sum of the buy and sell outputs, since it represent the confidence of the agent to take the actions instead of nope
-                #total_action_values = ((act_values[1]+1) + (act_values[2]+1) - 2*(act_values[0]+1))*action_values_lambda
-                #if total_action_values == 0.0 :
-                #    total_action_values = -300
 
-            
-            reward_auc_prev = reward_auc_prev + total_reward_auc
-            #total_fitness_rewards = (total_orders_reward*total_profit_reward*reward_auc_prev) + total_profit_reward + reward_auc_prev + total_orders_reward - total_l2_penalty + total_complexity_penalty 
-            
-            
-            
-            if self.balance<=self.initial_balance:
-                total_fitness_rewards = (total_profit_reward*total_profit_reward*total_orders_reward) + total_l2_penalty + total_complexity_penalty + total_action_values
-            else:
-                total_fitness_rewards = (total_profit_reward*total_profit_reward*total_orders_reward*reward_auc) + total_l2_penalty + total_complexity_penalty + total_action_values
-            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes}, rb:{total_profit_reward}, auc: {(reward_auc)}, ro:{total_orders_reward}, rm:{reward_margin_call * margin_call_lambda}, l2:{total_l2_penalty}, tc:{total_complexity_penalty}, Fitness: {step_fitness+total_fitness_rewards+reward} ")
+            reward += total_profit_reward
+
+            # Debug output for the step
+            print(f"id:{genome_id}, Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), "
+                f"Ord:{self.num_closes}, Profit Reward: {total_profit_reward}, AUC: {reward_auc}, "
+                f"Margin Call Penalty: {reward_margin_call * margin_call_lambda}, Fitness: {reward + self.fitness} ")
 
         info = {
             "date": self.x_train[self.current_step-1, 0],
@@ -443,8 +405,9 @@ class AutomationEnv(gym.Env):
         if self.order_status == 0:
             self.profit_pips = 0
             self.real_profit = 0
-        
+
         return ob, reward, self.done, info
+
 
     def kolmogorov_complexity(self, genome):
         # Convert the genome to a string representation
