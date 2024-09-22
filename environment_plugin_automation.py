@@ -401,15 +401,21 @@ class AutomationEnv(gym.Env):
                 total_profit_reward = 0
                 # add the action_values based reward to the fitness, the action_values contains the NEAT agent network 3 outputs (nope, buy, sell)  beforre executing the argmax to select the action
                 # this reward is calculated as the sum of the buy and sell outputs, since it represent the confidence of the agent to take the actions instead of nope
-                total_action_values = ((act_values[1]+1) + (act_values[2]+1) - 2*(act_values[0]+1))*action_values_lambda
-                if total_action_values == 0.0 :
-                    total_action_values = -300
+                #total_action_values = ((act_values[1]+1) + (act_values[2]+1) - 2*(act_values[0]+1))*action_values_lambda
+                #if total_action_values == 0.0 :
+                #    total_action_values = -300
 
             
             reward_auc_prev = reward_auc_prev + total_reward_auc
             #total_fitness_rewards = (total_orders_reward*total_profit_reward*reward_auc_prev) + total_profit_reward + reward_auc_prev + total_orders_reward - total_l2_penalty + total_complexity_penalty 
-            total_fitness_rewards = (total_profit_reward*total_profit_reward*total_orders_reward) + total_l2_penalty + total_complexity_penalty + total_action_values 
-            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes}, rb:{total_profit_reward}, tav: {(total_action_values)}, ro:{total_orders_reward}, rm:{reward_margin_call * margin_call_lambda}, l2:{total_l2_penalty}, tc:{total_complexity_penalty}, Fitness: {step_fitness+total_fitness_rewards+reward} ")
+            
+            
+            
+            if self.balance<=self.initial_balance:
+                total_fitness_rewards = (total_profit_reward*total_profit_reward*total_orders_reward) + total_l2_penalty + total_complexity_penalty + total_action_values
+            else:
+                total_fitness_rewards = (total_profit_reward*total_profit_reward*total_orders_reward*reward_auc) + total_l2_penalty + total_complexity_penalty + total_action_values
+            print(f"id:{genome_id}, Kor: {self.kolmogorov_c} , Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), Ord:{num_closes}, rb:{total_profit_reward}, auc: {(reward_auc)}, ro:{total_orders_reward}, rm:{reward_margin_call * margin_call_lambda}, l2:{total_l2_penalty}, tc:{total_complexity_penalty}, Fitness: {step_fitness+total_fitness_rewards+reward} ")
 
         info = {
             "date": self.x_train[self.current_step-1, 0],
@@ -431,7 +437,7 @@ class AutomationEnv(gym.Env):
             "margin": self.margin,
             "initial_balance": self.initial_balance,
             "c_c": self.c_c,
-            "reward_auc": reward_auc*reward_auc_lambda
+            "reward_auc": reward_auc
         }
 
         if self.order_status == 0:
