@@ -329,8 +329,13 @@ class AutomationEnv(gym.Env):
 
         
 
-        # Initialize the returns list to track rewards for Sharpe ratio calculation
-        self.returns = []  # Add this at the beginning of the episode
+        # Ensure returns are being collected correctly
+        if not hasattr(self, 'returns'):
+            self.returns = []
+
+        # Append current return (difference in balance) to returns list
+        current_return = self.balance - self.balance_ant
+        self.returns.append(current_return)
 
         # Composite reward calculation using penalty by inaction and optionally reward for balance increase and Kolmogorov complexity
         reward_margin_call = 0.0
@@ -366,97 +371,27 @@ class AutomationEnv(gym.Env):
         # Update reward
         reward = reward_margin_call * margin_call_lambda
 
-        # Collect the reward for Sharpe ratio calculation (append rewards to returns)
-        self.returns.append(reward)
-
-        # Conditionally add AUC reward only if the first order is closed
-        reward_auc = 0.0
-        total_reward_auc = 0.0
-        if self.num_closes > 0:
-            reward_auc = (self.balance / (self.initial_balance * self.max_steps))  # Reward for area under curve of balance
-            total_reward_auc = reward_auc * reward_auc_lambda
-        self.reward = reward
-
-        # Calculate additional fitness reward and penalties
-        total_complexity_penalty = 0.0
+        # Calculate additional fitness rewards and penalties
+        total_complexity_penalty = 0.0   
         total_l2_penalty = 0.0
         total_action_values = 0.0
 
-        # Initialize sharpe_ratio as 0
-        sharpe_ratio = 0.0
-
+        # Calculate Sharpe Ratio if the episode is done
         if self.done:
-            if self.num_closes > 0:
-                # Calculate the reward for closing orders
-                total_orders_reward = self.num_closes * orders_lambda
-
-                # Calculate the reward for profit
-                total_profit_reward = (self.balance / self.initial_balance) * profit_lambda
-
-                if self.c_c == 1:  # Margin Call
-                    total_l2_penalty = 0
-                    total_complexity_penalty = 0
-                    total_orders_reward = 0
-                    total_profit_reward = 0
-            else:
-                total_l2_penalty = -50
-                total_complexity_penalty = -50
-                total_orders_reward = 0
-                total_profit_reward = 0
-
-            # Update the total rewards, penalties, and fitness
-            reward_auc_prev = reward_auc_prev + total_reward_auc
-
-            if self.balance <= self.initial_balance:
-                total_fitness_rewards = (total_profit_reward * total_profit_reward * total_orders_reward) + total_l2_penalty + total_complexity_penalty + total_action_values
-            else:
-                total_fitness_rewards = (total_profit_reward * total_profit_reward * total_orders_reward * reward_auc) + total_l2_penalty + total_complexity_penalty + total_action_values
-
-            # Calculate the Sharpe Ratio at the end of the episode
             if len(self.returns) > 1:
                 mean_return = np.mean(self.returns)
                 return_std = np.std(self.returns)
                 risk_free_rate = 0.01  # Example risk-free rate
                 sharpe_ratio = (mean_return - risk_free_rate) / return_std if return_std != 0 else 0
+            else:
+                sharpe_ratio = 0
 
-            # Add the Sharpe ratio to the final fitness
-            step_fitness = step_fitness + sharpe_ratio
-
-            # Print the final fitness and Sharpe ratio
-            print(f"id:{genome_id}, Kor: {self.kolmogorov_c}, Bal: {self.balance} ({(self.balance - self.initial_balance) / self.initial_balance}), "
-                f"Ord:{self.num_closes}, rb:{total_profit_reward}, auc: {reward_auc}, ro:{total_orders_reward}, "
-                f"rm:{reward_margin_call * margin_call_lambda}, l2:{total_l2_penalty}, tc:{total_complexity_penalty}, "
-                f"Sharpe Ratio: {sharpe_ratio}, Fitness: {step_fitness + total_fitness_rewards + reward}")
-
-        info = {
-            "date": self.x_train[self.current_step - 1, 0],
-            "close": self.x_train[self.current_step - 1, 4],
-            "high": self.x_train[self.current_step - 1, 3],
-            "low": self.x_train[self.current_step - 1, 2],
-            "open": self.x_train[self.current_step - 1, 1],
-            "action": action,
-            "observation": ob,
-            "episode_over": self.done,
-            "tick_count": self.current_step,
-            "num_closes": self.num_closes,
-            "balance": self.balance,
-            "equity": self.equity,
-            "reward": self.reward,
-            "order_status": self.order_status,
-            "order_volume": self.order_volume,
-            "spread": self.spread,
-            "margin": self.margin,
-            "initial_balance": self.initial_balance,
-            "c_c": self.c_c,
-            "reward_auc": reward_auc,
-            "sharpe_ratio": sharpe_ratio  # Add Sharpe ratio to the info
-        }
-
-        if self.order_status == 0:
-            self.profit_pips = 0
-            self.real_profit = 0
-
-        return ob, reward, self.done, info
+            if self.num_closes > 0:
+                # Calculate the reward for closing orders
+                total_orders_reward = self.num_closes * orders_lambda
+                # Calculate the reward for profit
+                total_profit_reward = (self.balance / self.initial_balance) * profit_lambda
+                if self.c_c == 1: 
 
 
 
