@@ -378,22 +378,26 @@ class AutomationEnv(gym.Env):
             duration_hours = self.current_step / self.ticks_per_hour
             sharpe_ratio = self.calculate_sharpe_ratio(self.returns, duration_hours)
             
-            # Asegurar que el cálculo del fitness es el mismo que en el optimizer
+            # Ensure fitness calculation is the same as in the optimizer
             fitness = reward + sharpe_ratio
             print(f"id:{genome_id}, Bal: {self.balance}, Sharpe Ratio: {sharpe_ratio}, Fitness: {fitness}")
 
-        # Information dictionary that includes the final balance and other metrics
-        info = {
-            "date": self.x_train[self.current_step - 1, 0],
-            "close": self.x_train[self.current_step - 1, 4],
-            "balance": self.balance,
-            "equity": self.equity,
-            "reward": reward,
-            "c_c": self.c_c,
-            "sharpe_ratio": sharpe_ratio if self.done else 0,  # Add Sharpe ratio to info
-        }
+            # Information dictionary that includes the final balance and other metrics
+            info = {
+                "date": self.x_train[self.current_step - 1, 0],
+                "close": self.x_train[self.current_step - 1, 4],
+                "balance": self.balance,
+                "equity": self.equity,
+                "reward": reward,
+                "c_c": self.c_c,
+                "sharpe_ratio": sharpe_ratio,  # Add Sharpe ratio to info
+                "fitness": fitness  # Add final fitness to info to ensure consistency
+            }
 
-        return ob, reward, self.done, info
+            return ob, fitness, self.done, info
+        else:
+            return ob, reward, self.done, {}
+
 
 
 
