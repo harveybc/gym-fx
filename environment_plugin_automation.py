@@ -332,7 +332,7 @@ class AutomationEnv(gym.Env):
         
 
         # Define relevant lambda values
-        # Define relevant lambda values
+        
         margin_call_lambda = 50  # Penalty for margin call
 
         # Initialize the reward for this step
@@ -361,17 +361,8 @@ class AutomationEnv(gym.Env):
         # Update the previous balance for the next step
         self.balance_ant = self.balance
 
-        # Only consider a return when an order is closed (stop loss, take profit, manual close)
-        if self.done and self.c_c in [2, 3, 4]:  # Stop loss, Take profit, Manual close
-            self.returns.append(reward)
-            if verbose:
-                print(f"[DEBUG] Return added for Sharpe calculation: {reward}")
-
-        # If margin call, penalize and add as return
-        elif self.done and self.c_c == 1:  # Margin Call
-            self.returns.append(reward)
-            if verbose:
-                print(f"[DEBUG] Margin call return: {reward}")
+        # Append the reward to returns for Sharpe ratio calculation
+        self.returns.append(reward)
 
         # If the episode is done, calculate and print the final Sharpe ratio
         if self.done:
@@ -382,23 +373,18 @@ class AutomationEnv(gym.Env):
             fitness = reward + sharpe_ratio
             print(f"id:{genome_id}, Bal: {self.balance}, Sharpe Ratio: {sharpe_ratio}, Fitness: {fitness}")
 
-            # Information dictionary that includes the final balance and other metrics
-            info = {
-                "date": self.x_train[self.current_step - 1, 0],
-                "close": self.x_train[self.current_step - 1, 4],
-                "balance": self.balance,
-                "equity": self.equity,
-                "reward": reward,
-                "c_c": self.c_c,
-                "sharpe_ratio": sharpe_ratio,  # Add Sharpe ratio to info
-                "fitness": fitness  # Add final fitness to info to ensure consistency
-            }
+        # Information dictionary that includes the final balance and other metrics
+        info = {
+            "date": self.x_train[self.current_step - 1, 0],
+            "close": self.x_train[self.current_step - 1, 4],
+            "balance": self.balance,
+            "equity": self.equity,
+            "reward": reward,
+            "c_c": self.c_c,
+            "sharpe_ratio": sharpe_ratio if self.done else 0,  # Add Sharpe ratio to info
+        }
 
-            return ob, fitness, self.done, info
-        else:
-            return ob, reward, self.done, {}
-
-
+        return ob, reward, self.done, info
 
 
 
