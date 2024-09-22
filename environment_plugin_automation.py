@@ -336,17 +336,21 @@ class AutomationEnv(gym.Env):
         reward_margin_call = 0.0
         reward = 0.0
 
-  
+        # Initialize or update returns list
+        if not hasattr(self, 'returns'):
+            self.returns = []
+
         if self.current_step > 0:
-            penalty_cost = -1/self.max_steps # Normalize the reward
-            if self.done and self.c_c == 1: #Closed by margin call
-                reward_margin_call = (self.max_steps - self.current_step)*penalty_cost #Penalize for margin call
+            penalty_cost = -1 / self.max_steps  # Normalize the reward
+            if self.done and self.c_c == 1:  # Closed by margin call
+                reward_margin_call = (self.max_steps - self.current_step) * penalty_cost  # Penalize for margin call
         else:
             reward = 0
-        
-        # set the observation as y_train if not None, else x_train
+
+        # Set the observation as y_train if not None, else x_train
         ob = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
         self.equity_ant = self.equity
+
         # Calculate the profit/loss as the change in balance
         balance_change = self.balance - self.balance_ant
 
@@ -391,6 +395,7 @@ class AutomationEnv(gym.Env):
             print(f"id:{genome_id}, Bal: {self.balance}, Sharpe Ratio: {sharpe_ratio}, Fitness: {reward}")
 
         return ob, reward, self.done, info
+
 
     def kolmogorov_complexity(self, genome):
         # Convert the genome to a string representation
