@@ -329,65 +329,100 @@ class AutomationEnv(gym.Env):
 
         
 
-        # Composite reward calculation using penalty by inaction and optionally reward for balance increase and kormogorov complexity
+        # Initialize the returns list to track rewards for Sharpe ratio calculation
+        self.returns = []  # Add this at the beginning of the episode
+
+        # Composite reward calculation using penalty by inaction and optionally reward for balance increase and Kolmogorov complexity
         reward_margin_call = 0.0
-  
+
         if self.current_step > 0:
-            penalty_cost = -1/self.max_steps # Normalize the reward
-            if self.done and self.c_c == 1: #Closed by margin call
-                reward_margin_call = (self.max_steps - self.current_step)*penalty_cost #Penalize for margin call
+            penalty_cost = -1/self.max_steps  # Normalize the reward
+            if self.done and self.c_c == 1:  # Closed by margin call
+                reward_margin_call = (self.max_steps - self.current_step) * penalty_cost  # Penalize for margin call
         else:
             reward = 0
-        
-        # set the observation as y_train if not None, else x_train
+
+        # Set the observation as y_train if not None, else x_train
         ob = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
         self.equity_ant = self.equity
-        # Check if the episode is over       
+
+        # Check if the episode is over
         if self.current_step >= (self.num_ticks - 1):
             self.done = True
             self.balance = self.equity
-        # upptdate balance_ant
+
+        # Update balance_ant
         self.balance_ant = self.balance
-        
-        #set the lambda values (just for showing, please verify the actual values in optimizer)
-        # Set lambda values (should match those in the optimizer)
-        profit_lambda = 10.0
-        orders_lambda = 0.01
-        margin_call_lambda = 50
 
-        # Initialize rewards and penalties
-        reward = 0.0
-        total_profit_reward = 0.0
+        # Set the lambda values (just for showing, please verify the actual values in optimizer)
+        profit_lambda = 10.0    # Reward for profit
+        orders_lambda = 0.01    # Reward for closing orders
+        complexity_lambda = 0.0001  # Complexity penalty strength (best overfitting with 0.1)
+        l2_lambda = 0.7  # Regularization strength (best overfitting with 1)
+        margin_call_lambda = 50  # Reward for margin call
+        reward_auc_lambda = 1.0  # Reward for balance increase
+        action_values_lambda = 0.01  # Reward for action values
+
+        # Update reward
+        reward = reward_margin_call * margin_call_lambda
+
+        # Collect the reward for Sharpe ratio calculation (append rewards to returns)
+        self.returns.append(reward)
+
+        # Conditionally add AUC reward only if the first order is closed
         reward_auc = 0.0
-
-        # Calculate margin call penalty or reward
-        if self.done and self.c_c == 1:  # Closed by margin call
-            reward = (self.max_steps - self.current_step) * (-1 / self.max_steps) * margin_call_lambda
-
-        # Calculate reward for profit if no margin call
+        total_reward_auc = 0.0
         if self.num_closes > 0:
-            total_profit_reward = (self.balance / self.initial_balance) * profit_lambda
-            reward_auc = (self.balance / (self.initial_balance * self.max_steps)) * 1.0  # AUC reward calculation
+            reward_auc = (self.balance / (self.initial_balance * self.max_steps))  # Reward for area under curve of balance
+            total_reward_auc = reward_auc * reward_auc_lambda
+        self.reward = reward
 
-            if self.c_c == 1:  # Margin Call
-                total_profit_reward = 0.0  # Zero out profit if margin call occurred
+        # Calculate additional fitness reward and penalties
+        total_complexity_penalty = 0.0
+        total_l2_penalty = 0.0
+        total_action_values = 0.0
 
-        # Calculate total fitness rewards (simplified)
-        if self.balance <= self.initial_balance:
-            total_fitness_rewards = (total_profit_reward * total_profit_reward * self.num_closes * orders_lambda)
-        else:
-            total_fitness_rewards = (total_profit_reward * total_profit_reward * self.num_closes * orders_lambda * reward_auc)
+        if self.done:
+            if self.num_closes > 0:
+                # Calculate the reward for closing orders
+                total_orders_reward = self.num_closes * orders_lambda
 
-        # The final fitness value is calculated as follows:
-        fitness = step_fitness + total_fitness_rewards + reward
+                # Calculate the reward for profit
+                total_profit_reward = (self.balance / self.initial_balance) * profit_lambda
 
-        # Ensure that the printed fitness is exactly what is used in the optimizer
-        print(
-            f"id:{genome_id}, Bal: {self.balance} "
-            f"({(self.balance - self.initial_balance) / self.initial_balance}), "
-            f"Ord:{self.num_closes}, rb:{total_profit_reward}, auc: {reward_auc}, "
-            f"Fitness: {fitness}"
-        )
+                if self.c_c == 1:  # Margin Call
+                    total_l2_penalty = 0
+                    total_complexity_penalty = 0
+                    total_orders_reward = 0
+                    total_profit_reward = 0
+            else:
+                total_l2_penalty = -50
+                total_complexity_penalty = -50
+                total_orders_reward = 0
+                total_profit_reward = 0
+
+            # Update the total rewards, penalties, and fitness
+            reward_auc_prev = reward_auc_prev + total_reward_auc
+
+            if self.balance <= self.initial_balance:
+                total_fitness_rewards = (total_profit_reward * total_profit_reward * total_orders_reward) + total_l2_penalty + total_complexity_penalty + total_action_values
+            else:
+                total_fitness_rewards = (total_profit_reward * total_profit_reward * total_orders_reward * reward_auc) + total_l2_penalty + total_complexity_penalty + total_action_values
+
+            # Calculate the Sharpe Ratio at the end of the episode
+            mean_return = np.mean(self.returns)
+            return_std = np.std(self.returns)
+            risk_free_rate = 0.01  # Example risk-free rate
+            sharpe_ratio = (mean_return - risk_free_rate) / return_std if return_std != 0 else 0
+
+            # Add the Sharpe ratio to the final fitness
+            step_fitness = step_fitness + sharpe_ratio
+
+            # Print the final fitness and Sharpe ratio
+            print(f"id:{genome_id}, Kor: {self.kolmogorov_c}, Bal: {self.balance} ({(self.balance - self.initial_balance) / self.initial_balance}), "
+                f"Ord:{self.num_closes}, rb:{total_profit_reward}, auc: {reward_auc}, ro:{total_orders_reward}, "
+                f"rm:{reward_margin_call * margin_call_lambda}, l2:{total_l2_penalty}, tc:{total_complexity_penalty}, "
+                f"Sharpe Ratio: {sharpe_ratio}, Fitness: {step_fitness + total_fitness_rewards + reward}")
 
         info = {
             "date": self.x_train[self.current_step - 1, 0],
@@ -402,11 +437,15 @@ class AutomationEnv(gym.Env):
             "num_closes": self.num_closes,
             "balance": self.balance,
             "equity": self.equity,
-            "reward": reward,
+            "reward": self.reward,
+            "order_status": self.order_status,
+            "order_volume": self.order_volume,
+            "spread": self.spread,
+            "margin": self.margin,
             "initial_balance": self.initial_balance,
             "c_c": self.c_c,
             "reward_auc": reward_auc,
-            "fitness": fitness  # Pass the exact fitness used in the optimizer
+            "sharpe_ratio": sharpe_ratio  # Add Sharpe ratio to the info
         }
 
         if self.order_status == 0:
@@ -414,6 +453,7 @@ class AutomationEnv(gym.Env):
             self.real_profit = 0
 
         return ob, reward, self.done, info
+
 
 
     def kolmogorov_complexity(self, genome):
