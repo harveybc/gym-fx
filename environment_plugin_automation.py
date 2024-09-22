@@ -329,41 +329,40 @@ class AutomationEnv(gym.Env):
 
         
 
-        
         # Define relevant lambda values
-            margin_call_lambda = 50  # Penalty for margin call
+        margin_call_lambda = 50  # Penalty for margin call
 
-            # Initialize the reward for this step
-            reward_margin_call = 0.0
-            reward = 0.0
+        # Initialize the reward for this step
+        reward_margin_call = 0.0
+        reward = 0.0
 
-            if self.current_step > 0:
-                penalty_cost = -1/self.max_steps  # Normalize the reward
-                if self.done and self.c_c == 1:  # Closed by margin call
-                    reward_margin_call = (self.max_steps - self.current_step) * penalty_cost  # Penalize for margin call
-            else:
-                reward = 0
+        if self.current_step > 0:
+            penalty_cost = -1/self.max_steps  # Normalize the reward
+            if self.done and self.c_c == 1:  # Closed by margin call
+                reward_margin_call = (self.max_steps - self.current_step) * penalty_cost  # Penalize for margin call
 
-            # Set the observation as y_train if not None, else x_train
-            ob = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
-            self.equity_ant = self.equity
+        # Set the observation as y_train if not None, else x_train
+        ob = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
+        self.equity_ant = self.equity
 
-            # Calculate the profit/loss as the change in balance
-            balance_change = self.balance - self.balance_ant
+        # Calculate the profit/loss as the change in balance
+        balance_change = self.balance - self.balance_ant
 
-            # If no margin call, the reward is the balance change (profit/loss)
-            if not (self.done and self.c_c == 1):  # If not margin call
-                reward = balance_change
+        # If no margin call, the reward is the balance change (profit/loss)
+        if not (self.done and self.c_c == 1):  # If not margin call
+            reward = balance_change
 
-            # If margin call, add the margin call penalty
-            reward += reward_margin_call * margin_call_lambda
+        # If margin call, add the margin call penalty
+        reward += reward_margin_call * margin_call_lambda
 
-            # Update the previous balance for the next step
-            self.balance_ant = self.balance
+        # Update the previous balance for the next step
+        self.balance_ant = self.balance
 
-            # Collect the reward as a return for Sharpe ratio calculation
-            self.returns.append(reward)
+        # Append the reward to returns for Sharpe ratio calculation
+        self.returns.append(reward)
 
+        # If the episode is done, calculate and print the final Sharpe ratio
+        if self.done:
             # Calculate Sharpe ratio if returns have been tracked
             if len(self.returns) > 1:
                 mean_return = np.mean(self.returns)
@@ -373,30 +372,20 @@ class AutomationEnv(gym.Env):
             else:
                 sharpe_ratio = 0
 
-            # If the episode is done, finalize the balance
-            if self.done:
-                self.balance = self.equity  # Set final balance to equity
-                profit_lambda = 10.0
-                total_profit_reward = (self.balance / self.initial_balance) * profit_lambda
+            print(f"id:{genome_id}, Bal: {self.balance}, Sharpe Ratio: {sharpe_ratio}, Fitness: {reward}")
 
-                if self.c_c == 1:  # Margin Call
-                    total_profit_reward = 0  # Zero out profit if margin call occurred
+        # Information dictionary that includes the final balance and other metrics
+        info = {
+            "date": self.x_train[self.current_step - 1, 0],
+            "close": self.x_train[self.current_step - 1, 4],
+            "balance": self.balance,
+            "equity": self.equity,
+            "reward": reward,
+            "c_c": self.c_c,
+            "sharpe_ratio": sharpe_ratio if self.done else 0,  # Add Sharpe ratio to info
+        }
 
-                # Final fitness calculation (matches the optimizer)
-                fitness = reward + total_profit_reward + sharpe_ratio
-
-                print(f"id:{genome_id}, Bal: {self.balance}, Sharpe Ratio: {sharpe_ratio}, Fitness: {fitness}")
-
-            info = {
-                "date": self.x_train[self.current_step - 1, 0],
-                "close": self.x_train[self.current_step - 1, 4],
-                "balance": self.balance,
-                "equity": self.equity,
-                "reward": reward,
-                "c_c": self.c_c,
-            }
-
-            return ob, reward, self.done, info
+        return ob, reward, self.done, info
 
 
     def kolmogorov_complexity(self, genome):
