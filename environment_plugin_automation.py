@@ -330,17 +330,15 @@ class AutomationEnv(gym.Env):
         
 
         # Composite reward calculation using penalty by inaction and optionally reward for balance increase and kormogorov complexity
+        # Reward calculation using penalties and optionally profit reward and Sharpe ratio
         reward_margin_call = 0.0
-  
+
         if self.current_step > 0:
-            penalty_cost = -1/self.max_steps # Normalize the reward
-            if self.done and self.c_c == 1: #Closed by margin call
-                reward_margin_call = (self.max_steps - self.current_step)*penalty_cost #Penalize for margin call
+            penalty_cost = -1 / self.max_steps  # Normalize the reward
+            if self.done and self.c_c == 1:  # Closed by margin call
+                reward_margin_call = (self.max_steps - self.current_step) * penalty_cost  # Penalize for margin call
         else:
             reward = 0
-        
-        # set the observation as y_train if not None, else x_train
-        ob = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
 
         # Update balance and equity
         self.equity_ant = self.equity
@@ -374,10 +372,13 @@ class AutomationEnv(gym.Env):
 
             reward += total_profit_reward
 
-            # Debug output for the step
+            # Track the fitness within the environment
+            self.fitness = reward  # Accumulate the fitness
+
+            # Debug output for the step with the exact fitness used in the optimizer
             print(f"id:{genome_id}, Bal: {self.balance} ({(self.balance-self.initial_balance)/self.initial_balance}), "
                 f"Ord:{self.num_closes}, Profit Reward: {total_profit_reward}, AUC: {reward_auc}, "
-                f"Margin Call Penalty: {reward_margin_call * margin_call_lambda}, Fitness: {reward + self.fitness} ")
+                f"Margin Call Penalty: {reward_margin_call * margin_call_lambda}, Fitness: {self.fitness}")
 
         info = {
             "date": self.x_train[self.current_step-1, 0],
@@ -399,7 +400,8 @@ class AutomationEnv(gym.Env):
             "margin": self.margin,
             "initial_balance": self.initial_balance,
             "c_c": self.c_c,
-            "reward_auc": reward_auc
+            "reward_auc": reward_auc,
+            "fitness": self.fitness  # Pass the exact fitness used in the optimizer
         }
 
         if self.order_status == 0:
@@ -407,6 +409,7 @@ class AutomationEnv(gym.Env):
             self.real_profit = 0
 
         return ob, reward, self.done, info
+
 
 
     def kolmogorov_complexity(self, genome):
