@@ -435,7 +435,7 @@ class AutomationEnv(gym.Env):
                 self.fitness = -200
             else:
                 # margin call
-                if info['c_c']  == 1:
+                if self.c_c  == 1:
                     self.fitness = final_reward
                 else:
                     # loss, good behavior
