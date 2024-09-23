@@ -430,8 +430,10 @@ class AutomationEnv(gym.Env):
             sharpe_ratio = self.calculate_sharpe_ratio(returns, durations_hours)
             
             # Calculate final fitness using the same approach as in the optimizer
+            final_reward = self.fitness
             self.fitness = self.fitness + sharpe_ratio
-            print(f"id:{genome_id}, Bal: {self.balance}, reward: {reward}, Sharpe Ratio: {sharpe_ratio}, Fitness: {self.fitness}")
+            
+            print(f"[ENV] genome_id: {genome_id}, balance: {self.balance}, Fitness ({self.fitness}) = final_reward ({final_reward}) + sharpe_ratio ({sharpe_ratio})")
 
         # Information dictionary that includes the final balance and other metrics
         info = {
