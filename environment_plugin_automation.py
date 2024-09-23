@@ -104,6 +104,7 @@ class AutomationEnv(gym.Env):
         self.real_profit = 0.0
         self.orders_list = []
         self.order_volume = 0.0
+        self.fitness=0.0
         self.done = False
         self.reward = 0.0
         self.equity_curve = [initial_balance]
@@ -152,6 +153,7 @@ class AutomationEnv(gym.Env):
         self.orders_list = []  # Initialize list to track orders
         self.equity_curve = [self.initial_balance]
         observation = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
+        self.fitness=0.0
         info = {
             "date": self.x_train[self.current_step, 0],
             "close": self.x_train[self.current_step, 4],
@@ -381,7 +383,7 @@ class AutomationEnv(gym.Env):
                     print(f"Current balance 5: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                     print(f"Order Status after take profit check: {self.order_status}")
 
-        
+
 
         # Define relevant lambda values
         margin_call_lambda = 50  # Penalty for margin call
@@ -412,6 +414,11 @@ class AutomationEnv(gym.Env):
         # Update the previous balance for the next step
         self.balance_ant = self.balance
 
+
+        # update fitness 
+        self.fitness = self.fitness + reward
+
+
         # If the episode is done, calculate the Sharpe ratio using the orders
         if self.done:
             returns = [order['real_profit'] for order in self.orders_list]
@@ -423,8 +430,8 @@ class AutomationEnv(gym.Env):
             sharpe_ratio = self.calculate_sharpe_ratio(returns, durations_hours)
             
             # Calculate final fitness using the same approach as in the optimizer
-            fitness = reward + sharpe_ratio
-            print(f"id:{genome_id}, Bal: {self.balance}, Sharpe Ratio: {sharpe_ratio}, Fitness: {fitness}")
+            self.fitness = self.fitness + sharpe_ratio
+            print(f"id:{genome_id}, Bal: {self.balance}, reward: {reward}, Sharpe Ratio: {sharpe_ratio}, Fitness: {self.fitness}")
 
         # Information dictionary that includes the final balance and other metrics
         info = {
