@@ -495,7 +495,7 @@ class AutomationEnv(gym.Env):
         # Calcular el Sharpe Ratio
         mean_return = np.mean(returns)
         return_std = np.std(returns)
-        sharpe_ratio = (mean_return - adjusted_risk_free_rate) / return_std if return_std != 0 else 0
+        sharpe_ratio = (mean_return - adjusted_risk_free_rate) / (1+return_std) 
 
         return sharpe_ratio
 
