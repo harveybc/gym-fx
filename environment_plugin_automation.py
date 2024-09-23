@@ -429,19 +429,25 @@ class AutomationEnv(gym.Env):
 
 
 
-            # verify minimum number of orders
+                # calculate fitness
             if num_orders < 1:
                 self.fitness = -200
             else:
-                if sharpe_ratio >= 0 and sharpe_ratio <= 1:
-                    self.fitness = final_reward + sharpe_ratio*math.sqrt(num_orders)
-                elif sharpe_ratio < 0:
-                    self.fitness = final_reward + sharpe_ratio/math.sqrt(num_orders)
+                # margin call
+                if self.c_c == 1:
+                    self.fitness = final_reward
                 else:
-                    self.fitness = final_reward + (sharpe_ratio*sharpe_ratio)*math.sqrt(num_orders)
+                    # loss, good behavior
+                    if sharpe_ratio >= 0 and sharpe_ratio <= 1:
+                        self.fitness = final_reward + sharpe_ratio
+                    # loss, bad behavior
+                    elif sharpe_ratio < 0:
+                        self.fitness = final_reward + sharpe_ratio
+                    # profit, good behavior
+                    else:
+                        self.fitness = final_reward + (sharpe_ratio*sharpe_ratio)*math.sqrt(num_orders)
 
-            
-            
+
             print(f"[ENV] genome_id: {genome_id}, balance: {self.balance}, n_ord: {len(self.orders_list)}, final_reward ({final_reward}) + sharpe_ratio ({sharpe_ratio}) = Fitness: {self.fitness}")
 
         # Information dictionary that includes the final balance and other metrics
