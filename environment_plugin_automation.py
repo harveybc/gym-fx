@@ -425,10 +425,18 @@ class AutomationEnv(gym.Env):
             # Calculate final fitness using the same approach as in the optimizer
             num_orders = len(self.orders_list)
             final_reward = self.fitness
-            self.fitness = self.fitness + sharpe_ratio*num_orders
+
+
+
             # verify minimum number of orders
             if num_orders < 1:
                 self.fitness = -200
+            else:
+                if sharpe_ratio > 0 :
+                    self.fitness = self.fitness + sharpe_ratio*num_orders
+                else:
+                    self.fitness = self.fitness + sharpe_ratio/num_orders
+
             
             
             print(f"[ENV] genome_id: {genome_id}, balance: {self.balance}, n_ord: {len(self.orders_list)}, final_reward ({final_reward}) + sharpe_ratio ({sharpe_ratio}) = Fitness: {self.fitness}")
