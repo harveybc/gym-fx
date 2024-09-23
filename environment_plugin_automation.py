@@ -99,7 +99,7 @@ class AutomationEnv(gym.Env):
         self.order_price = 0.0
         self.order_close = 0.0
         self.ticks_per_hour = 1
-
+        self.order_date = 0
         self.profit_pips = 0.0
         self.real_profit = 0.0
         self.orders_list = []
@@ -217,8 +217,19 @@ class AutomationEnv(gym.Env):
             self.margin = 0.0
             self.order_close = Close
             self.c_c = 1  # Set closing cause to margin call
-            # Append the order to the orders list, it includes: current_date (close date), open_date, order_type, order_price, order_close, profit_pips, real_profit, closing_cause)
-            self.orders_list.append( 
+            
+            # Append the order to the orders list, each order includes: current_date (close date), open_date (self.order_date), order_type, order_price, order_close, profit_pips, real_profit, closing_cause)
+            order = {
+                'close_date': current_date,
+                'open_date': self.order_date,
+                'order_type': self.order_status,
+                'order_price': self.order_price,
+                'order_close': self.order_close,
+                'profit_pips': self.profit_pips,
+                'real_profit': self.real_profit,
+                'closing_cause': self.c_c
+            }
+            self.orders_list.append(order)
             self.done = True
             if verbose:
                 print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Margin Call")
@@ -237,6 +248,7 @@ class AutomationEnv(gym.Env):
                     self.order_volume = self.min_order_volume    
                 self.margin += (self.order_volume / self.leverage)
                 self.order_time = self.current_step
+                self.order_date = current_date
                 if verbose:
                     print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Buy, Price: {self.order_price}, Volume: {self.order_volume}")
                     print(f"Current balance (after BUY action): {self.balance}, Number of closes: {self.num_closes}")
@@ -253,6 +265,7 @@ class AutomationEnv(gym.Env):
                     self.order_volume = self.min_order_volume    
                 self.margin += (self.order_volume / self.leverage)
                 self.order_time = self.current_step
+                self.order_date = current_date
                 if verbose:
                     print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Sell, Price: {self.order_price}, Volume: {self.order_volume}")
                     print(f"Current balance (after SELL action): {self.balance}, Number of closes: {self.num_closes}")
@@ -278,6 +291,18 @@ class AutomationEnv(gym.Env):
                     self.c_c = 4  # Set closing cause to normal close
                     self.order_volume = 0.0
                     self.num_closes += 1
+                    # Append the order to the orders list, each order includes: current_date (close date), open_date (self.order_date), order_type, order_price, order_close, profit_pips, real_profit, closing_cause)
+                    order = {
+                        'close_date': current_date,
+                        'open_date': self.order_date,
+                        'order_type': self.order_status,
+                        'order_price': self.order_price,
+                        'order_close': self.order_close,
+                        'profit_pips': self.profit_pips,
+                        'real_profit': self.real_profit,
+                        'closing_cause': self.c_c
+                    }
+                    self.orders_list.append(order)
                     if verbose:
                         print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Normal Close")
                         print(f"Current balance 4: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
@@ -303,6 +328,18 @@ class AutomationEnv(gym.Env):
                 self.c_c = 2  # Set closing cause to stop loss
                 self.order_volume = 0.0
                 self.num_closes += 1
+                # Append the order to the orders list, each order includes: current_date (close date), open_date (self.order_date), order_type, order_price, order_close, profit_pips, real_profit, closing_cause)
+                order = {
+                    'close_date': current_date,
+                    'open_date': self.order_date,
+                    'order_type': self.order_status,
+                    'order_price': self.order_price,
+                    'order_close': self.order_close,
+                    'profit_pips': self.profit_pips,
+                    'real_profit': self.real_profit,
+                    'closing_cause': self.c_c
+                }
+                self.orders_list.append(order)
                 if verbose:
                     print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Stop Loss")
                     print(f"Current balance 6: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
@@ -327,6 +364,18 @@ class AutomationEnv(gym.Env):
                 self.c_c =  3  # Set closing cause to take profit
                 self.order_volume = 0.0
                 self.num_closes += 1
+                # Append the order to the orders list, each order includes: current_date (close date), open_date (self.order_date), order_type, order_price, order_close, profit_pips, real_profit, closing_cause)
+                order = {
+                    'close_date': current_date,
+                    'open_date': self.order_date,
+                    'order_type': self.order_status,
+                    'order_price': self.order_price,
+                    'order_close': self.order_close,
+                    'profit_pips': self.profit_pips,
+                    'real_profit': self.real_profit,
+                    'closing_cause': self.c_c
+                }
+                self.orders_list.append(order)
                 if verbose:
                     print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Take Profit")
                     print(f"Current balance 5: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
@@ -335,7 +384,6 @@ class AutomationEnv(gym.Env):
         
 
         # Define relevant lambda values
-        
         margin_call_lambda = 50  # Penalty for margin call
 
         # Initialize the reward for this step
@@ -364,15 +412,17 @@ class AutomationEnv(gym.Env):
         # Update the previous balance for the next step
         self.balance_ant = self.balance
 
-        # Append the reward to returns for Sharpe ratio calculation
-        self.returns.append(reward)
-
-        # If the episode is done, calculate and print the final Sharpe ratio
+        # If the episode is done, calculate the Sharpe ratio using the orders
         if self.done:
-            duration_hours = self.current_step / self.ticks_per_hour
-            sharpe_ratio = self.calculate_sharpe_ratio(self.returns, duration_hours)
+            returns = [order['real_profit'] for order in self.orders_list]
+            durations_hours = [
+                (order['close_date'] - order['open_date']).total_seconds() / 3600 for order in self.orders_list
+            ]
             
-            # Ensure fitness calculation is the same as in the optimizer
+            # Calculate the Sharpe ratio using the orders' profits and durations
+            sharpe_ratio = self.calculate_sharpe_ratio(returns, durations_hours)
+            
+            # Calculate final fitness using the same approach as in the optimizer
             fitness = reward + sharpe_ratio
             print(f"id:{genome_id}, Bal: {self.balance}, Sharpe Ratio: {sharpe_ratio}, Fitness: {fitness}")
 
@@ -392,23 +442,32 @@ class AutomationEnv(gym.Env):
 
 
 
-    def calculate_sharpe_ratio(self, returns, duration_hours, annual_risk_free_rate=0.1):
+    def calculate_sharpe_ratio(self, returns, durations_hours, annual_risk_free_rate=0.1):
         """
         Calcula el Sharpe Ratio ajustando la tasa libre de riesgo anual a la duración de la operación.
+        :param returns: Lista de retornos para cada orden cerrada.
+        :param durations_hours: Lista de duraciones en horas para cada orden cerrada.
+        :param annual_risk_free_rate: Tasa libre de riesgo anual.
+        :return: El Sharpe Ratio calculado.
         """
         if len(returns) <= 1:
             return 0
 
-        # Calcula la tasa libre de riesgo ajustada para la duración de la operación
-        hourly_risk_free_rate = (1 + annual_risk_free_rate) ** (1 / 8760) - 1
-        adjusted_risk_free_rate = (1 + hourly_risk_free_rate) ** duration_hours - 1
+        # Convertir la tasa libre de riesgo anual a la base de la duración promedio de las órdenes
+        total_duration_hours = sum(durations_hours)
+        avg_duration_hours = total_duration_hours / len(durations_hours)
 
-        # Calcula el Sharpe Ratio
+        # Calcular la tasa libre de riesgo ajustada para la duración promedio
+        hourly_risk_free_rate = (1 + annual_risk_free_rate) ** (1 / 8760) - 1
+        adjusted_risk_free_rate = (1 + hourly_risk_free_rate) ** avg_duration_hours - 1
+
+        # Calcular el Sharpe Ratio
         mean_return = np.mean(returns)
         return_std = np.std(returns)
         sharpe_ratio = (mean_return - adjusted_risk_free_rate) / return_std if return_std != 0 else 0
 
         return sharpe_ratio
+
 
 
     def kolmogorov_complexity(self, genome):
