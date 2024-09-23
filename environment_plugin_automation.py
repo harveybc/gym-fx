@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from collections import deque
 import zlib, pickle
+import math
 
 class Plugin:
     """
@@ -433,9 +434,9 @@ class AutomationEnv(gym.Env):
                 self.fitness = -200
             else:
                 if sharpe_ratio > 0 :
-                    self.fitness = final_reward + sharpe_ratio*num_orders
+                    self.fitness = final_reward + sharpe_ratio*math.sqrt(num_orders)
                 else:
-                    self.fitness = final_reward + sharpe_ratio/num_orders
+                    self.fitness = final_reward + sharpe_ratio/math.sqrt(num_orders)
 
             
             
