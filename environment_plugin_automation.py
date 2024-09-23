@@ -433,9 +433,9 @@ class AutomationEnv(gym.Env):
                 self.fitness = -200
             else:
                 if sharpe_ratio > 0 :
-                    self.fitness = self.fitness + sharpe_ratio*num_orders
+                    self.fitness = final_reward + sharpe_ratio*num_orders
                 else:
-                    self.fitness = self.fitness + sharpe_ratio/num_orders
+                    self.fitness = final_reward + sharpe_ratio/num_orders
 
             
             
