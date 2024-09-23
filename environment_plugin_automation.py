@@ -386,7 +386,7 @@ class AutomationEnv(gym.Env):
 
 
         # Define relevant lambda values
-        margin_call_lambda = 50  # Penalty for margin call
+        margin_call_lambda = 100  # Penalty for margin call
 
         # Initialize the reward for this step
         reward_margin_call = 0.0
@@ -402,7 +402,7 @@ class AutomationEnv(gym.Env):
         self.equity_ant = self.equity
 
         # If margin call, add the margin call penalty
-        #reward += reward_margin_call * margin_call_lambda
+        reward += reward_margin_call * margin_call_lambda
 
         # Update the previous balance for the next step
         self.balance_ant = self.balance
@@ -427,8 +427,8 @@ class AutomationEnv(gym.Env):
             self.fitness = self.fitness + sharpe_ratio
             num_orders = len(self.orders_list)
             # verify minimum number of orders
-            if num_orders == 0:
-                self.fitness = -100
+            if num_orders < 2:
+                self.fitness = -200
             
             print(f"[ENV] genome_id: {genome_id}, balance: {self.balance}, n_ord: {len(self.orders_list)}, final_reward ({final_reward}) + sharpe_ratio ({sharpe_ratio}) = Fitness: {self.fitness}")
 
