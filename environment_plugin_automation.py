@@ -440,13 +440,13 @@ class AutomationEnv(gym.Env):
                 else:
                     # loss, good behavior
                     if sharpe_ratio >= 0 and sharpe_ratio <= 1:
-                        self.fitness = final_reward + (profit_factor*num_orders)  + (sharpe_ratio*sqrt_orders)
+                        self.fitness = final_reward + (profit_factor*num_orders*num_orders)  + (sharpe_ratio*sqrt_orders)
                     # loss, bad behavior
                     elif sharpe_ratio < 0:
-                        self.fitness = final_reward + (profit_factor*num_orders) 
+                        self.fitness = final_reward + (profit_factor*num_orders*num_orders) 
                     # profit, good behavior
                     else:
-                        self.fitness = final_reward + (profit_factor*num_orders) + (sharpe_ratio*sharpe_ratio*sqrt_orders)
+                        self.fitness = final_reward + (profit_factor*num_orders*num_orders) + (sharpe_ratio*sharpe_ratio*sqrt_orders)
                     
 
 
