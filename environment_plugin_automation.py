@@ -428,7 +428,6 @@ class AutomationEnv(gym.Env):
             final_reward = self.fitness
 
 
-
             # calculate fitness
             profit_factor = self.balance/self.initial_balance
             if num_orders < 1:
