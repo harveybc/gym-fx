@@ -433,10 +433,12 @@ class AutomationEnv(gym.Env):
             if num_orders < 1:
                 self.fitness = -200
             else:
-                if sharpe_ratio > 0 :
+                if sharpe_ratio >= 0 and sharpe_ratio <= 1:
                     self.fitness = final_reward + sharpe_ratio*math.sqrt(num_orders)
-                else:
+                elif sharpe_ratio < 0:
                     self.fitness = final_reward + sharpe_ratio/math.sqrt(num_orders)
+                else:
+                    self.fitness = final_reward + (sharpe_ratio*sharpe_ratio)*math.sqrt(num_orders)
 
             
             
@@ -476,6 +478,7 @@ class AutomationEnv(gym.Env):
         # Calcular la tasa libre de riesgo ajustada para la duración promedio
         hourly_risk_free_rate = (1 + annual_risk_free_rate) ** (1 / 8760) - 1
         adjusted_risk_free_rate = (1 + hourly_risk_free_rate) ** avg_duration_hours - 1
+        adjusted_risk_free_rate = 0
 
         # Calcular el Sharpe Ratio
         mean_return = np.mean(returns)
