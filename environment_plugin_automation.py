@@ -402,7 +402,7 @@ class AutomationEnv(gym.Env):
         self.equity_ant = self.equity
 
         # If margin call, add the margin call penalty
-        reward += reward_margin_call * margin_call_lambda
+        #reward += reward_margin_call * margin_call_lambda
 
         # Update the previous balance for the next step
         self.balance_ant = self.balance
