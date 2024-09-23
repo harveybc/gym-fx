@@ -448,8 +448,8 @@ class AutomationEnv(gym.Env):
                     else:
                         self.fitness = final_reward + (profit_factor*sqrt_orders) + (sharpe_ratio*sharpe_ratio*sqrt_orders)
                     # avoid single orders
-                    if num_orders == 1:
-                        self.fitness = self.fitness/2             
+                    if num_orders < 5:
+                        self.fitness = self.fitness/(5-num_orders)               
                     
 
 
