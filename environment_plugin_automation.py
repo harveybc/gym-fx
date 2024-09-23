@@ -430,6 +430,7 @@ class AutomationEnv(gym.Env):
 
             # calculate fitness
             profit_factor = self.balance/self.initial_balance
+            sqrt_orders = math.sqrt(num_orders)
             if num_orders < 1:
                 self.fitness = -200
             else:
@@ -439,16 +440,16 @@ class AutomationEnv(gym.Env):
                 else:
                     # loss, good behavior
                     if sharpe_ratio >= 0 and sharpe_ratio <= 1:
-                        self.fitness = final_reward + profit_factor + sharpe_ratio*math.sqrt(num_orders)
+                        self.fitness = final_reward + (profit_factor*sqrt_orders)  + (sharpe_ratio*sqrt_orders)
                     # loss, bad behavior
                     elif sharpe_ratio < 0:
-                        self.fitness = final_reward + profit_factor
+                        self.fitness = final_reward + (profit_factor*sqrt_orders) 
                     # profit, good behavior
                     else:
-                        self.fitness = final_reward + profit_factor + (sharpe_ratio*sharpe_ratio)*math.sqrt(num_orders)
+                        self.fitness = final_reward + (profit_factor*sqrt_orders) + (sharpe_ratio*sharpe_ratio*sqrt_orders)
                     # avoid single orders
                     if num_orders == 1:
-                        self.fitness = self.fitness/2        
+                        self.fitness = self.fitness/2             
                     
 
 
