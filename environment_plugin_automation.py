@@ -426,7 +426,7 @@ class AutomationEnv(gym.Env):
             final_reward = self.fitness
             self.fitness = self.fitness + sharpe_ratio
             
-            print(f"[ENV] genome_id: {genome_id}, balance: {self.balance},final_reward ({final_reward}) + sharpe_ratio ({sharpe_ratio}) = Fitness ({self.fitness})")
+            print(f"[ENV] genome_id: {genome_id}, balance: {self.balance}, n_ord: {len(self.orders)}, final_reward ({final_reward}) + sharpe_ratio ({sharpe_ratio}) = Fitness: {self.fitness}")
 
         # Information dictionary that includes the final balance and other metrics
         info = {
