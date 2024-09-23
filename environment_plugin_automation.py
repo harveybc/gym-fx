@@ -401,13 +401,6 @@ class AutomationEnv(gym.Env):
         ob = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
         self.equity_ant = self.equity
 
-        # Calculate the profit/loss as the change in balance
-        balance_change = self.balance - self.balance_ant
-
-        # If no margin call, the reward is the balance change (profit/loss)
-        if not (self.done and self.c_c == 1):  # If not margin call
-            reward = balance_change
-
         # If margin call, add the margin call penalty
         reward += reward_margin_call * margin_call_lambda
 
