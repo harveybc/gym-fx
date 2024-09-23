@@ -447,9 +447,6 @@ class AutomationEnv(gym.Env):
                     # profit, good behavior
                     else:
                         self.fitness = final_reward + (profit_factor*num_orders) + (sharpe_ratio*sharpe_ratio*sqrt_orders)
-                    # avoid single orders
-                    if num_orders < 5:
-                        self.fitness = self.fitness/(5-num_orders)               
                     
 
 
@@ -499,10 +496,10 @@ class AutomationEnv(gym.Env):
 
         #correct for low count of orders
         if sharpe_ratio > 0 and len(returns) < 5:
-            sharpe_ratio = sharpe_ratio/10
+            sharpe_ratio = sharpe_ratio/2
         
         if sharpe_ratio > 0 and len(returns) < 3:
-            sharpe_ratio = sharpe_ratio/10
+            sharpe_ratio = sharpe_ratio/5 
 
         return sharpe_ratio
 
