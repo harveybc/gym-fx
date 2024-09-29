@@ -7,7 +7,9 @@ setup(
     entry_points={
         'rl_optimizer.environments': [
             'gym-fx-env = environment_plugin_automation:Plugin',
-            'gym_fx_env = environment_plugin_automation:Plugin'
+            'gym_fx_env = environment_plugin_automation:Plugin',
+            'datagen-env = environment_plugin_datagen:Plugin',
+            'datagen_env = environment_plugin_datagen:Plugin'
         ]
     },
     install_requires=[
