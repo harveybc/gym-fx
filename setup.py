@@ -8,6 +8,8 @@ setup(
         'rl_optimizer.environments': [
             'gym-fx-env = environment_plugin_automation:Plugin',
             'gym_fx_env = environment_plugin_automation:Plugin',
+            'gym-fx-env-nomc = environment_plugin_automation_nomc:Plugin',
+            'gym_fx_env_nomc = environment_plugin_automation_nomc:Plugin',
             'datagen-env = environment_plugin_datagen:Plugin',
             'datagen_env = environment_plugin_datagen:Plugin'
         ]
