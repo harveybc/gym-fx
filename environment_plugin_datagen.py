@@ -22,7 +22,7 @@ class Plugin:
         'leverage': 1000,
         'pip_cost': 0.00001,
         'min_order_time': 3,  #  Minimum Order Time to allow manual closing by an action inverse to the current order.
-        'spread': 0.002  # Default spread value
+        'spread': 0.0002  # Default spread value
     }
 
     plugin_debug_vars = ['initial_balance', 'max_steps', 'fitness_function', 'final_balance', 'final_fitness']
