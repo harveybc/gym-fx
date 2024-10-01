@@ -408,10 +408,10 @@ class AutomationEnv(gym.Env):
                 if self.c_c  == 1:
                     self.fitness = final_reward
                 else:
-                    if profit_factor > 0:
+                    if profit_factor > 0 and sharpe_ratio > 0:
                         #sqrt_orders = math.sqrt(num_orders)
                         # best so far: self.fitness = abs(profit_factor)*sharpe_ratio
-                        self.fitness = num_orders*num_orders*abs(profit_factor)*sharpe_ratio
+                        self.fitness = num_orders*abs(profit_factor)*sharpe_ratio
                     else:
                         # best so far: self.fitness = abs(profit_factor)*sharpe_ratio
                         self.fitness = abs(profit_factor)*sharpe_ratio
