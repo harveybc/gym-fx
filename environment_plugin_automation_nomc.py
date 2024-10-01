@@ -401,7 +401,7 @@ class AutomationEnv(gym.Env):
 
             # calculate fitness
             profit_factor = self.balance/self.initial_balance
-            sqrt_orders = math.sqrt(num_orders)
+            #sqrt_orders = math.sqrt(num_orders)
             if num_orders < 1:
                 self.fitness = -200
             else:
