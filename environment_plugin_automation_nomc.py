@@ -409,7 +409,8 @@ class AutomationEnv(gym.Env):
                 if self.c_c  == 1:
                     self.fitness = final_reward
                 else:
-                    self.fitness = abs(profit_factor)*sharpe_ratio
+                    # best so far: self.fitness = abs(profit_factor)*sharpe_ratio
+                    self.fitness = profit_factor*profit_factor*sharpe_ratio
                     
             print(f"[ENV] genome_id: {genome_id}, balance: {self.balance}, n_ord: {len(self.orders_list)}, final_reward ({final_reward}) + sharpe_ratio ({sharpe_ratio}) = Fitness: {self.fitness}")
 
