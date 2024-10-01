@@ -411,9 +411,9 @@ class AutomationEnv(gym.Env):
                 else:
                     # best so far: just fitness = profit_factor*sharpe_ratio without the if
                     if sharpe_ratio>0:
-                        fitness = profit_factor*sharpe_ratio
+                        self.fitness = profit_factor*sharpe_ratio
                     else:
-                        fitness = sharpe_ratio
+                        self.fitness = sharpe_ratio
                     
             print(f"[ENV] genome_id: {genome_id}, balance: {self.balance}, n_ord: {len(self.orders_list)}, final_reward ({final_reward}) + sharpe_ratio ({sharpe_ratio}) = Fitness: {self.fitness}")
 
