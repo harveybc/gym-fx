@@ -401,7 +401,6 @@ class AutomationEnv(gym.Env):
 
             # calculate fitness
             profit_factor = self.balance/self.initial_balance
-            #sqrt_orders = math.sqrt(num_orders)
             if num_orders < 1:
                 self.fitness = -200
             else:
@@ -409,8 +408,15 @@ class AutomationEnv(gym.Env):
                 if self.c_c  == 1:
                     self.fitness = final_reward
                 else:
-                    # best so far: self.fitness = abs(profit_factor)*sharpe_ratio
-                    self.fitness = profit_factor*profit_factor*sharpe_ratio
+                    if profit_factor > 1:
+                        sqrt_orders = math.sqrt(num_orders)
+                        # best so far: self.fitness = abs(profit_factor)*sharpe_ratio
+                        self.fitness = sqrt_orders*profit_factor*profit_factor*sharpe_ratio
+                    else:
+                        # best so far: self.fitness = abs(profit_factor)*sharpe_ratio
+                        self.fitness = profit_factor*profit_factor*sharpe_ratio
+
+
                     
             print(f"[ENV] genome_id: {genome_id}, balance: {self.balance}, n_ord: {len(self.orders_list)}, final_reward ({final_reward}) + sharpe_ratio ({sharpe_ratio}) = Fitness: {self.fitness}")
 
