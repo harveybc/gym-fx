@@ -410,8 +410,11 @@ class AutomationEnv(gym.Env):
                     self.fitness = final_reward
                 else:
                     # best so far: just fitness = profit_factor*sharpe_ratio without the if
-                    if sharpe_ratio>0:
-                        self.fitness = profit_factor*sharpe_ratio
+                    if sharpe_ratio > 0:
+                        if profit_factor > 1:
+                            self.fitness = profit_factor*sharpe_ratio
+                        else:
+                            self.fitness = sharpe_ratio    
                     else:
                         self.fitness = sharpe_ratio
                     
