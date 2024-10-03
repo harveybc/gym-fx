@@ -11,6 +11,7 @@ setup(
             'gym-fx-env-nomc = environment_plugin_automation_nomc:Plugin',
             'gym_fx_env_nomc = environment_plugin_automation_nomc:Plugin',
             'gym_fx_env_nomc_o = environment_plugin_automation_nomc_o:Plugin',
+            'gym_fx_env_nomc_o_p2 = environment_plugin_automation_nomc_o_p2:Plugin',
             'datagen-env = environment_plugin_datagen:Plugin',
             'datagen_env = environment_plugin_datagen:Plugin'
         ]
