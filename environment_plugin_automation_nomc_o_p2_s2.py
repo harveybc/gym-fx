@@ -411,7 +411,10 @@ class AutomationEnv(gym.Env):
                     if profit_factor > 1:
                         self.fitness = num_orders*profit_factor*profit_factor*(1+sharpe_ratio)*(1+sharpe_ratio)*sharpe_ratio
                     elif profit_factor > 0:
-                        self.fitness = num_orders*profit_factor*(1+sharpe_ratio)*(1+sharpe_ratio)*sharpe_ratio
+                        if sharpe_ratio > 0:
+                            self.fitness = num_orders*profit_factor*(1+sharpe_ratio)*(1+sharpe_ratio)*sharpe_ratio
+                        else:
+                            self.fitness = (1+sharpe_ratio)*(1+sharpe_ratio)*sharpe_ratio
                     else:  
                         self.fitness = profit_factor*profit_factor*(1+sharpe_ratio)*(1+sharpe_ratio)*sharpe_ratio
                     
