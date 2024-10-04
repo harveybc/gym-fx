@@ -14,8 +14,8 @@ class Plugin:
         'initial_balance': 10000,
         'fitness_function': 'brute_profit',  # 'sharpe_ratio' can be another option
         'min_orders': 4,
-        'sl': 3000,  # Adjusted Stop Loss
-        'tp': 3000,  # Adjusted Take Profit
+        'sl': 2000,  # Adjusted Stop Loss
+        'tp': 1000,  # Adjusted Take Profit
         'rel_volume': 0.05, # size of the new orders relative to the current balance
         'max_order_volume': 1000000, # Maximum order volume = 10 lots (1 lot = 100,000 units)
         'min_order_volume': 10000, # Minimum order volume = 0.1 lots (1 lot = 100,000 units)
@@ -408,7 +408,7 @@ class AutomationEnv(gym.Env):
                 if self.c_c  == 1:
                     self.fitness = final_reward
                 else:
-                    self.fitness = abs(profit_factor)*sharpe_ratio
+                    self.fitness = abs(profit_factor)+(sharpe_ratio*10)
 
 
                     
