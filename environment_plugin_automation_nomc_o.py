@@ -14,15 +14,15 @@ class Plugin:
         'initial_balance': 10000,
         'fitness_function': 'brute_profit',  # 'sharpe_ratio' can be another option
         'min_orders': 4,
-        'sl': 3000,  # Adjusted Stop Loss
-        'tp': 3000,  # Adjusted Take Profit
+        'tp': 300,  # Adjusted Take Profit
+        'sl': 600,  # Adjusted Stop Loss
         'rel_volume': 0.05, # size of the new orders relative to the current balance
         'max_order_volume': 1000000, # Maximum order volume = 10 lots (1 lot = 100,000 units)
         'min_order_volume': 10000, # Minimum order volume = 0.1 lots (1 lot = 100,000 units)
         'leverage': 1000,
         'pip_cost': 0.00001,
         'min_order_time': 3,  #  Minimum Order Time to allow manual closing by an action inverse to the current order.
-        'spread': 0.0002  # Default spread value
+        'spread': 0.0003  # Default spread value
     }
 
     plugin_debug_vars = ['initial_balance', 'max_steps', 'fitness_function', 'final_balance', 'final_fitness']
@@ -409,9 +409,12 @@ class AutomationEnv(gym.Env):
                     self.fitness = final_reward
                 else:
                     if profit_factor > 0:
-                        self.fitness = num_orders*profit_factor*sharpe_ratio
+                        if sharpe_ratio > 0:
+                            self.fitness = num_orders*(1+profit_factor)*sharpe_ratio
+                        else:
+                            self.fitness = (1-profit_factor)*sharpe_ratio/num_orders
                     else:  
-                        self.fitness = abs(profit_factor)*sharpe_ratio
+                        self.fitness = abs(profit_factor)*sharpe_ratio/num_orders
                     
             print(f"[ENV] genome_id: {genome_id}, balance: {self.balance}, n_ord: {len(self.orders_list)}, final_reward ({final_reward}) + sharpe_ratio ({sharpe_ratio}) = Fitness: {self.fitness}")
 
