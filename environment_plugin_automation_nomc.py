@@ -408,7 +408,7 @@ class AutomationEnv(gym.Env):
                 if self.c_c  == 1:
                     self.fitness = final_reward
                 else:
-                    self.fitness = profit_factor+(sharpe_ratio*10)
+                    self.fitness = profit_factor*(1+sharpe_ratio*10)
 
 
                     
