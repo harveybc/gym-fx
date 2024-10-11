@@ -388,7 +388,7 @@ class AutomationEnv(gym.Env):
         if self.done:
             returns = [order['real_profit'] for order in self.orders_list]
             durations_hours = [
-                (order['close_date'] - order['open_date']).total_seconds() / 3600 for order in self.orders_list
+                (order['close_date'] - order['open_date']) for order in self.orders_list
             ]
             
             # Calculate the Sharpe ratio using the orders' profits and durations
