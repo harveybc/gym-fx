@@ -269,6 +269,7 @@ class AutomationEnv(gym.Env):
                     order = {
                         'close_date': current_date,
                         'open_date': self.order_date,
+                        'ticks': self.current_step - self.order_time,
                         'order_type': self.order_status,
                         'order_price': self.order_price,
                         'order_close': self.order_close,
@@ -306,6 +307,7 @@ class AutomationEnv(gym.Env):
                 order = {
                     'close_date': current_date,
                     'open_date': self.order_date,
+                    'ticks': self.current_step - self.order_time,
                     'order_type': self.order_status,
                     'order_price': self.order_price,
                     'order_close': self.order_close,
@@ -342,6 +344,7 @@ class AutomationEnv(gym.Env):
                 order = {
                     'close_date': current_date,
                     'open_date': self.order_date,
+                    'ticks': self.current_step - self.order_time,
                     'order_type': self.order_status,
                     'order_price': self.order_price,
                     'order_close': self.order_close,
@@ -388,7 +391,7 @@ class AutomationEnv(gym.Env):
         if self.done:
             returns = [order['real_profit'] for order in self.orders_list]
             durations_hours = [
-                (order['close_date'] - order['open_date']) for order in self.orders_list
+                (order['ticks']) for order in self.orders_list
             ]
             
             # Calculate the Sharpe ratio using the orders' profits and durations
