@@ -442,6 +442,54 @@ class AutomationEnv(gym.Env):
 
     def render(self, mode='human'):
         pass
+    
+    def calculate_sharpe_ratio(self, returns, durations_hours, annual_risk_free_rate=0.1):
+        """
+        Calcula el Sharpe Ratio ajustando la tasa libre de riesgo anual a la duración de la operación.
+        :param returns: Lista de retornos para cada orden cerrada.
+        :param durations_hours: Lista de duraciones en horas para cada orden cerrada.
+        :param annual_risk_free_rate: Tasa libre de riesgo anual.
+        :return: El Sharpe Ratio calculado.
+        """
+        if len(returns) <= 1:
+            return 0
+
+        # Convertir la tasa libre de riesgo anual a la base de la duración promedio de las órdenes
+        total_duration_hours = sum(durations_hours)
+        avg_duration_hours = total_duration_hours / len(durations_hours)
+
+        # Calcular la tasa libre de riesgo ajustada para la duración promedio
+        hourly_risk_free_rate = (1 + annual_risk_free_rate) ** (1 / 8760) - 1
+        adjusted_risk_free_rate = (1 + hourly_risk_free_rate) ** avg_duration_hours - 1
+        adjusted_risk_free_rate = 0
+
+        # Calcular el Sharpe Ratio
+        mean_return = np.mean(returns)
+        return_std = np.std(returns)
+        sharpe_ratio = (mean_return - adjusted_risk_free_rate) / (1+return_std) 
+
+        #correct for low count of orders
+
+        if sharpe_ratio > 1 and len(returns) < 7:
+            sharpe_ratio = sharpe_ratio/1.5
+
+        if sharpe_ratio > 1 and len(returns) < 5:
+            sharpe_ratio = sharpe_ratio/3
+        
+        if sharpe_ratio > 1 and len(returns) < 3:
+            sharpe_ratio = sharpe_ratio/5
+        
+        if sharpe_ratio > 1  and len(returns) < 7:
+            sharpe_ratio = sharpe_ratio/1.5
+
+        if sharpe_ratio > 1 and len(returns) < 5:
+            sharpe_ratio = sharpe_ratio/3
+        
+        if sharpe_ratio > 1 and len(returns) < 3:
+            sharpe_ratio = sharpe_ratio/6
+        
+
+        return sharpe_ratio
 
     def kolmogorov_complexity(self, genome):
         # Convert the genome to a string representation
@@ -456,3 +504,4 @@ class AutomationEnv(gym.Env):
             'final_balance': self.balance,
             'final_fitness': self.reward
         }
+    
