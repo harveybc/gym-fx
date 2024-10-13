@@ -327,7 +327,7 @@ class AutomationEnv(gym.Env):
                 self.orders_list.append(order)
                 if verbose:
                     print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Stop Loss")
-                    print(f"Current balance : {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
+                    print(f"Current balance 6: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                     print(f"Order Status after stop loss check: {self.order_status}")
 
             # Verify if close by TP
