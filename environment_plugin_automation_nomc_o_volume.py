@@ -367,20 +367,78 @@ class AutomationEnv(gym.Env):
                     print(f"Current balance 5: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                     print(f"Order Status after take profit check: {self.order_status}")
 
+        # Define relevant lambda values
+        margin_call_lambda = 100  # Penalty for margin call
+
+        # Initialize the reward for this step
+        reward_margin_call = 0.0
+        reward = 0.0
+
+        if self.current_step > 0:
+            penalty_cost = -1 / self.max_steps  # Normalize the reward
+            if self.done and self.c_c == 1:  # Closed by margin call
+                reward_margin_call = (self.max_steps - self.current_step) * penalty_cost  # Penalize for margin call
+
+        # Set the observation as y_train if not None, else x_train
+        ob = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
+        self.equity_ant = self.equity
+
+        # If margin call, add the margin call penalty
+        reward += reward_margin_call * margin_call_lambda
+
+        # Update the previous balance for the next step
+        self.balance_ant = self.balance
+
+        
+        # update fitness 
+        self.fitness = self.fitness + reward
+
+
+        # If the episode is done, calculate the Sharpe ratio using the orders
+        if self.done:
+            returns = [order['real_profit'] for order in self.orders_list]
+            durations_hours = [
+                (order['ticks']) for order in self.orders_list
+            ]
+            
+            # Calculate the Sharpe ratio using the orders' profits and durations
+            sharpe_ratio = self.calculate_sharpe_ratio(returns, durations_hours)
+            
+            # Calculate final fitness using the same approach as in the optimizer
+            num_orders = len(self.orders_list)
+            final_reward = self.fitness
+
+
+            # calculate fitness
+            profit_factor = self.balance/self.initial_balance
+            if num_orders < 1:
+                self.fitness = -200
+            else:
+                # margin call
+                if self.c_c  == 1:
+                    self.fitness = final_reward
+                else:
+                    if  profit_factor > 0:
+                        self.fitness = num_orders*profit_factor*(1+sharpe_ratio)
+                    else:
+                        self.fitness = abs(profit_factor)*(-1+sharpe_ratio*10)
+                           
+            print(f"[ENV] genome_id: {genome_id}, balance: {self.balance}, n_ord: {len(self.orders_list)}, final_reward ({final_reward}) + sharpe_ratio ({sharpe_ratio}) = Fitness: {self.fitness}")
+
         # Information dictionary that includes the final balance and other metrics
         info = {
             "date": self.x_train[self.current_step - 1, 0],
             "close": self.x_train[self.current_step - 1, 4],
             "balance": self.balance,
             "equity": self.equity,
-            "reward": self.reward,
+            "reward": reward,
             "c_c": self.c_c,
-            "sharpe_ratio": 0,  # Placeholder until calculation is finalized
+            "sharpe_ratio": sharpe_ratio if self.done else 0,  # Add Sharpe ratio to info
             "orders": self.orders_list,
             "initial_balance": self.initial_balance
         }
 
-        return self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step], self.reward, self.done, info
+        return ob, reward, self.done, info
 
     def render(self, mode='human'):
         pass
