@@ -238,7 +238,7 @@ class AutomationEnv(gym.Env):
                 self.order_time = self.current_step
                 self.order_date = current_date
                 if verbose:
-                    print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Buy, Price: {self.order_price}, Volume: {self.order_volume}")
+                    print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Buy, Price: {self.order_price}, volume_action:{volume_action}, Volume: {self.order_volume}")
                     print(f"Current balance (after BUY action): {self.balance}, Number of closes: {self.num_closes}")
                     print(f"Order Status after buy action: {self.order_status}")
 
@@ -250,7 +250,7 @@ class AutomationEnv(gym.Env):
                 self.order_time = self.current_step
                 self.order_date = current_date
                 if verbose:
-                    print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Sell, Price: {self.order_price}, Volume: {self.order_volume}")
+                    print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Sell, Price: {self.order_price}, volume_action:{volume_action}, Volume: {self.order_volume}")
                     print(f"Current balance (after SELL action): {self.balance}, Number of closes: {self.num_closes}")
                     print(f"Order Status after sell action: {self.order_status}")
 
@@ -419,7 +419,7 @@ class AutomationEnv(gym.Env):
                     self.fitness = final_reward
                 else:
                     if  profit_factor > 0:
-                        self.fitness = num_orders*profit_factor*(1+sharpe_ratio)
+                        self.fitness = (num_orders*profit_factor)+ (num_orders*sharpe_ratio*100)
                     elif num_orders < 10:
                         self.fitness = num_orders*profit_factor
                     else:
