@@ -437,7 +437,9 @@ class AutomationEnv(gym.Env):
             "c_c": self.c_c,
             "sharpe_ratio": sharpe_ratio if self.done else 0,  # Add Sharpe ratio to info
             "orders": self.orders_list,
-            "initial_balance": self.initial_balance
+            "initial_balance": self.initial_balance,
+            "order_status": self.order_status,
+            "profit_pips": self.profit_pips
         }
 
         return ob, reward, self.done, info
