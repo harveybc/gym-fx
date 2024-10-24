@@ -416,7 +416,7 @@ class AutomationEnv(gym.Env):
 
         # If the episode is done, calculate the Sharpe ratio using the orders
         if self.done:
-            returns = [order['real_profit'] for order in self.orders_list]
+            returns = [order['profit_pips'] for order in self.orders_list]
             durations_hours = [
                 (order['ticks']) for order in self.orders_list
             ]
