@@ -200,17 +200,6 @@ class AutomationEnv(gym.Env):
         discrete_action = action[0]
         volume_action = action[1][0]  # Value between 0 and 1 representing the volume proportion
 
-        # Calculate the volume based on the continuous action
-        max_volume = self.equity * self.rel_volume * self.leverage
-        volume_range = self.max_order_volume - self.min_order_volume
-        self.order_volume = self.min_order_volume + volume_action * volume_range
-        if self.order_volume > max_volume:
-            self.order_volume = max_volume
-
-        # Ensure minimum order volume constraint
-        if self.order_volume < self.min_order_volume:
-            self.order_volume = self.min_order_volume
-
         # Calculate profit
         self.profit_pips = 0
         self.real_profit = 0
@@ -237,6 +226,17 @@ class AutomationEnv(gym.Env):
                 self.margin += (self.order_volume / self.leverage)
                 self.order_time = self.current_step
                 self.order_date = current_date
+                
+                # Calculate the volume based on the continuous action
+                max_volume = self.equity * self.rel_volume * self.leverage
+                volume_range = self.max_order_volume - self.min_order_volume
+                self.order_volume = self.min_order_volume + volume_action * volume_range
+                if self.order_volume > max_volume:
+                    self.order_volume = max_volume
+
+                # Ensure minimum order volume constraint
+                if self.order_volume < self.min_order_volume:
+                    self.order_volume = self.min_order_volume
                 if verbose:
                     print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Buy, Price: {self.order_price}, volume_action:{volume_action}, Volume: {self.order_volume}")
                     print(f"Current balance (after BUY action): {self.balance}, Number of closes: {self.num_closes}")
@@ -249,6 +249,17 @@ class AutomationEnv(gym.Env):
                 self.margin += (self.order_volume / self.leverage)
                 self.order_time = self.current_step
                 self.order_date = current_date
+                
+                # Calculate the volume based on the continuous action
+                max_volume = self.equity * self.rel_volume * self.leverage
+                volume_range = self.max_order_volume - self.min_order_volume
+                self.order_volume = self.min_order_volume + volume_action * volume_range
+                if self.order_volume > max_volume:
+                    self.order_volume = max_volume
+
+                # Ensure minimum order volume constraint
+                if self.order_volume < self.min_order_volume:
+                    self.order_volume = self.min_order_volume
                 if verbose:
                     print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Sell, Price: {self.order_price}, volume_action:{volume_action}, Volume: {self.order_volume}")
                     print(f"Current balance (after SELL action): {self.balance}, Number of closes: {self.num_closes}")
@@ -272,7 +283,7 @@ class AutomationEnv(gym.Env):
                     self.balance = self.equity
                     self.margin = 0.0
                     self.c_c = 4  # Set closing cause to normal close
-                    self.order_volume = 0.0
+                    
                     self.num_closes += 1
                     # Append the order to the orders list, each order includes: current_date (close date), open_date (self.order_date), order_type, order_price, order_close, profit_pips, real_profit, closing_cause)
                     order = {
@@ -288,6 +299,7 @@ class AutomationEnv(gym.Env):
                         'real_profit': self.real_profit,
                         'closing_cause': self.c_c
                     }
+                    self.order_volume = 0.0
                     self.orders_list.append(order)
                     if verbose:
                         print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Normal Close")
@@ -312,7 +324,7 @@ class AutomationEnv(gym.Env):
                 self.balance = self.equity
                 self.margin = 0.0
                 self.c_c = 2  # Set closing cause to stop loss
-                self.order_volume = 0.0
+
                 self.num_closes += 1
                 # Append the order to the orders list, each order includes: current_date (close date), open_date (self.order_date), order_type, order_price, order_close, profit_pips, real_profit, closing_cause)
                 order = {
@@ -328,6 +340,7 @@ class AutomationEnv(gym.Env):
                     'real_profit': self.real_profit,
                     'closing_cause': self.c_c
                 }
+                self.order_volume = 0.0
                 self.orders_list.append(order)
                 if verbose:
                     print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Stop Loss")
@@ -351,7 +364,7 @@ class AutomationEnv(gym.Env):
                 self.balance = self.equity
                 self.margin = 0.0
                 self.c_c =  3  # Set closing cause to take profit
-                self.order_volume = 0.0
+
                 self.num_closes += 1
                 # Append the order to the orders list, each order includes: current_date (close date), open_date (self.order_date), order_type, order_price, order_close, profit_pips, real_profit, closing_cause)
                 order = {
@@ -367,6 +380,7 @@ class AutomationEnv(gym.Env):
                     'real_profit': self.real_profit,
                     'closing_cause': self.c_c
                 }
+                self.order_volume = 0.0
                 self.orders_list.append(order)
                 if verbose:
                     print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Take Profit")
