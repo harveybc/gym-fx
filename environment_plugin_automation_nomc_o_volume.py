@@ -412,7 +412,7 @@ class AutomationEnv(gym.Env):
             # calculate fitness
             profit_factor = self.balance/self.initial_balance
             if num_orders < 1:
-                self.fitness = -50
+                self.fitness = -400
             else:
                 # margin call
                 if self.c_c  == 1:
