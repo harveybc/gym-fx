@@ -276,6 +276,7 @@ class AutomationEnv(gym.Env):
                     self.num_closes += 1
                     # Append the order to the orders list, each order includes: current_date (close date), open_date (self.order_date), order_type, order_price, order_close, profit_pips, real_profit, closing_cause)
                     order = {
+                        'equity':  self.equity,
                         'close_date': current_date,
                         'open_date': self.order_date,
                         'ticks': self.current_step - self.order_time,
@@ -314,6 +315,7 @@ class AutomationEnv(gym.Env):
                 self.num_closes += 1
                 # Append the order to the orders list, each order includes: current_date (close date), open_date (self.order_date), order_type, order_price, order_close, profit_pips, real_profit, closing_cause)
                 order = {
+                        'equity':  self.equity,
                     'close_date': current_date,
                     'open_date': self.order_date,
                     'ticks': self.current_step - self.order_time,
@@ -351,6 +353,7 @@ class AutomationEnv(gym.Env):
                 self.num_closes += 1
                 # Append the order to the orders list, each order includes: current_date (close date), open_date (self.order_date), order_type, order_price, order_close, profit_pips, real_profit, closing_cause)
                 order = {
+                        'equity':  self.equity,
                     'close_date': current_date,
                     'open_date': self.order_date,
                     'ticks': self.current_step - self.order_time,
@@ -402,8 +405,8 @@ class AutomationEnv(gym.Env):
             ]
             
             # Calculate the Sharpe ratio using the orders' profits and durations
-            #sharpe_ratio = self.calculate_sharpe_ratio(returns, durations_hours)
-            snr = self.calculate_snr(returns)
+            sharpe_ratio = self.calculate_sharpe_ratio(returns, durations_hours)
+        
 
             
             # Calculate final fitness using the same approach as in the optimizer
@@ -420,7 +423,7 @@ class AutomationEnv(gym.Env):
                 if self.c_c  == 1:
                     self.fitness = final_reward
                 else:
-                    self.fitness = (num_orders*snr)
+                    self.fitness = (num_orders*sharpe_ratio)
                            
             #print(f"[ENV] genome_id: {genome_id}, balance: {self.balance}, n_ord: {len(self.orders_list)}, final_reward ({final_reward}) + sharpe_ratio ({sharpe_ratio}) = Fitness: {self.fitness}")
 
@@ -432,7 +435,7 @@ class AutomationEnv(gym.Env):
             "equity": self.equity,
             "reward": reward,
             "c_c": self.c_c,
-            "sharpe_ratio": snr if self.done else 0,  # Add Sharpe ratio to info
+            "sharpe_ratio": sharpe_ratio if self.done else 0,  # Add Sharpe ratio to info
             "orders": self.orders_list,
             "initial_balance": self.initial_balance,
             "order_status": self.order_status,
@@ -443,24 +446,6 @@ class AutomationEnv(gym.Env):
 
     def render(self, mode='human'):
         pass
-
-    def calculate_snr(self, returns):
-        """
-        Calcula la relación señal-ruido (SNR) de una serie de retornos.
-        :param returns: Lista de retornos para cada orden cerrada.
-        :return: La relación señal-ruido calculada.
-        """
-        if len(returns) <= 1:
-            return 0
-
-        return_mean = np.mean(returns)
-        return_std = np.std(returns)
-        if return_std == 0:
-            return 0
-        snr = (return_mean**2) / (return_std**2)
-
-        return snr
-
     
     def calculate_sharpe_ratio(self, returns, durations_hours, annual_risk_free_rate=0.1):
         """
