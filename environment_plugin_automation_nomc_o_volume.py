@@ -402,7 +402,9 @@ class AutomationEnv(gym.Env):
             ]
             
             # Calculate the Sharpe ratio using the orders' profits and durations
-            sharpe_ratio = self.calculate_sharpe_ratio(returns, durations_hours)
+            #sharpe_ratio = self.calculate_sharpe_ratio(returns, durations_hours)
+            snr = self.calculate_snr(returns)
+
             
             # Calculate final fitness using the same approach as in the optimizer
             num_orders = len(self.orders_list)
@@ -418,7 +420,7 @@ class AutomationEnv(gym.Env):
                 if self.c_c  == 1:
                     self.fitness = final_reward
                 else:
-                    self.fitness = (num_orders*sharpe_ratio)
+                    self.fitness = (num_orders*snr)
                            
             #print(f"[ENV] genome_id: {genome_id}, balance: {self.balance}, n_ord: {len(self.orders_list)}, final_reward ({final_reward}) + sharpe_ratio ({sharpe_ratio}) = Fitness: {self.fitness}")
 
@@ -430,7 +432,7 @@ class AutomationEnv(gym.Env):
             "equity": self.equity,
             "reward": reward,
             "c_c": self.c_c,
-            "sharpe_ratio": sharpe_ratio if self.done else 0,  # Add Sharpe ratio to info
+            "sharpe_ratio": snr if self.done else 0,  # Add Sharpe ratio to info
             "orders": self.orders_list,
             "initial_balance": self.initial_balance,
             "order_status": self.order_status,
