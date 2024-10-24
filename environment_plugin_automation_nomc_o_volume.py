@@ -443,6 +443,24 @@ class AutomationEnv(gym.Env):
 
     def render(self, mode='human'):
         pass
+
+    def calculate_snr(self, returns):
+        """
+        Calcula la relación señal-ruido (SNR) de una serie de retornos.
+        :param returns: Lista de retornos para cada orden cerrada.
+        :return: La relación señal-ruido calculada.
+        """
+        if len(returns) <= 1:
+            return 0
+
+        return_mean = np.mean(returns)
+        return_std = np.std(returns)
+        if return_std == 0:
+            return 0
+        snr = (return_mean**2) / (return_std**2)
+
+        return snr
+
     
     def calculate_sharpe_ratio(self, returns, durations_hours, annual_risk_free_rate=0.1):
         """
