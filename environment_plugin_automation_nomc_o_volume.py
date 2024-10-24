@@ -488,7 +488,7 @@ class AutomationEnv(gym.Env):
         mean_return = np.mean(returns)
         return_std = np.std(returns)
         if return_std == 0:
-            return 0
+            return -100
         sharpe_ratio = (mean_return - adjusted_risk_free_rate) / (return_std) 
 
         #correct for low count of orders
