@@ -440,7 +440,16 @@ class AutomationEnv(gym.Env):
                 if self.c_c  == 1:
                     self.fitness = final_reward
                 else:
-                    self.fitness = (num_orders*sharpe_ratio)
+                    if  profit_factor > 0:
+                        if sharpe_ratio > 0:
+                            self.fitness = (num_orders*profit_factor) + (num_orders*sharpe_ratio*200)
+                        else:
+                            self.fitness = (num_orders*profit_factor) + sharpe_ratio
+
+                    if (num_orders < 10) and (profit_factor  > 0):
+                        self.fitness = num_orders * profit_factor
+                    if profit_factor <= 0:
+                        self.fitness = abs(profit_factor) * (-1+sharpe_ratio*10)
                            
             #print(f"[ENV] genome_id: {genome_id}, balance: {self.balance}, n_ord: {len(self.orders_list)}, final_reward ({final_reward}) + sharpe_ratio ({sharpe_ratio}) = Fitness: {self.fitness}")
 
@@ -490,17 +499,20 @@ class AutomationEnv(gym.Env):
         if return_std == 0:
             return -100
         sharpe_ratio = (mean_return - adjusted_risk_free_rate) / (return_std) 
-
+    
         #correct for low count of orders
 
-        if sharpe_ratio > 1 and len(returns) < 10:
-            sharpe_ratio = -10.5
+        if sharpe_ratio > 0 and len(returns) < 30:
+            sharpe_ratio = sharpe_ratio/10
 
-        if sharpe_ratio > 1 and len(returns) < 7:
-            sharpe_ratio = -30
+        if sharpe_ratio > 0 and len(returns) < 20:
+            sharpe_ratio = sharpe_ratio/10
+
+        if sharpe_ratio > 0 and len(returns) < 10:
+            sharpe_ratio = sharpe_ratio/10
         
-        if sharpe_ratio > 1 and len(returns) < 5:
-            sharpe_ratio = -50
+        if sharpe_ratio > 0 and len(returns) < 5:
+            sharpe_ratio = sharpe_ratio/10
         
 
         return sharpe_ratio
