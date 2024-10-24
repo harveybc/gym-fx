@@ -276,6 +276,7 @@ class AutomationEnv(gym.Env):
                     self.num_closes += 1
                     # Append the order to the orders list, each order includes: current_date (close date), open_date (self.order_date), order_type, order_price, order_close, profit_pips, real_profit, closing_cause)
                     order = {
+                        'volume':  self.order_volume,
                         'equity':  self.equity,
                         'close_date': current_date,
                         'open_date': self.order_date,
@@ -315,6 +316,7 @@ class AutomationEnv(gym.Env):
                 self.num_closes += 1
                 # Append the order to the orders list, each order includes: current_date (close date), open_date (self.order_date), order_type, order_price, order_close, profit_pips, real_profit, closing_cause)
                 order = {
+                        'volume':  self.order_volume,
                         'equity':  self.equity,
                     'close_date': current_date,
                     'open_date': self.order_date,
@@ -353,6 +355,7 @@ class AutomationEnv(gym.Env):
                 self.num_closes += 1
                 # Append the order to the orders list, each order includes: current_date (close date), open_date (self.order_date), order_type, order_price, order_close, profit_pips, real_profit, closing_cause)
                 order = {
+                        'volume':  self.order_volume,
                         'equity':  self.equity,
                     'close_date': current_date,
                     'open_date': self.order_date,
