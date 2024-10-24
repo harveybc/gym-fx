@@ -494,22 +494,22 @@ class AutomationEnv(gym.Env):
         #correct for low count of orders
 
         if sharpe_ratio > 1 and len(returns) < 7:
-            sharpe_ratio = sharpe_ratio/1.5
+            sharpe_ratio = sharpe_ratio/10.5
 
         if sharpe_ratio > 1 and len(returns) < 5:
-            sharpe_ratio = sharpe_ratio/3
+            sharpe_ratio = sharpe_ratio/30
         
         if sharpe_ratio > 1 and len(returns) < 3:
-            sharpe_ratio = sharpe_ratio/5
+            sharpe_ratio = sharpe_ratio/50
         
         if sharpe_ratio > 1  and len(returns) < 7:
-            sharpe_ratio = sharpe_ratio/1.5
+            sharpe_ratio = sharpe_ratio/10.5
 
         if sharpe_ratio > 1 and len(returns) < 5:
-            sharpe_ratio = sharpe_ratio/3
+            sharpe_ratio = sharpe_ratio/30
         
         if sharpe_ratio > 1 and len(returns) < 3:
-            sharpe_ratio = sharpe_ratio/6
+            sharpe_ratio = sharpe_ratio/60
         
 
         return sharpe_ratio
