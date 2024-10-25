@@ -425,34 +425,6 @@ class AutomationEnv(gym.Env):
             sharpe_ratio = self.calculate_sharpe_ratio(returns, durations_hours)
         
 
-            
-            # Calculate final fitness using the same approach as in the optimizer
-            num_orders = len(self.orders_list)
-            final_reward = self.fitness
-
-
-            # calculate fitness
-            profit_factor = self.balance/self.initial_balance
-            if num_orders < 1:
-                self.fitness = -50
-            else:
-                # margin call
-                if self.c_c  == 1:
-                    self.fitness = final_reward
-                else:
-                    if  profit_factor > 0:
-                        if sharpe_ratio > 0:
-                            self.fitness = (num_orders*profit_factor) + (num_orders*sharpe_ratio*1000)
-                        else:
-                            self.fitness = (num_orders*profit_factor) + sharpe_ratio*100
-
-                    if (num_orders < 10) and (profit_factor  > 0):
-                        self.fitness = num_orders * profit_factor
-                    if profit_factor <= 0:
-                        self.fitness = abs(profit_factor) * (-1+sharpe_ratio*10)
-                           
-            #print(f"[ENV] genome_id: {genome_id}, balance: {self.balance}, n_ord: {len(self.orders_list)}, final_reward ({final_reward}) + sharpe_ratio ({sharpe_ratio}) = Fitness: {self.fitness}")
-
         # Information dictionary that includes the final balance and other metrics
         info = {
             "date": self.x_train[self.current_step - 1, 0],
@@ -489,8 +461,8 @@ class AutomationEnv(gym.Env):
         avg_duration_hours = total_duration_hours / len(durations_hours)
 
         # Calcular la tasa libre de riesgo ajustada para la duración promedio
-        hourly_risk_free_rate = (1 + annual_risk_free_rate) ** (1 / 8760) - 1
-        adjusted_risk_free_rate = (1 + hourly_risk_free_rate) ** avg_duration_hours - 1
+        #hourly_risk_free_rate = (1 + annual_risk_free_rate) ** (1 / 8760) - 1
+        #adjusted_risk_free_rate = (1 + hourly_risk_free_rate) ** avg_duration_hours - 1
         adjusted_risk_free_rate = 0
 
         # Calcular el Sharpe Ratio
