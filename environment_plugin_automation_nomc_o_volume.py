@@ -434,7 +434,7 @@ class AutomationEnv(gym.Env):
             # calculate fitness
             profit_factor = self.balance/self.initial_balance
             if num_orders < 1:
-                self.fitness = -100
+                self.fitness = -50
             else:
                 # margin call
                 if self.c_c  == 1:
@@ -442,12 +442,12 @@ class AutomationEnv(gym.Env):
                 else:
                     if  profit_factor > 0:
                         if sharpe_ratio > 0:
-                            self.fitness = (num_orders*sharpe_ratio*10)
+                            self.fitness = (num_orders*profit_factor) + (num_orders*sharpe_ratio*1000)
                         else:
-                            self.fitness = (num_orders) * sharpe_ratio
+                            self.fitness = (num_orders*profit_factor) + sharpe_ratio*100
 
                     if (num_orders < 10) and (profit_factor  > 0):
-                        self.fitness = (num_orders / 100) * sharpe_ratio
+                        self.fitness = (num_orders * profit_factor/10) + sharpe_ratio*10
                     if profit_factor <= 0:
                         self.fitness = abs(profit_factor) * (-1+sharpe_ratio*10)
                            
