@@ -44,7 +44,7 @@ class Plugin:
 
     def build_environment(self, x_train, y_train, config):
         self.initial_balance = config.get('initial_balance', self.params['initial_balance'])
-        print("Debug Inside `build_environment` in env: max_steps =", config.get('max_steps', None))
+        #print("Debug Inside `build_environment` in env: max_steps =", config.get('max_steps', None))
         
         self.max_steps = config.get('max_steps', None)
         self.fitness_function = config.get('fitness_function', self.params['fitness_function'])
