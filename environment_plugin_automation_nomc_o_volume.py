@@ -61,6 +61,7 @@ class Plugin:
         self.genome = config.get('genome', None)
         self.env = AutomationEnv(x_train, y_train, self.initial_balance, self.max_steps, self.fitness_function,
                                  self.min_orders, self.sl, self.tp, self.rel_volume, self.leverage, self.pip_cost, self.min_order_time, self.spread, self.max_order_volume, self.min_order_volume, self.genome)
+        return self.env
 
     def reset(self, genome=None):
         self.returns = []  # Initialize returns to track rewards
