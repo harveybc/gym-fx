@@ -420,7 +420,11 @@ class AutomationEnv(gym.Env):
         
         # update fitness 
         self.fitness = self.fitness + reward
-
+        
+        # verify if is done by max_steps
+        self.current_step += 1                
+        if self.current_step >= self.max_steps:
+            self.done = True
 
         # If the episode is done, calculate the Sharpe ratio using the orders
         if self.done:
@@ -448,9 +452,6 @@ class AutomationEnv(gym.Env):
             "profit_pips": self.profit_pips
         }
 
-        self.current_step += 1                
-        if self.current_step >= self.max_steps:
-            self.done = True
 
         return ob, reward, self.done, info
 
