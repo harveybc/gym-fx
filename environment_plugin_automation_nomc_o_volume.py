@@ -67,7 +67,7 @@ class Plugin:
         self.returns = []  # Initialize returns to track rewards
         observation, info, max_steps = self.env.reset(genome)
         
-        return observation, info, max_steps
+        return observation, info
 
     def step(self, action):
         return self.env.step(action)
