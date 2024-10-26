@@ -182,6 +182,8 @@ class AutomationEnv(gym.Env):
         max_steps = self.max_steps
         if max_steps > self.x_train.shape[0]:
             max_steps = self.x_train.shape[0]
+            self.max_steps = max_steps
+
         return observation, info, max_steps
 
     def step(self, action, verbose=True, step_fitness=0.0, genome_id=0, num_closes=0, reward_auc_prev=0.0, act_values=[0.0, 0.0, 0.0]):
