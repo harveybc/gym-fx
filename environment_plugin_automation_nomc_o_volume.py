@@ -182,7 +182,7 @@ class AutomationEnv(gym.Env):
         max_steps = self.max_steps
         if max_steps > self.x_train.shape[0]:
             max_steps = self.x_train.shape[0]
-            self.max_steps = max_steps
+            self.max_steps = max_steps-1
 
         return observation, info, max_steps
 
