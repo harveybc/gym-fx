@@ -196,36 +196,36 @@ class AutomationEnv(gym.Env):
         self.current_step += 1
         if self.current_step >= self.max_steps:
             self.done = True
+        else:
 
+            self.equity_ant = self.equity
+            # Get the relevant values for the current step
+            current_date = self.x_train[self.current_step, 0]
+            High = self.x_train[self.current_step, 3]
+            Low = self.x_train[self.current_step, 2]
+            Close = self.x_train[self.current_step, 4]
 
-        self.equity_ant = self.equity
-        # Get the relevant values for the current step
-        current_date = self.x_train[self.current_step, 0]
-        High = self.x_train[self.current_step, 3]
-        Low = self.x_train[self.current_step, 2]
-        Close = self.x_train[self.current_step, 4]
+            # Split the action into discrete and continuous parts
+            discrete_action = action[0]
+            volume_action = action[1][0]  # Value between 0 and 1 representing the volume proportion
 
-        # Split the action into discrete and continuous parts
-        discrete_action = action[0]
-        volume_action = action[1][0]  # Value between 0 and 1 representing the volume proportion
+            # Calculate profit
+            self.profit_pips = 0
+            self.real_profit = 0
+            # Calculate for existing BUY order (status=1)
+            if self.order_status == 1:
+                self.profit_pips = ((Low - self.order_price) / self.pip_cost)
+                self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
+            # Calculate for existing SELL order (status=2)
+            if self.order_status == 2:
+                self.profit_pips = ((self.order_price - (High + self.spread)) / self.pip_cost)
+                self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
 
-        # Calculate profit
-        self.profit_pips = 0
-        self.real_profit = 0
-        # Calculate for existing BUY order (status=1)
-        if self.order_status == 1:
-            self.profit_pips = ((Low - self.order_price) / self.pip_cost)
-            self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
-        # Calculate for existing SELL order (status=2)
-        if self.order_status == 2:
-            self.profit_pips = ((self.order_price - (High + self.spread)) / self.pip_cost)
-            self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
-
-        # Calculate equity
-        self.equity = self.balance + self.real_profit
-    
-        # Set closing cause to none in this tick
-        self.c_c = 0
+            # Calculate equity
+            self.equity = self.balance + self.real_profit
+        
+            # Set closing cause to none in this tick
+            self.c_c = 0
         
         if not self.done:
             # Executes BUY action, order status = 1
