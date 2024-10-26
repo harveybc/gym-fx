@@ -193,7 +193,6 @@ class AutomationEnv(gym.Env):
         if self.done:
             return np.zeros(self.x_train.shape[1]), self.reward, self.done, {}
 
-        self.current_step += 1
         if self.current_step >= self.max_steps:
             self.done = True
         else:
@@ -407,9 +406,9 @@ class AutomationEnv(gym.Env):
             penalty_cost = -1 / self.max_steps  # Normalize the reward
             if self.done and self.c_c == 1:  # Closed by margin call
                 reward_margin_call = (self.max_steps - self.current_step) * penalty_cost  # Penalize for margin call
-
-        # Set the observation as y_train if not None, else x_train
-        ob = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
+        if not self.done:
+            # Set the observation as y_train if not None, else x_train
+            ob = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
 
 
         # If margin call, add the margin call penalty
@@ -448,6 +447,10 @@ class AutomationEnv(gym.Env):
             "order_status": self.order_status,
             "profit_pips": self.profit_pips
         }
+
+        self.current_step += 1                
+        if self.current_step >= self.max_steps:
+            self.done = True
 
         return ob, reward, self.done, info
 
