@@ -46,7 +46,7 @@ class Plugin:
         self.initial_balance = config.get('initial_balance', self.params['initial_balance'])
         print("Debug Inside `build_environment` in env: max_steps =", config.get('max_steps', None))
         
-        self.max_steps = config.get('max_steps', self.params['max_steps'])
+        self.max_steps = config.get('max_steps', None)
         self.fitness_function = config.get('fitness_function', self.params['fitness_function'])
         self.min_orders = config.get('min_orders', self.params['min_orders'])
         self.sl = config.get('sl', self.params['sl'])
