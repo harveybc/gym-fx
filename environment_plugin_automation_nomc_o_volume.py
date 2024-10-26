@@ -194,6 +194,8 @@ class AutomationEnv(gym.Env):
         if self.current_step >= self.max_steps:
             self.done = True
 
+
+        self.equity_ant = self.equity
         # Get the relevant values for the current step
         current_date = self.x_train[self.current_step, 0]
         High = self.x_train[self.current_step, 3]
@@ -405,7 +407,7 @@ class AutomationEnv(gym.Env):
 
         # Set the observation as y_train if not None, else x_train
         ob = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
-        self.equity_ant = self.equity
+
 
         # If margin call, add the margin call penalty
         reward += reward_margin_call * margin_call_lambda
