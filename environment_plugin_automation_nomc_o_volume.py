@@ -378,17 +378,17 @@ class AutomationEnv(gym.Env):
                 self.num_closes += 1
                 # Append the order to the orders list, each order includes: current_date (close date), open_date (self.order_date), order_type, order_price, order_close, profit_pips, real_profit, closing_cause)
                 order = {
-                        'volume':  self.order_volume,
-                        'equity':  self.equity,
-                    'close_date': current_date,
-                    'open_date': self.order_date,
-                    'ticks': self.current_step - self.order_time,
-                    'order_type': self.order_status,
-                    'order_price': self.order_price,
-                    'order_close': self.order_close,
-                    'profit_pips': self.profit_pips,
-                    'real_profit': self.real_profit,
-                    'closing_cause': self.c_c
+                        'volume':  self.order_volume, # Volume of the order
+                        'equity':  self.equity, # Equity after closing the order
+                    'close_date': current_date, # Closing date of the order
+                    'open_date': self.order_date, # Opening date of the order
+                    'ticks': self.current_step - self.order_time, # Duration of the order in ticks
+                    'order_type': self.order_status, #  Type of the order (1 = Buy, 2 = Sell) 
+                    'order_price': self.order_price, # Opening price of the order
+                    'order_close': self.order_close, # Closing price of the order
+                    'profit_pips': self.profit_pips, # Profit in pips
+                    'real_profit': self.real_profit, # Real profit in currency
+                    'closing_cause': self.c_c # Closing cause (1 = Margin Call, 2 = Stop Loss, 3 = Take Profit, 4 = Normal Close)
                 }
                 self.order_volume = 0.0
                 self.orders_list.append(order)
