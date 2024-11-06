@@ -206,7 +206,9 @@ class AutomationEnv(gym.Env):
 
             # Split the action into discrete and continuous parts
             discrete_action = action[0]
-            volume_action = action[1][0]  # Value between 0 and 1 representing the volume proportion
+            volume_action = action[1][0]  # Value between -1 and 1 representing the volume proportion
+            # transform volume actio to a 0,1 range
+            volume_action = (volume_action+1)/2
 
             # Calculate profit
             self.profit_pips = 0
