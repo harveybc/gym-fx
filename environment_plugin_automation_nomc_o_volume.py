@@ -156,6 +156,7 @@ class AutomationEnv(gym.Env):
         self.ant_c_c = 0  # Track previous closing cause
         self.margin = 0.0
         self.order_time = 0
+        self.max_dd_pips = 0
         self.genome = genome 
         self.kolmogorov_c = self.kolmogorov_complexity(self.genome) if self.genome is not None else 0
         self.returns = []  # Initialize returns to track rewards
@@ -217,10 +218,18 @@ class AutomationEnv(gym.Env):
             if self.order_status == 1:
                 self.profit_pips = ((Low - self.order_price) / self.pip_cost)
                 self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
+                # updates the max drawdown
+                if self.profit_pips < 0:
+                    if self.max_dd_pips < -self.profit_pips: 
+                        self.max_dd_pips = -self.profit_pips
             # Calculate for existing SELL order (status=2)
             if self.order_status == 2:
                 self.profit_pips = ((self.order_price - (High + self.spread)) / self.pip_cost)
                 self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
+                # updates the max drawdown
+                if self.profit_pips < 0:
+                    if self.max_dd_pips < -self.profit_pips: 
+                        self.max_dd_pips = -self.profit_pips
 
             # Calculate equity
             self.equity = self.balance + self.real_profit
@@ -236,7 +245,7 @@ class AutomationEnv(gym.Env):
                 self.margin += (self.order_volume / self.leverage)
                 self.order_time = self.current_step
                 self.order_date = current_date
-                
+                self.max_dd_pips = 0
                 # Calculate the theoretical max volume based on equity, leverage, and relative volume
                 max_volume = self.equity * self.rel_volume * self.leverage
 
@@ -268,7 +277,7 @@ class AutomationEnv(gym.Env):
                 self.margin += (self.order_volume / self.leverage)
                 self.order_time = self.current_step
                 self.order_date = current_date
-                 
+                self.max_dd_pips = 0
                 # Calculate the theoretical max volume based on equity, leverage, and relative volume
                 max_volume = self.equity * self.rel_volume * self.leverage
 
@@ -309,6 +318,7 @@ class AutomationEnv(gym.Env):
                     self.order_status = 0
                     self.equity = self.balance + self.real_profit
                     self.balance = self.equity
+                    # TODO: Corregir cálculos de margen
                     self.margin = 0.0
                     self.c_c = 4  # Set closing cause to normal close
                     
@@ -325,6 +335,7 @@ class AutomationEnv(gym.Env):
                         'order_close': self.order_close,
                         'profit_pips': self.profit_pips,
                         'real_profit': self.real_profit,
+                        'max_dd_pips': self.max_dd_pips,
                         'closing_cause': self.c_c
                     }
                     self.order_volume = 0.0
@@ -366,6 +377,7 @@ class AutomationEnv(gym.Env):
                     'order_close': self.order_close,
                     'profit_pips': self.profit_pips,
                     'real_profit': self.real_profit,
+                    'max_dd_pips': self.max_dd_pips,
                     'closing_cause': self.c_c
                 }
                 self.order_volume = 0.0
@@ -406,6 +418,7 @@ class AutomationEnv(gym.Env):
                     'order_close': self.order_close, # Closing price of the order
                     'profit_pips': self.profit_pips, # Profit in pips
                     'real_profit': self.real_profit, # Real profit in currency
+                    'max_dd_pips': self.max_dd_pips, # Maximum drawdown in pips during the order
                     'closing_cause': self.c_c # Closing cause (1 = Margin Call, 2 = Stop Loss, 3 = Take Profit, 4 = Normal Close)
                 }
                 self.order_volume = 0.0
