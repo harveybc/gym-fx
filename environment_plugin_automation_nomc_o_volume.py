@@ -20,7 +20,7 @@ class Plugin:
         'max_order_volume': 1000000, # Maximum order volume = 10 lots (1 lot = 100,000 units)
         'min_order_volume': 10000, # Minimum order volume = 0.1 lots (1 lot = 100,000 units)
         'leverage': 1000,
-        'pip_cost': 0.00001,
+        'pip_cost': 0.00001, # 1 pip cost in EURUSD/pip
         'min_order_time': 3,  #  Minimum Order Time to allow manual closing by an action inverse to the current order.
         'spread': 0.0003  # Default spread value
     }
@@ -237,16 +237,25 @@ class AutomationEnv(gym.Env):
                 self.order_time = self.current_step
                 self.order_date = current_date
                 
-                # Calculate the volume based on the continuous action
+                # Calculate the theoretical max volume based on equity, leverage, and relative volume
                 max_volume = self.equity * self.rel_volume * self.leverage
+
+                # Adjust max volume to respect the minimum order volume constraint
+                if max_volume < self.min_order_volume:
+                    max_volume = self.min_order_volume
+
+                # Determine the range for scaling the order volume based on the volume action
                 volume_range = self.max_order_volume - self.min_order_volume
                 self.order_volume = self.min_order_volume + volume_action * volume_range
+
+                # Apply the max volume constraint
                 if self.order_volume > max_volume:
                     self.order_volume = max_volume
 
-                # Ensure minimum order volume constraint
+                # Apply the minimum order volume constraint
                 if self.order_volume < self.min_order_volume:
                     self.order_volume = self.min_order_volume
+
                 if verbose:
                     print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Buy, Price: {self.order_price}, volume_action:{volume_action}, Volume: {self.order_volume}")
                     print(f"Current balance (after BUY action): {self.balance}, Number of closes: {self.num_closes}")
@@ -259,17 +268,26 @@ class AutomationEnv(gym.Env):
                 self.margin += (self.order_volume / self.leverage)
                 self.order_time = self.current_step
                 self.order_date = current_date
-                
-                # Calculate the volume based on the continuous action
+                 
+                # Calculate the theoretical max volume based on equity, leverage, and relative volume
                 max_volume = self.equity * self.rel_volume * self.leverage
+
+                # Adjust max volume to respect the minimum order volume constraint
+                if max_volume < self.min_order_volume:
+                    max_volume = self.min_order_volume
+
+                # Determine the range for scaling the order volume based on the volume action
                 volume_range = self.max_order_volume - self.min_order_volume
                 self.order_volume = self.min_order_volume + volume_action * volume_range
+
+                # Apply the max volume constraint
                 if self.order_volume > max_volume:
                     self.order_volume = max_volume
 
-                # Ensure minimum order volume constraint
+                # Apply the minimum order volume constraint
                 if self.order_volume < self.min_order_volume:
                     self.order_volume = self.min_order_volume
+
                 if verbose:
                     print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Sell, Price: {self.order_price}, volume_action:{volume_action}, Volume: {self.order_volume}")
                     print(f"Current balance (after SELL action): {self.balance}, Number of closes: {self.num_closes}")
