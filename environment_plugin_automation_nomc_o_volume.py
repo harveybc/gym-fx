@@ -432,47 +432,49 @@ class AutomationEnv(gym.Env):
                     print(f"Current balance 5: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                     print(f"Order Status after take profit check: {self.order_status}")
 
-            # Verify if close by max_order_time
-            if (self.current_step - self.order_time) > self.max_order_time:
-                # Calculate for existing BUY order (status=1)
-                if self.order_status == 1:
-                    self.profit_pips = ((Low - self.order_price) / self.pip_cost)
-                    self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
-                    self.order_close = Low
-                # Calculate for existing SELL order (status=2)
-                if self.order_status == 2:
-                    self.profit_pips = ((self.order_price - (High + self.spread)) / self.pip_cost)
-                    self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
-                    self.order_close = High + self.spread
-                self.order_status = 0
-                self.equity = self.balance + self.real_profit
-                self.balance = self.equity
-                self.margin = 0.0
-                self.c_c =  5  # Set closing cause to max order time
+            # Verify if close by max_order_time if order status is 1 or 2
+            if (self.order_status == 1 or self.order_status == 2):
+
+                if (self.current_step - self.order_time) > self.max_order_time:
+                    # Calculate for existing BUY order (status=1)
+                    if self.order_status == 1:
+                        self.profit_pips = ((Low - self.order_price) / self.pip_cost)
+                        self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
+                        self.order_close = Low
+                    # Calculate for existing SELL order (status=2)
+                    if self.order_status == 2:
+                        self.profit_pips = ((self.order_price - (High + self.spread)) / self.pip_cost)
+                        self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
+                        self.order_close = High + self.spread
+                    self.order_status = 0
+                    self.equity = self.balance + self.real_profit
+                    self.balance = self.equity
+                    self.margin = 0.0
+                    self.c_c =  5  # Set closing cause to max order time
+                    
+                    self.num_closes += 1
+                    # Append the order to the orders list, each order includes: current_date (close date), open_date (self.order_date), order_type, order_price, order_close, profit_pips, real_profit, closing_cause)
+                    order = {
+                            'volume':  self.order_volume, # Volume of the order
+                            'equity':  self.equity, # Equity after closing the order
+                        'close_date': current_date, # Closing date of the order
+                        'open_date': self.order_date, # Opening date of the order
+                        'ticks': self.current_step - self.order_time, # Duration of the order in ticks
+                        'order_type': self.order_status, #  Type of the order (1 = Buy, 2 = Sell) 
+                        'order_price': self.order_price, # Opening price of the order
+                        'order_close': self.order_close, # Closing price of the order
+                        'profit_pips': self.profit_pips, # Profit in pips
+                        'real_profit': self.real_profit, # Real profit in currency
+                        'max_dd_pips': self.max_dd_pips, # Maximum drawdown in pips during the order
+                        'closing_cause': self.c_c # Closing cause (1 = Margin Call, 2 = Stop Loss, 3 = Take Profit, 4 = Normal Close, 5 = order timeout)
+                    }
+                    self.order_volume = 0.0
+                    self.orders_list.append(order)
+                    if verbose:
+                        print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Take Profit")
+                        print(f"Current balance 5: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
+                        print(f"Order Status after take profit check: {self.order_status}")
                 
-                self.num_closes += 1
-                # Append the order to the orders list, each order includes: current_date (close date), open_date (self.order_date), order_type, order_price, order_close, profit_pips, real_profit, closing_cause)
-                order = {
-                        'volume':  self.order_volume, # Volume of the order
-                        'equity':  self.equity, # Equity after closing the order
-                    'close_date': current_date, # Closing date of the order
-                    'open_date': self.order_date, # Opening date of the order
-                    'ticks': self.current_step - self.order_time, # Duration of the order in ticks
-                    'order_type': self.order_status, #  Type of the order (1 = Buy, 2 = Sell) 
-                    'order_price': self.order_price, # Opening price of the order
-                    'order_close': self.order_close, # Closing price of the order
-                    'profit_pips': self.profit_pips, # Profit in pips
-                    'real_profit': self.real_profit, # Real profit in currency
-                    'max_dd_pips': self.max_dd_pips, # Maximum drawdown in pips during the order
-                    'closing_cause': self.c_c # Closing cause (1 = Margin Call, 2 = Stop Loss, 3 = Take Profit, 4 = Normal Close, 5 = order timeout)
-                }
-                self.order_volume = 0.0
-                self.orders_list.append(order)
-                if verbose:
-                    print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Take Profit")
-                    print(f"Current balance 5: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
-                    print(f"Order Status after take profit check: {self.order_status}")
-            
 
         # Define relevant lambda values
         margin_call_lambda = 100  # Penalty for margin call
