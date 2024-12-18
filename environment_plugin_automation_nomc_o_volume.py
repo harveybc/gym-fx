@@ -21,7 +21,8 @@ class Plugin:
         'min_order_volume': 10000, # Minimum order volume = 0.1 lots (1 lot = 100,000 units)
         'leverage': 1000,
         'pip_cost': 0.00001, # 1 pip cost in EURUSD/pip
-        'min_order_time': 3,  #  Minimum Order Time to allow manual closing by an action inverse to the current order.
+        'min_order_time': 6,  #  Minimum Order Time to allow manual closing by an action inverse to the current order.
+        'max_order_time': 96,  #  Minimum Order Time to allow manual closing by an action inverse to the current order.
         'spread': 0.0003  # Default spread value
     }
 
@@ -55,12 +56,13 @@ class Plugin:
         self.leverage = config.get('leverage', self.params['leverage'])
         self.pip_cost = config.get('pip_cost', self.params['pip_cost'])
         self.min_order_time = config.get('min_order_time', self.params['min_order_time'])
+        self.max_order_time = config.get('max_order_time', self.params['max_order_time'])
         self.spread = config.get('spread', self.params['spread'])
         self.max_order_volume = config.get('max_order_volume', self.params['max_order_volume'])
         self.min_order_volume = config.get('min_order_volume', self.params['min_order_volume'])
         self.genome = config.get('genome', None)
         self.env = AutomationEnv(x_train, y_train, self.initial_balance, self.max_steps, self.fitness_function,
-                                 self.min_orders, self.sl, self.tp, self.rel_volume, self.leverage, self.pip_cost, self.min_order_time, self.spread, self.max_order_volume, self.min_order_volume, self.genome)
+                                 self.min_orders, self.sl, self.tp, self.rel_volume, self.leverage, self.pip_cost, self.min_order_time, self.max_order_time, self.spread, self.max_order_volume, self.min_order_volume, self.genome)
         return self.env
 
     def reset(self, genome=None):
@@ -88,7 +90,7 @@ class Plugin:
 
 class AutomationEnv(gym.Env):
     def __init__(self, x_train, y_train, initial_balance, max_steps, fitness_function,
-                 min_orders, sl, tp, rel_volume, leverage, pip_cost, min_order_time, spread, max_order_volume, min_order_volume, genome):
+                 min_orders, sl, tp, rel_volume, leverage, pip_cost, min_order_time, max_order_time, spread, max_order_volume, min_order_volume, genome):
         super(AutomationEnv, self).__init__()
         self.max_steps = max_steps
         self.x_train = x_train.to_numpy() if isinstance(x_train, pd.DataFrame) else x_train
@@ -119,6 +121,8 @@ class AutomationEnv(gym.Env):
         self.leverage = leverage
         self.pip_cost = pip_cost
         self.min_order_time = min_order_time
+        self.max_order_time = max_order_time
+        
         self.spread = spread
         self.margin = 0.0
         self.order_time = 0
@@ -427,6 +431,48 @@ class AutomationEnv(gym.Env):
                     print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Take Profit")
                     print(f"Current balance 5: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                     print(f"Order Status after take profit check: {self.order_status}")
+
+            # Verify if close by max_order_time
+            if (self.current_step - self.order_time) > self.max_order_time:
+                # Calculate for existing BUY order (status=1)
+                if self.order_status == 1:
+                    self.profit_pips = ((Low - self.order_price) / self.pip_cost)
+                    self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
+                    self.order_close = Low
+                # Calculate for existing SELL order (status=2)
+                if self.order_status == 2:
+                    self.profit_pips = ((self.order_price - (High + self.spread)) / self.pip_cost)
+                    self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
+                    self.order_close = High + self.spread
+                self.order_status = 0
+                self.equity = self.balance + self.real_profit
+                self.balance = self.equity
+                self.margin = 0.0
+                self.c_c =  5  # Set closing cause to max order time
+                
+                self.num_closes += 1
+                # Append the order to the orders list, each order includes: current_date (close date), open_date (self.order_date), order_type, order_price, order_close, profit_pips, real_profit, closing_cause)
+                order = {
+                        'volume':  self.order_volume, # Volume of the order
+                        'equity':  self.equity, # Equity after closing the order
+                    'close_date': current_date, # Closing date of the order
+                    'open_date': self.order_date, # Opening date of the order
+                    'ticks': self.current_step - self.order_time, # Duration of the order in ticks
+                    'order_type': self.order_status, #  Type of the order (1 = Buy, 2 = Sell) 
+                    'order_price': self.order_price, # Opening price of the order
+                    'order_close': self.order_close, # Closing price of the order
+                    'profit_pips': self.profit_pips, # Profit in pips
+                    'real_profit': self.real_profit, # Real profit in currency
+                    'max_dd_pips': self.max_dd_pips, # Maximum drawdown in pips during the order
+                    'closing_cause': self.c_c # Closing cause (1 = Margin Call, 2 = Stop Loss, 3 = Take Profit, 4 = Normal Close, 5 = order timeout)
+                }
+                self.order_volume = 0.0
+                self.orders_list.append(order)
+                if verbose:
+                    print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Take Profit")
+                    print(f"Current balance 5: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
+                    print(f"Order Status after take profit check: {self.order_status}")
+            
 
         # Define relevant lambda values
         margin_call_lambda = 100  # Penalty for margin call
