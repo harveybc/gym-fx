@@ -271,7 +271,7 @@ class AutomationEnv(gym.Env):
                     self.order_volume = self.min_order_volume
 
                 if verbose:
-                    print(f"{current_tick} - Opening order - Action: Buy, Price: {self.order_price}, volume_action:{volume_action}, Volume: {self.order_volume}")
+                    print(f"{current_date}({current_tick}) - Opening order - Action: Buy, Price: {self.order_price}, volume_action:{volume_action}, Volume: {self.order_volume}")
                     print(f"Current balance (after BUY action): {self.balance}, Number of closes: {self.num_closes}")
                     print(f"Order Status after buy action: {self.order_status}")
 
@@ -303,7 +303,7 @@ class AutomationEnv(gym.Env):
                     self.order_volume = self.min_order_volume
 
                 if verbose:
-                    print(f"{current_tick} - Opening order - Action: Sell, Price: {self.order_price}, volume_action:{volume_action}, Volume: {self.order_volume}")
+                    print(f"{current_date}({current_tick}) - Opening order - Action: Sell, Price: {self.order_price}, volume_action:{volume_action}, Volume: {self.order_volume}")
                     print(f"Current balance (after SELL action): {self.balance}, Number of closes: {self.num_closes}")
                     print(f"Order Status after sell action: {self.order_status}")
 
@@ -354,7 +354,7 @@ class AutomationEnv(gym.Env):
                     self.order_volume = 0.0
                     self.orders_list.append(order)
                     if verbose:
-                        print(f"{current_tick} - Closed order at {self.order_close} - Cause: Normal Close")
+                        print(f"{current_date}({current_tick}) - Closed order at {self.order_close} - Cause: Normal Close")
                         print(f"Current balance 4: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                         print(f"Order Status after normal close: {self.order_status}")
 
@@ -401,7 +401,7 @@ class AutomationEnv(gym.Env):
                 self.order_volume = 0.0
                 self.orders_list.append(order)
                 if verbose:
-                    print(f"{current_tick} - Closed order at {self.order_close} - Cause: Stop Loss")
+                    print(f"{current_date}({current_tick}) - Closed order at {self.order_close} - Cause: Stop Loss")
                     print(f"Current balance 6: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                     print(f"Order Status after stop loss check: {self.order_status}")
 
@@ -447,7 +447,7 @@ class AutomationEnv(gym.Env):
                 self.order_volume = 0.0
                 self.orders_list.append(order)
                 if verbose:
-                    print(f"{current_tick} - Closed order at {self.order_close} - Cause: Take Profit")
+                    print(f"{current_date}({current_tick}) - Closed order at {self.order_close} - Cause: Take Profit")
                     print(f"Current balance 5: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                     print(f"Order Status after take profit check: {self.order_status}")
 
@@ -495,7 +495,7 @@ class AutomationEnv(gym.Env):
                     self.order_volume = 0.0
                     self.orders_list.append(order)
                     if verbose:
-                        print(f"{current_tick} - Closed order at {self.order_close} - Cause: Max Order Time")
+                        print(f"{current_date}({current_tick}) - Closed order at {self.order_close} - Cause: Max Order Time")
                         print(f"Current balance 5: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                         print(f"Order Status after max order time check: {self.order_status}")
 
