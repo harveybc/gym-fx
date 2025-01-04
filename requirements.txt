@@ -1,0 +1,6 @@
+numpy
+pandas
+build
+pdoc3
+neat-python
+gym
