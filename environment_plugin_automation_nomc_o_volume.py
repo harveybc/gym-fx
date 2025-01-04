@@ -166,6 +166,7 @@ class AutomationEnv(gym.Env):
         self.reset(genome)
 
 
+
     def reset(self, genome=None):
         self.current_step = 0
         self.balance = self.initial_balance
@@ -190,7 +191,7 @@ class AutomationEnv(gym.Env):
         # Fetch the initial observation
         observation = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
         self.fitness = 0.0
-        
+
         # Use self.dates for the current date
         try:
             current_date = self.dates[self.current_step]
@@ -200,10 +201,10 @@ class AutomationEnv(gym.Env):
         
         info = {
             "date": current_date,
-            "close": self.x_train[self.current_step, 4],
-            "high": self.x_train[self.current_step, 3],
-            "low": self.x_train[self.current_step, 2],
-            "open": self.x_train[self.current_step, 1],
+            "close": self.x_train[self.current_step, 3],  # Corrected index from 4 to 3
+            "high": self.x_train[self.current_step, 1],   # Corrected index from 3 to 1
+            "low": self.x_train[self.current_step, 2],    # Corrected index from 2 to 2
+            "open": self.x_train[self.current_step, 0],   # Corrected index from 1 to 0
             "action": 0,
             "observation": observation,
             "episode_over": self.done,
@@ -229,6 +230,7 @@ class AutomationEnv(gym.Env):
         return observation, info, max_steps
 
 
+
     def step(self, action, verbose=True, step_fitness=0.0, genome_id=0, num_closes=0, reward_auc_prev=0.0, act_values=[0.0, 0.0, 0.0]):
         if self.done:
             return pd.Series([0] * self.x_train.shape[1]), self.reward, self.done, {}
@@ -244,9 +246,9 @@ class AutomationEnv(gym.Env):
                 current_date = 'Unknown Date'
                 print(f"Warning: current_step {self.current_step} is out of bounds for dates array.")
             
-            High = self.x_train[self.current_step, 3]
-            Low = self.x_train[self.current_step, 2]
-            Close = self.x_train[self.current_step, 4]
+            High = self.x_train[self.current_step, 1]  # Corrected index from 3 to 1
+            Low = self.x_train[self.current_step, 2]   # Corrected index from 2 to 2
+            Close = self.x_train[self.current_step, 3] # Corrected index from 4 to 3
 
             # Split the action into discrete and continuous parts
             discrete_action = action[0]
@@ -592,6 +594,7 @@ class AutomationEnv(gym.Env):
 
 
         return ob, reward, self.done, info
+
 
 
 
