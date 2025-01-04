@@ -196,7 +196,6 @@ class AutomationEnv(gym.Env):
 
     def step(self, action, verbose=True, step_fitness=0.0, genome_id=0, num_closes=0, reward_auc_prev=0.0, act_values=[0.0, 0.0, 0.0]):
         if self.done:
-            # Update: Return a pandas Series of zeros instead of a NumPy array
             return pd.Series([0] * self.x_train.shape[1]), self.reward, self.done, {}
 
         if self.current_step >= self.max_steps:
@@ -204,16 +203,17 @@ class AutomationEnv(gym.Env):
         else:
 
             self.equity_ant = self.equity
-            # Get the relevant values for the current step using .iloc for pandas DataFrame
-            current_date = self.x_train.iloc[self.current_step, 0]
-            High = self.x_train.iloc[self.current_step, 3]
-            Low = self.x_train.iloc[self.current_step, 2]
-            Close = self.x_train.iloc[self.current_step, 4]
+            # Rename current_date to current_tick and introduce actual date
+            current_tick = self.current_step
+            current_date = self.x_train[self.current_step, 0]
+            High = self.x_train[self.current_step, 3]
+            Low = self.x_train[self.current_step, 2]
+            Close = self.x_train[self.current_step, 4]
 
             # Split the action into discrete and continuous parts
             discrete_action = action[0]
             volume_action = action[1][0]  # Value between -1 and 1 representing the volume proportion
-            # transform volume actio to a 0,1 range
+            # Transform volume action to a 0,1 range
             volume_action = (volume_action + 1) / 2
 
             # Calculate profit
@@ -223,7 +223,7 @@ class AutomationEnv(gym.Env):
             if self.order_status == 1:
                 self.profit_pips = ((Low - self.order_price) / self.pip_cost)
                 self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
-                # updates the max drawdown
+                # Update the max drawdown
                 if self.profit_pips < 0:
                     if self.max_dd_pips < -self.profit_pips:
                         self.max_dd_pips = -self.profit_pips
@@ -231,7 +231,7 @@ class AutomationEnv(gym.Env):
             if self.order_status == 2:
                 self.profit_pips = ((self.order_price - (High + self.spread)) / self.pip_cost)
                 self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
-                # updates the max drawdown
+                # Update the max drawdown
                 if self.profit_pips < 0:
                     if self.max_dd_pips < -self.profit_pips:
                         self.max_dd_pips = -self.profit_pips
@@ -249,7 +249,7 @@ class AutomationEnv(gym.Env):
                 self.order_price = High + self.spread
                 self.margin += (self.order_volume / self.leverage)
                 self.order_time = self.current_step
-                self.order_date = current_date
+                self.order_date = current_date  # Store the open date
                 self.max_dd_pips = 0
                 # Calculate the theoretical max volume based on equity, leverage, and relative volume
                 max_volume = self.equity * self.rel_volume * self.leverage
@@ -271,8 +271,7 @@ class AutomationEnv(gym.Env):
                     self.order_volume = self.min_order_volume
 
                 if verbose:
-                    # Update: Use .iloc for accessing DataFrame
-                    print(f"{self.x_train.iloc[self.current_step, 0]} - Opening order - Action: Buy, Price: {self.order_price}, volume_action:{volume_action}, Volume: {self.order_volume}")
+                    print(f"{current_tick} - Opening order - Action: Buy, Price: {self.order_price}, volume_action:{volume_action}, Volume: {self.order_volume}")
                     print(f"Current balance (after BUY action): {self.balance}, Number of closes: {self.num_closes}")
                     print(f"Order Status after buy action: {self.order_status}")
 
@@ -282,7 +281,7 @@ class AutomationEnv(gym.Env):
                 self.order_price = Low
                 self.margin += (self.order_volume / self.leverage)
                 self.order_time = self.current_step
-                self.order_date = current_date
+                self.order_date = current_date  # Store the open date
                 self.max_dd_pips = 0
                 # Calculate the theoretical max volume based on equity, leverage, and relative volume
                 max_volume = self.equity * self.rel_volume * self.leverage
@@ -304,8 +303,7 @@ class AutomationEnv(gym.Env):
                     self.order_volume = self.min_order_volume
 
                 if verbose:
-                    # Update: Use .iloc for accessing DataFrame
-                    print(f"{self.x_train.iloc[self.current_step, 0]} - Opening order - Action: Sell, Price: {self.order_price}, volume_action:{volume_action}, Volume: {self.order_volume}")
+                    print(f"{current_tick} - Opening order - Action: Sell, Price: {self.order_price}, volume_action:{volume_action}, Volume: {self.order_volume}")
                     print(f"Current balance (after SELL action): {self.balance}, Number of closes: {self.num_closes}")
                     print(f"Order Status after sell action: {self.order_status}")
 
@@ -336,14 +334,16 @@ class AutomationEnv(gym.Env):
                     self.c_c = 4  # Set closing cause to normal close
 
                     self.num_closes += 1
-                    # Append the order to the orders list with captured order_type
+                    # Append the order to the orders list with both tick and date information
                     order = {
                         'volume':  self.order_volume,
                         'equity':  self.equity,
-                        'close_date': current_date,
-                        'open_date': self.order_date,
+                        'close_tick': current_tick,           # Closing tick
+                        'close_date': current_date,           # Closing date
+                        'open_tick': self.order_time,         # Opening tick
+                        'open_date': self.order_date,         # Opening date
                         'ticks': self.current_step - self.order_time,
-                        'order_type': closing_order_type,  # Use captured order_type
+                        'order_type': closing_order_type,      # Use captured order_type
                         'order_price': self.order_price,
                         'order_close': self.order_close,
                         'profit_pips': self.profit_pips,
@@ -354,8 +354,7 @@ class AutomationEnv(gym.Env):
                     self.order_volume = 0.0
                     self.orders_list.append(order)
                     if verbose:
-                        # Update: Use .iloc for accessing DataFrame
-                        print(f"{self.x_train.iloc[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Normal Close")
+                        print(f"{current_tick} - Closed order at {self.order_close} - Cause: Normal Close")
                         print(f"Current balance 4: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                         print(f"Order Status after normal close: {self.order_status}")
 
@@ -382,14 +381,16 @@ class AutomationEnv(gym.Env):
                 self.c_c = 2  # Set closing cause to stop loss
 
                 self.num_closes += 1
-                # Append the order to the orders list with captured order_type
+                # Append the order to the orders list with both tick and date information
                 order = {
                     'volume':  self.order_volume,
                     'equity':  self.equity,
-                    'close_date': current_date,
-                    'open_date': self.order_date,
+                    'close_tick': current_tick,           # Closing tick
+                    'close_date': current_date,           # Closing date
+                    'open_tick': self.order_time,         # Opening tick
+                    'open_date': self.order_date,         # Opening date
                     'ticks': self.current_step - self.order_time,
-                    'order_type': closing_order_type,  # Use captured order_type
+                    'order_type': closing_order_type,      # Use captured order_type
                     'order_price': self.order_price,
                     'order_close': self.order_close,
                     'profit_pips': self.profit_pips,
@@ -400,8 +401,7 @@ class AutomationEnv(gym.Env):
                 self.order_volume = 0.0
                 self.orders_list.append(order)
                 if verbose:
-                    # Update: Use .iloc for accessing DataFrame
-                    print(f"{self.x_train.iloc[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Stop Loss")
+                    print(f"{current_tick} - Closed order at {self.order_close} - Cause: Stop Loss")
                     print(f"Current balance 6: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                     print(f"Order Status after stop loss check: {self.order_status}")
 
@@ -424,29 +424,30 @@ class AutomationEnv(gym.Env):
                 self.equity = self.balance + self.real_profit
                 self.balance = self.equity
                 self.margin = 0.0
-                self.c_c = 3  # Set closing cause to take profit
+                self.c_c =  3  # Set closing cause to take profit
 
                 self.num_closes += 1
-                # Append the order to the orders list with captured order_type
+                # Append the order to the orders list with both tick and date information
                 order = {
-                    'volume':  self.order_volume,  # Volume of the order
-                    'equity':  self.equity,        # Equity after closing the order
-                    'close_date': current_date,    # Closing date of the order
-                    'open_date': self.order_date,  # Opening date of the order
+                    'volume':  self.order_volume,          # Volume of the order
+                    'equity':  self.equity,                # Equity after closing the order
+                    'close_tick': current_tick,            # Closing tick
+                    'close_date': current_date,            # Closing date
+                    'open_tick': self.order_time,          # Opening tick
+                    'open_date': self.order_date,          # Opening date
                     'ticks': self.current_step - self.order_time,  # Duration of the order in ticks
-                    'order_type': closing_order_type,  # Use captured order_type
-                    'order_price': self.order_price,    # Opening price of the order
-                    'order_close': self.order_close,    # Closing price of the order
-                    'profit_pips': self.profit_pips,    # Profit in pips
-                    'real_profit': self.real_profit,    # Real profit in currency
-                    'max_dd_pips': self.max_dd_pips,    # Maximum drawdown in pips during the order
-                    'closing_cause': self.c_c           # Closing cause (1 = Margin Call, 2 = Stop Loss, 3 = Take Profit, 4 = Normal Close)
+                    'order_type': closing_order_type,       # Type of the order (1 = Buy, 2 = Sell)
+                    'order_price': self.order_price,        # Opening price of the order
+                    'order_close': self.order_close,        # Closing price of the order
+                    'profit_pips': self.profit_pips,        # Profit in pips
+                    'real_profit': self.real_profit,        # Real profit in currency
+                    'max_dd_pips': self.max_dd_pips,        # Maximum drawdown in pips during the order
+                    'closing_cause': self.c_c               # Closing cause (1 = Margin Call, 2 = Stop Loss, 3 = Take Profit, 4 = Normal Close)
                 }
                 self.order_volume = 0.0
                 self.orders_list.append(order)
                 if verbose:
-                    # Update: Use .iloc for accessing DataFrame
-                    print(f"{self.x_train.iloc[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Take Profit")
+                    print(f"{current_tick} - Closed order at {self.order_close} - Cause: Take Profit")
                     print(f"Current balance 5: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                     print(f"Order Status after take profit check: {self.order_status}")
 
@@ -474,29 +475,29 @@ class AutomationEnv(gym.Env):
                     self.c_c =  5  # Set closing cause to max order time
 
                     self.num_closes += 1
-                    # Append the order to the orders list with captured order_type
+                    # Append the order to the orders list with both tick and date information
                     order = {
-                        'volume':  self.order_volume,  # Volume of the order
-                        'equity':  self.equity,        # Equity after closing the order
-                        'close_date': current_date,    # Closing date of the order
-                        'open_date': self.order_date,  # Opening date of the order
+                        'volume':  self.order_volume,          # Volume of the order
+                        'equity':  self.equity,                # Equity after closing the order
+                        'close_tick': current_tick,            # Closing tick
+                        'close_date': current_date,            # Closing date
+                        'open_tick': self.order_time,          # Opening tick
+                        'open_date': self.order_date,          # Opening date
                         'ticks': self.current_step - self.order_time,  # Duration of the order in ticks
-                        'order_type': closing_order_type,  # Use captured order_type
-                        'order_price': self.order_price,    # Opening price of the order
-                        'order_close': self.order_close,    # Closing price of the order
-                        'profit_pips': self.profit_pips,    # Profit in pips
-                        'real_profit': self.real_profit,    # Real profit in currency
-                        'max_dd_pips': self.max_dd_pips,    # Maximum drawdown in pips during the order
-                        'closing_cause': self.c_c           # Closing cause (1 = Margin Call, 2 = Stop Loss, 3 = Take Profit, 4 = Normal Close, 5 = order timeout)
+                        'order_type': closing_order_type,       # Type of the order (1 = Buy, 2 = Sell)
+                        'order_price': self.order_price,        # Opening price of the order
+                        'order_close': self.order_close,        # Closing price of the order
+                        'profit_pips': self.profit_pips,        # Profit in pips
+                        'real_profit': self.real_profit,        # Real profit in currency
+                        'max_dd_pips': self.max_dd_pips,        # Maximum drawdown in pips during the order
+                        'closing_cause': self.c_c               # Closing cause (1 = Margin Call, 2 = Stop Loss, 3 = Take Profit, 4 = Normal Close, 5 = order timeout)
                     }
                     self.order_volume = 0.0
                     self.orders_list.append(order)
                     if verbose:
-                        # Update: Use .iloc for accessing DataFrame
-                        print(f"{self.x_train.iloc[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Take Profit")
+                        print(f"{current_tick} - Closed order at {self.order_close} - Cause: Max Order Time")
                         print(f"Current balance 5: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
-                        print(f"Order Status after take profit check: {self.order_status}")
-
+                        print(f"Order Status after max order time check: {self.order_status}")
 
         # Define relevant lambda values
         margin_call_lambda = 100  # Penalty for margin call
@@ -510,9 +511,8 @@ class AutomationEnv(gym.Env):
             if self.done and self.c_c == 1:  # Closed by margin call
                 reward_margin_call = (self.max_steps - self.current_step) * penalty_cost  # Penalize for margin call
         if not self.done:
-            # Update: Use .iloc for accessing DataFrame
-            ob = self.y_train.iloc[self.current_step] if self.y_train is not None else self.x_train.iloc[self.current_step]
-
+            # Set the observation as y_train if not None, else x_train
+            ob = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
 
         # If margin call, add the margin call penalty
         reward += reward_margin_call * margin_call_lambda
@@ -521,10 +521,10 @@ class AutomationEnv(gym.Env):
         self.balance_ant = self.balance
 
 
-        # update fitness 
+        # Update fitness 
         self.fitness = self.fitness + reward
 
-        # verify if is done by max_steps
+        # Verify if is done by max_steps
         self.current_step += 1                
         if self.current_step >= self.max_steps:
             self.done = True
@@ -542,9 +542,8 @@ class AutomationEnv(gym.Env):
 
         # Information dictionary that includes the final balance and other metrics
         info = {
-            # Update: Use .iloc for accessing DataFrame
-            "date": self.x_train.iloc[self.current_step - 1, 0],
-            "close": self.x_train.iloc[self.current_step - 1, 4],
+            "date": current_date,              # Use the actual date
+            "close": Close,
             "balance": self.balance,
             "equity": self.equity,
             "reward": reward,
