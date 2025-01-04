@@ -43,10 +43,8 @@ class Plugin:
         plugin_debug_info = self.get_debug_info()
         debug_info.update(plugin_debug_info)
 
-    def build_environment(self, x_train, y_train, config):
+    def build_environment(self, x_train, y_train, dates_train, config):
         self.initial_balance = config.get('initial_balance', self.params['initial_balance'])
-        #print("Debug Inside `build_environment` in env: max_steps =", config.get('max_steps', None))
-        
         self.max_steps = config.get('max_steps', None)
         self.fitness_function = config.get('fitness_function', self.params['fitness_function'])
         self.min_orders = config.get('min_orders', self.params['min_orders'])
@@ -61,8 +59,28 @@ class Plugin:
         self.max_order_volume = config.get('max_order_volume', self.params['max_order_volume'])
         self.min_order_volume = config.get('min_order_volume', self.params['min_order_volume'])
         self.genome = config.get('genome', None)
-        self.env = AutomationEnv(x_train, y_train, self.initial_balance, self.max_steps, self.fitness_function,
-                                 self.min_orders, self.sl, self.tp, self.rel_volume, self.leverage, self.pip_cost, self.min_order_time, self.max_order_time, self.spread, self.max_order_volume, self.min_order_volume, self.genome)
+        
+        # Pass dates_train to AutomationEnv
+        self.env = AutomationEnv(
+            x_train, 
+            y_train, 
+            dates_train,              # New parameter for dates
+            self.initial_balance, 
+            self.max_steps, 
+            self.fitness_function,
+            self.min_orders, 
+            self.sl, 
+            self.tp, 
+            self.rel_volume, 
+            self.leverage, 
+            self.pip_cost, 
+            self.min_order_time, 
+            self.max_order_time, 
+            self.spread, 
+            self.max_order_volume, 
+            self.min_order_volume, 
+            self.genome
+        )
         return self.env
 
     def reset(self, genome=None):
@@ -89,12 +107,13 @@ class Plugin:
         return return_ratio * np.sqrt(252)
 
 class AutomationEnv(gym.Env):
-    def __init__(self, x_train, y_train, initial_balance, max_steps, fitness_function,
-                 min_orders, sl, tp, rel_volume, leverage, pip_cost, min_order_time, max_order_time, spread, max_order_volume, min_order_volume, genome):
+    def __init__(self, x_train, y_train, dates_train, initial_balance, max_steps, fitness_function,
+             min_orders, sl, tp, rel_volume, leverage, pip_cost, min_order_time, max_order_time, spread, max_order_volume, min_order_volume, genome):
         super(AutomationEnv, self).__init__()
         self.max_steps = max_steps
         self.x_train = x_train.to_numpy() if isinstance(x_train, pd.DataFrame) else x_train
         self.y_train = y_train.to_numpy() if isinstance(y_train, pd.DataFrame) else y_train
+        self.dates = dates_train          # Store dates separately
         self.initial_balance = initial_balance
         self.balance = initial_balance
         self.equity = initial_balance
@@ -110,7 +129,7 @@ class AutomationEnv(gym.Env):
         self.real_profit = 0.0
         self.orders_list = []
         self.order_volume = 0.0
-        self.fitness=0.0
+        self.fitness = 0.0
         self.done = False
         self.reward = 0.0
         self.equity_curve = [initial_balance]
@@ -146,6 +165,7 @@ class AutomationEnv(gym.Env):
         self.genome = genome
         self.reset(genome)
 
+
     def reset(self, genome=None):
         self.current_step = 0
         self.balance = self.initial_balance
@@ -166,10 +186,20 @@ class AutomationEnv(gym.Env):
         self.returns = []  # Initialize returns to track rewards
         self.orders_list = []  # Initialize list to track orders
         self.equity_curve = [self.initial_balance]
+        
+        # Fetch the initial observation
         observation = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
-        self.fitness=0.0
+        self.fitness = 0.0
+        
+        # Use self.dates for the current date
+        try:
+            current_date = self.dates[self.current_step]
+        except IndexError:
+            current_date = 'Unknown Date'
+            print(f"Warning: current_step {self.current_step} is out of bounds for dates array.")
+        
         info = {
-            "date": self.x_train[self.current_step, 0],
+            "date": current_date,
             "close": self.x_train[self.current_step, 4],
             "high": self.x_train[self.current_step, 3],
             "low": self.x_train[self.current_step, 2],
@@ -187,12 +217,17 @@ class AutomationEnv(gym.Env):
             "spread": self.spread,
             "initial_balance": self.initial_balance
         }
+        
         max_steps = self.max_steps
         if max_steps > self.x_train.shape[0]:
             max_steps = self.x_train.shape[0]
-            self.max_steps = max_steps-1
+            self.max_steps = max_steps - 1
 
+        # Debug message to confirm the starting date
+        print(f"Environment reset. Starting date: {current_date}")
+        
         return observation, info, max_steps
+
 
     def step(self, action, verbose=True, step_fitness=0.0, genome_id=0, num_closes=0, reward_auc_prev=0.0, act_values=[0.0, 0.0, 0.0]):
         if self.done:
@@ -201,20 +236,21 @@ class AutomationEnv(gym.Env):
         if self.current_step >= self.max_steps:
             self.done = True
         else:
-
             self.equity_ant = self.equity
-            # Rename current_date to current_tick and introduce actual date
             current_tick = self.current_step
-            current_date = self.x_train[self.current_step, 0]
+            try:
+                current_date = self.dates[self.current_step]  # Fetch date from self.dates
+            except IndexError:
+                current_date = 'Unknown Date'
+                print(f"Warning: current_step {self.current_step} is out of bounds for dates array.")
+            
             High = self.x_train[self.current_step, 3]
             Low = self.x_train[self.current_step, 2]
             Close = self.x_train[self.current_step, 4]
 
             # Split the action into discrete and continuous parts
             discrete_action = action[0]
-            volume_action = action[1][0]  # Value between -1 and 1 representing the volume proportion
-            # Transform volume action to a 0,1 range
-            volume_action = (volume_action + 1) / 2
+            volume_action = action[1][0]  # Value between 0 and 1 representing the volume proportion
 
             # Calculate profit
             self.profit_pips = 0
@@ -520,7 +556,6 @@ class AutomationEnv(gym.Env):
         # Update the previous balance for the next step
         self.balance_ant = self.balance
 
-
         # Update fitness 
         self.fitness = self.fitness + reward
 
@@ -557,6 +592,7 @@ class AutomationEnv(gym.Env):
 
 
         return ob, reward, self.done, info
+
 
 
     def render(self, mode='human'):
