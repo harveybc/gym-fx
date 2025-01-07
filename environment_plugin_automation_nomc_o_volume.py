@@ -475,7 +475,6 @@ class AutomationEnv(gym.Env):
                         print(f"Current balance 5: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                         print(f"Order Status after take profit check: {self.order_status}")
                 
-
         # Define relevant lambda values
         margin_call_lambda = 100  # Penalty for margin call
 
