@@ -9,21 +9,20 @@ class Plugin:
     """
     An environment plugin for forex trading automation tasks, compatible with both NEAT and OpenRL.
     """
-
     plugin_params = {
         'initial_balance': 10000,
         'fitness_function': 'brute_profit',  # 'sharpe_ratio' can be another option
         'min_orders': 4,
-        'tp': 10000,  # Adjusted Take Profit
-        'sl': 10000,  # Adjusted Stop Loss
-        'rel_volume': 0.05, # size of the new orders relative to the current balance
-        'max_order_volume': 1000000, # Maximum order volume = 10 lots (1 lot = 100,000 units)
-        'min_order_volume': 10000, # Minimum order volume = 0.1 lots (1 lot = 100,000 units)
+        'tp': 10000,  # Default TP (in pips) – used if not overridden at order open
+        'sl': 10000,  # Default SL (in pips)
+        'rel_volume': 0.05,  # Size of the new orders relative to the current balance
+        'max_order_volume': 1000000,  # Maximum order volume
+        'min_order_volume': 10000,    # Minimum order volume
         'leverage': 1000,
-        'pip_cost': 0.00001, # 1 pip cost in EURUSD/pip
-        'min_order_time': 6,  #  Minimum Order Time to allow manual closing by an action inverse to the current order.
-        'max_order_time': 96,  #  Minimum Order Time to allow manual closing by an action inverse to the current order.
-        'spread': 0.0003  # Default spread value
+        'pip_cost': 0.00001,  # 1 pip cost in EURUSD/pip
+        'min_order_time': 6,   # Minimum Order Time to allow manual closing
+        'max_order_time': 96,  # Maximum Order Time to allow manual closing
+        'spread': 0.0003       # Default spread value
     }
 
     plugin_debug_vars = ['initial_balance', 'max_steps', 'fitness_function', 'final_balance', 'final_fitness']
@@ -45,15 +44,14 @@ class Plugin:
 
     def build_environment(self, x_train, y_train, config):
         self.initial_balance = config.get('initial_balance', self.params['initial_balance'])
-        #print("Debug Inside `build_environment` in env: max_steps =", config.get('max_steps', None))
-        
         self.max_steps = config.get('max_steps', None)
         self.fitness_function = config.get('fitness_function', self.params['fitness_function'])
         self.min_orders = config.get('min_orders', self.params['min_orders'])
         self.sl = config.get('sl', self.params['sl'])
         self.tp = config.get('tp', self.params['tp'])
-        sl_buy= self.sl
-        sl_sell= self.sl
+        # Note: The optimizer will set the ideal SL/TP (in pips) for each order.
+        sl_buy = self.sl
+        sl_sell = self.sl
         self.rel_volume = config.get('rel_volume', self.params['rel_volume'])
         self.leverage = config.get('leverage', self.params['leverage'])
         self.pip_cost = config.get('pip_cost', self.params['pip_cost'])
@@ -64,13 +62,14 @@ class Plugin:
         self.min_order_volume = config.get('min_order_volume', self.params['min_order_volume'])
         self.genome = config.get('genome', None)
         self.env = AutomationEnv(x_train, y_train, self.initial_balance, self.max_steps, self.fitness_function,
-                                 self.min_orders, self.sl, self.tp, self.rel_volume, self.leverage, self.pip_cost, self.min_order_time, self.max_order_time, self.spread, self.max_order_volume, self.min_order_volume, self.genome)
+                                 self.min_orders, self.sl, self.tp, self.rel_volume, self.leverage,
+                                 self.pip_cost, self.min_order_time, self.max_order_time, self.spread,
+                                 self.max_order_volume, self.min_order_volume, self.genome)
         return self.env
 
     def reset(self, genome=None):
         self.returns = []  # Initialize returns to track rewards
         observation, info, max_steps = self.env.reset(genome)
-        
         return observation, info
 
     def step(self, action):
@@ -92,7 +91,8 @@ class Plugin:
 
 class AutomationEnv(gym.Env):
     def __init__(self, x_train, y_train, initial_balance, max_steps, fitness_function,
-                 min_orders, sl, tp, rel_volume, leverage, pip_cost, min_order_time, max_order_time, spread, max_order_volume, min_order_volume, genome):
+                 min_orders, sl, tp, rel_volume, leverage, pip_cost,
+                 min_order_time, max_order_time, spread, max_order_volume, min_order_volume, genome):
         super(AutomationEnv, self).__init__()
         self.max_steps = max_steps
         self.x_train = x_train.to_numpy() if isinstance(x_train, pd.DataFrame) else x_train
@@ -103,7 +103,7 @@ class AutomationEnv(gym.Env):
         self.balance_ant = self.balance
         self.equity_ant = self.balance
         self.current_step = 0
-        self.order_status = 0  # 0 = no order, 1 = buy, 2 = sell
+        self.order_status = 0  # 0 = no order, 1 = buy open, 2 = sell open
         self.order_price = 0.0
         self.order_close = 0.0
         self.ticks_per_hour = 1
@@ -112,7 +112,7 @@ class AutomationEnv(gym.Env):
         self.real_profit = 0.0
         self.orders_list = []
         self.order_volume = 0.0
-        self.fitness=0.0
+        self.fitness = 0.0
         self.done = False
         self.reward = 0.0
         self.equity_curve = [initial_balance]
@@ -124,30 +124,26 @@ class AutomationEnv(gym.Env):
         self.pip_cost = pip_cost
         self.min_order_time = min_order_time
         self.max_order_time = max_order_time
-        
         self.spread = spread
         self.margin = 0.0
         self.order_time = 0
         self.num_ticks = self.x_train.shape[0]
         self.num_closes = 0  # Track number of closes
-        self.c_c = 0  # Track closing cause
-        self.ant_c_c = 0  # Track previous closing cause
+        self.c_c = 0       # Closing cause
+        self.ant_c_c = 0   # Previous closing cause
         self.max_order_volume = max_order_volume
         self.min_order_volume = min_order_volume
-        if y_train is None:
+        if self.y_train is None:
             self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.x_train.shape[1],), dtype=np.float32)
         else:
             self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.y_train.shape[1],), dtype=np.float32)
-
-        # Updated action space to include the new continuous action for volume control
         self.action_space = gym.spaces.Tuple((
             gym.spaces.Discrete(3),  # Buy, sell, hold
             gym.spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32)  # Continuous volume action
         ))
-        
         self.genome = genome
         self.reset(genome)
-
+    
     def reset(self, genome=None):
         self.current_step = 0
         self.balance = self.initial_balance
@@ -157,19 +153,24 @@ class AutomationEnv(gym.Env):
         self.order_volume = 0.0
         self.reward = 0.0
         self.done = False
-        self.num_closes = 0  # Track number of closes
-        self.c_c = 0  # Track closing cause
-        self.ant_c_c = 0  # Track previous closing cause
+        self.num_closes = 0
+        self.c_c = 0
+        self.ant_c_c = 0
         self.margin = 0.0
         self.order_time = 0
         self.max_dd_pips = 0
-        self.genome = genome 
-        self.kolmogorov_c = self.kolmogorov_complexity(self.genome) if self.genome is not None else 0
-        self.returns = []  # Initialize returns to track rewards
-        self.orders_list = []  # Initialize list to track orders
+        self.genome = genome
+        self.kolmogorov_c = 0
+        if self.genome is not None:
+            try:
+                self.kolmogorov_c = self.kolmogorov_complexity(self.genome)
+            except:
+                self.kolmogorov_c = 0
+        self.returns = []
+        self.orders_list = []
         self.equity_curve = [self.initial_balance]
         observation = self.y_train[self.current_step] if self.y_train is not None else self.x_train[self.current_step]
-        self.fitness=0.0
+        self.fitness = 0.0
         info = {
             "date": self.x_train[self.current_step, 0],
             "close": self.x_train[self.current_step, 4],
@@ -192,51 +193,39 @@ class AutomationEnv(gym.Env):
         max_steps = self.max_steps
         if max_steps > self.x_train.shape[0]:
             max_steps = self.x_train.shape[0]
-            self.max_steps = max_steps-1
-
+            self.max_steps = max_steps - 1
         return observation, info, max_steps
-
+    
     def step(self, action, verbose=True, step_fitness=0.0, genome_id=0, num_closes=0, reward_auc_prev=0.0, act_values=[0.0, 0.0, 0.0]):
         if self.done:
             return np.zeros(self.x_train.shape[1]), self.reward, self.done, {}
-
         if self.current_step >= self.max_steps:
             self.done = True
         else:
             self.equity_ant = self.equity
-            # Get the relevant values for the current step
             current_date = self.x_train[self.current_step, 0]
             High = self.x_train[self.current_step, 3]
             Low = self.x_train[self.current_step, 2]
             Close = self.x_train[self.current_step, 4]
-
-            # Split the action into discrete and continuous parts
             discrete_action = action[0]
-            volume_action = action[1][0]  # Value between -1 and 1 representing the volume proportion
-            # Transform volume action to a 0,1 range
+            volume_action = action[1][0]
             volume_action = (volume_action + 1) / 2
-
-            # Calculate profit
             self.profit_pips = 0
             self.real_profit = 0
-            # Calculate for existing BUY order (status=1)
             if self.order_status == 1:
                 self.profit_pips = ((Low - self.order_price) / self.pip_cost)
                 self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
                 if self.profit_pips < 0:
                     if self.max_dd_pips < -self.profit_pips:
                         self.max_dd_pips = -self.profit_pips
-            # Calculate for existing SELL order (status=2)
             if self.order_status == 2:
                 self.profit_pips = ((self.order_price - (High + self.spread)) / self.pip_cost)
                 self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
                 if self.profit_pips < 0:
                     if self.max_dd_pips < -self.profit_pips:
                         self.max_dd_pips = -self.profit_pips
-
             self.equity = self.balance + self.real_profit
-            self.c_c = 0  # Reset closing cause for this tick
-
+            self.c_c = 0
         if not self.done:
             # --- Order Entry Logic (unchanged) ---
             if (self.order_status == 0) and discrete_action == 1:
@@ -256,10 +245,9 @@ class AutomationEnv(gym.Env):
                 if self.order_volume < self.min_order_volume:
                     self.order_volume = self.min_order_volume
                 if verbose:
-                    print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Buy, Price: {self.order_price}, volume_action:{volume_action}, Volume: {self.order_volume}")
+                    print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Buy, Price: {self.order_price}, volume_action: {volume_action}, Volume: {self.order_volume}")
                     print(f"Current balance (after BUY action): {self.balance}, Number of closes: {self.num_closes}")
                     print(f"Order Status after buy action: {self.order_status}")
-
             if (self.order_status == 0) and discrete_action == 2:
                 self.order_status = 2
                 self.order_price = Low
@@ -277,15 +265,14 @@ class AutomationEnv(gym.Env):
                 if self.order_volume < self.min_order_volume:
                     self.order_volume = self.min_order_volume
                 if verbose:
-                    print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Sell, Price: {self.order_price}, volume_action:{volume_action}, Volume: {self.order_volume}")
+                    print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Sell, Price: {self.order_price}, volume_action: {volume_action}, Volume: {self.order_volume}")
                     print(f"Current balance (after SELL action): {self.balance}, Number of closes: {self.num_closes}")
                     print(f"Order Status after sell action: {self.order_status}")
-
             # --- Manual close logic (unchanged) ---
             if ((self.order_status == 1 and discrete_action == 2) or 
                 (self.order_status == 2 and discrete_action == 1)) or \
-            (self.order_status == 1 and discrete_action == 0) or \
-            (self.order_status == 2 and discrete_action == 0):
+               (self.order_status == 1 and discrete_action == 0) or \
+               (self.order_status == 2 and discrete_action == 0):
                 if (self.current_step - self.order_time) > self.min_order_time:
                     if self.order_status == 1:
                         self.profit_pips = ((Low - self.order_price) / self.pip_cost)
@@ -301,7 +288,7 @@ class AutomationEnv(gym.Env):
                     self.margin = 0.0
                     self.c_c = 4  # Normal close
                     self.num_closes += 1
-                    order = {  # Record order details
+                    order = {
                         'volume':  self.order_volume,
                         'equity':  self.equity,
                         'close_date': current_date,
@@ -321,35 +308,24 @@ class AutomationEnv(gym.Env):
                         print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Normal Close")
                         print(f"Current balance: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                         print(f"Order Status after normal close: {self.order_status}")
-
-            # --- Dynamic SL and TP Checks ---
-            # Use dynamic values if they are provided by the optimizer plugin.
-            # For a BUY order:
+            # --- Fixed SL and TP Checks (in pips) ---
             if self.order_status == 1:
-                current_sl = self.sl_buy if (hasattr(self, 'sl_buy') and self.sl_buy is not None) else self.sl
-                current_tp = self.tp_buy if (hasattr(self, 'tp_buy') and self.tp_buy is not None) else self.tp
-            # For a SELL order:
+                current_tp = self.tp_buy  # Fixed TP for BUY (in pips, as set when order opened)
+                current_sl = self.sl_buy  # Fixed SL for BUY (in pips)
             elif self.order_status == 2:
-                current_sl = self.sl_sell if (hasattr(self, 'sl_sell') and self.sl_sell is not None) else self.sl
-                current_tp = self.tp_sell if (hasattr(self, 'tp_sell') and self.tp_sell is not None) else self.tp
+                current_tp = self.tp_sell  # Fixed TP for SELL (in pips)
+                current_sl = self.sl_sell  # Fixed SL for SELL (in pips)
             else:
-                current_sl, current_tp = self.sl, self.tp
-
-            # Verify if close by Stop Loss using the dynamic value
-            if self.order_status != 0 and self.profit_pips <= (-1 * current_sl):
-                if self.order_status == 1:
-                    self.profit_pips = ((Low - self.order_price) / self.pip_cost)
-                    self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
-                    self.order_close = Low
-                if self.order_status == 2:
-                    self.profit_pips = ((self.order_price - (High + self.spread)) / self.pip_cost)
-                    self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
-                    self.order_close = High + self.spread
+                current_tp, current_sl = self.tp, self.sl
+            if self.order_status == 1 and self.profit_pips <= (-1 * current_sl):
+                self.profit_pips = ((Low - self.order_price) / self.pip_cost)
+                self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
+                self.order_close = Low
                 self.order_status = 0
                 self.equity = self.balance + self.real_profit
                 self.balance = self.equity
                 self.margin = 0.0
-                self.c_c = 2  # Stop Loss
+                self.c_c = 2  # Stop Loss triggered.
                 self.num_closes += 1
                 order = {
                     'volume':  self.order_volume,
@@ -371,22 +347,15 @@ class AutomationEnv(gym.Env):
                     print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Stop Loss")
                     print(f"Current balance: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                     print(f"Order Status after stop loss: {self.order_status}")
-
-            # Verify if close by Take Profit using the dynamic value
-            if self.order_status != 0 and self.profit_pips >= current_tp:
-                if self.order_status == 1:
-                    self.profit_pips = ((Low - self.order_price) / self.pip_cost)
-                    self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
-                    self.order_close = Low
-                if self.order_status == 2:
-                    self.profit_pips = ((self.order_price - (High + self.spread)) / self.pip_cost)
-                    self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
-                    self.order_close = High + self.spread
+            if self.order_status == 2 and self.profit_pips >= current_tp:
+                self.profit_pips = ((self.order_price - (High + self.spread)) / self.pip_cost)
+                self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
+                self.order_close = High + self.spread
                 self.order_status = 0
                 self.equity = self.balance + self.real_profit
                 self.balance = self.equity
                 self.margin = 0.0
-                self.c_c = 3  # Take Profit
+                self.c_c = 3  # Take Profit triggered.
                 self.num_closes += 1
                 order = {
                     'volume':  self.order_volume,
@@ -408,8 +377,6 @@ class AutomationEnv(gym.Env):
                     print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Take Profit")
                     print(f"Current balance: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                     print(f"Order Status after take profit: {self.order_status}")
-
-            # Verify if close by max_order_time (unchanged logic)
             if (self.order_status == 1 or self.order_status == 2):
                 if (self.current_step - self.order_time) > self.max_order_time:
                     if self.order_status == 1:
@@ -424,7 +391,7 @@ class AutomationEnv(gym.Env):
                     self.equity = self.balance + self.real_profit
                     self.balance = self.equity
                     self.margin = 0.0
-                    self.c_c = 5  # Order timeout
+                    self.c_c = 5  # Order timeout.
                     self.num_closes += 1
                     order = {
                         'volume':  self.order_volume,
@@ -446,8 +413,6 @@ class AutomationEnv(gym.Env):
                         print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Order Timeout")
                         print(f"Current balance: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
                         print(f"Order Status after timeout: {self.order_status}")
-                
-        # (Rest of the step function remains unchanged: reward calculation, step increment, info dictionary, etc.)
         margin_call_lambda = 100
         reward_margin_call = 0.0
         reward = 0.0
@@ -482,63 +447,33 @@ class AutomationEnv(gym.Env):
         }
         return ob, reward, self.done, info
 
-
-
-        return ob, reward, self.done, info
-
     def render(self, mode='human'):
         pass
     
     def calculate_sharpe_ratio(self, returns, durations_hours, annual_risk_free_rate=0.1):
-        """
-        Calcula el Sharpe Ratio ajustando la tasa libre de riesgo anual a la duración de la operación.
-        :param returns: Lista de retornos para cada orden cerrada.
-        :param durations_hours: Lista de duraciones en horas para cada orden cerrada.
-        :param annual_risk_free_rate: Tasa libre de riesgo anual.
-        :return: El Sharpe Ratio calculado.
-        """
         if len(returns) <= 1:
             return 0
-
-        # Convertir la tasa libre de riesgo anual a la base de la duración promedio de las órdenes
         total_duration_hours = sum(durations_hours)
         avg_duration_hours = total_duration_hours / len(durations_hours)
-
-        # Calcular la tasa libre de riesgo ajustada para la duración promedio
-        #hourly_risk_free_rate = (1 + annual_risk_free_rate) ** (1 / 8760) - 1
-        #adjusted_risk_free_rate = (1 + hourly_risk_free_rate) ** avg_duration_hours - 1
         adjusted_risk_free_rate = 0
-
-        # Calcular el Sharpe Ratio
         mean_return = np.mean(returns)
         return_std = np.std(returns)
         if return_std == 0:
             return -100
-        sharpe_ratio = (mean_return - adjusted_risk_free_rate) / (return_std) 
-    
-        #correct for low count of orders
-
+        sharpe_ratio = (mean_return - adjusted_risk_free_rate) / (return_std)
         if sharpe_ratio > 1 and len(returns) < 30:
             sharpe_ratio = sharpe_ratio/10
-
         if sharpe_ratio > 1 and len(returns) < 20:
             sharpe_ratio = sharpe_ratio/10
-
         if sharpe_ratio > 1 and len(returns) < 10:
             sharpe_ratio = sharpe_ratio/10
-        
         if sharpe_ratio > 1 and len(returns) < 5:
             sharpe_ratio = sharpe_ratio/10
-        
-
         return sharpe_ratio
 
     def kolmogorov_complexity(self, genome):
-        # Convert the genome to a string representation
         genome_bytes = pickle.dumps(genome)
-        # Compress the genome
         compressed_data = zlib.compress(genome_bytes)
-        # Return the length of the compressed data as an estimate of Kolmogorov complexity
         return len(compressed_data)
 
     def calculate_final_debug_vars(self):
@@ -546,4 +481,3 @@ class AutomationEnv(gym.Env):
             'final_balance': self.balance,
             'final_fitness': self.reward
         }
-    
