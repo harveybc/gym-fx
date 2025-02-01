@@ -13,16 +13,16 @@ class Plugin:
         'initial_balance': 10000,
         'fitness_function': 'brute_profit',  # 'sharpe_ratio' can be another option
         'min_orders': 4,
-        'tp': 10000,  # Default TP in pips (if not overridden)
-        'sl': 10000,  # Default SL in pips
-        'rel_volume': 0.05,
-        'max_order_volume': 1000000,
-        'min_order_volume': 10000,
+        'tp': 10000,  # Default TP (in pips) if not overridden at order open
+        'sl': 10000,  # Default SL (in pips)
+        'rel_volume': 0.05,  # Size of new orders relative to current balance
+        'max_order_volume': 1000000,  # Maximum order volume (e.g. 10 lots)
+        'min_order_volume': 10000,    # Minimum order volume (e.g. 0.1 lot)
         'leverage': 1000,
-        'pip_cost': 0.00001,
-        'min_order_time': 6,
-        'max_order_time': 96,
-        'spread': 0.0003
+        'pip_cost': 0.00001,  # 1 pip cost in EURUSD/pip
+        'min_order_time': 6,  # Minimum order time to allow manual closing
+        'max_order_time': 96,  # Maximum order time
+        'spread': 0.0003  # Default spread value
     }
 
     plugin_debug_vars = ['initial_balance', 'max_steps', 'fitness_function', 'final_balance', 'final_fitness']
@@ -49,8 +49,7 @@ class Plugin:
         self.min_orders = config.get('min_orders', self.params['min_orders'])
         self.sl = config.get('sl', self.params['sl'])
         self.tp = config.get('tp', self.params['tp'])
-        sl_buy = self.sl
-        sl_sell = self.sl
+        # The optimizer will override TP and SL values (in pips) at order open.
         self.rel_volume = config.get('rel_volume', self.params['rel_volume'])
         self.leverage = config.get('leverage', self.params['leverage'])
         self.pip_cost = config.get('pip_cost', self.params['pip_cost'])
@@ -67,7 +66,7 @@ class Plugin:
         return self.env
 
     def reset(self, genome=None):
-        self.returns = []
+        self.returns = []  # Initialize returns to track rewards
         observation, info, max_steps = self.env.reset(genome)
         return observation, info
 
@@ -102,7 +101,7 @@ class AutomationEnv(gym.Env):
         self.balance_ant = self.balance
         self.equity_ant = self.balance
         self.current_step = 0
-        self.order_status = 0  # 0 = no order, 1 = BUY order open, 2 = SELL order open
+        self.order_status = 0  # 0 = no order, 1 = BUY open, 2 = SELL open
         self.order_price = 0.0
         self.order_close = 0.0
         self.ticks_per_hour = 1
@@ -116,8 +115,8 @@ class AutomationEnv(gym.Env):
         self.reward = 0.0
         self.equity_curve = [initial_balance]
         self.min_orders = min_orders
-        self.sl = sl
-        self.tp = tp
+        self.sl = sl  # Default SL (in pips)
+        self.tp = tp  # Default TP (in pips)
         self.rel_volume = rel_volume
         self.leverage = leverage
         self.pip_cost = pip_cost
@@ -324,8 +323,8 @@ class AutomationEnv(gym.Env):
                 self.c_c = 2  # Stop Loss triggered.
                 self.num_closes += 1
                 order = {
-                    'volume':  self.order_volume,
-                    'equity':  self.equity,
+                    'volume': self.order_volume,
+                    'equity': self.equity,
                     'close_date': current_date,
                     'open_date': self.order_date,
                     'ticks': self.current_step - self.order_time,
@@ -353,8 +352,8 @@ class AutomationEnv(gym.Env):
                 self.c_c = 3  # Take Profit triggered.
                 self.num_closes += 1
                 order = {
-                    'volume':  self.order_volume,
-                    'equity':  self.equity,
+                    'volume': self.order_volume,
+                    'equity': self.equity,
                     'close_date': current_date,
                     'open_date': self.order_date,
                     'ticks': self.current_step - self.order_time,
@@ -388,8 +387,8 @@ class AutomationEnv(gym.Env):
                     self.c_c = 5  # Order timeout.
                     self.num_closes += 1
                     order = {
-                        'volume':  self.order_volume,
-                        'equity':  self.equity,
+                        'volume': self.order_volume,
+                        'equity': self.equity,
                         'close_date': current_date,
                         'open_date': self.order_date,
                         'ticks': self.current_step - self.order_time,
