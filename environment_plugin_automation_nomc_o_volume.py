@@ -52,6 +52,8 @@ class Plugin:
         self.min_orders = config.get('min_orders', self.params['min_orders'])
         self.sl = config.get('sl', self.params['sl'])
         self.tp = config.get('tp', self.params['tp'])
+        sl_buy= self.sl
+        sl_sell= self.sl
         self.rel_volume = config.get('rel_volume', self.params['rel_volume'])
         self.leverage = config.get('leverage', self.params['leverage'])
         self.pip_cost = config.get('pip_cost', self.params['pip_cost'])
