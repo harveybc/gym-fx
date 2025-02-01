@@ -13,16 +13,16 @@ class Plugin:
         'initial_balance': 10000,
         'fitness_function': 'brute_profit',  # 'sharpe_ratio' can be another option
         'min_orders': 4,
-        'tp': 10000,  # Default TP (in pips) – used if not overridden at order open
-        'sl': 10000,  # Default SL (in pips)
-        'rel_volume': 0.05,  # Size of the new orders relative to the current balance
-        'max_order_volume': 1000000,  # Maximum order volume
-        'min_order_volume': 10000,    # Minimum order volume
+        'tp': 10000,  # Default TP in pips (if not overridden)
+        'sl': 10000,  # Default SL in pips
+        'rel_volume': 0.05,
+        'max_order_volume': 1000000,
+        'min_order_volume': 10000,
         'leverage': 1000,
-        'pip_cost': 0.00001,  # 1 pip cost in EURUSD/pip
-        'min_order_time': 6,   # Minimum Order Time to allow manual closing
-        'max_order_time': 96,  # Maximum Order Time to allow manual closing
-        'spread': 0.0003       # Default spread value
+        'pip_cost': 0.00001,
+        'min_order_time': 6,
+        'max_order_time': 96,
+        'spread': 0.0003
     }
 
     plugin_debug_vars = ['initial_balance', 'max_steps', 'fitness_function', 'final_balance', 'final_fitness']
@@ -49,7 +49,6 @@ class Plugin:
         self.min_orders = config.get('min_orders', self.params['min_orders'])
         self.sl = config.get('sl', self.params['sl'])
         self.tp = config.get('tp', self.params['tp'])
-        # Note: The optimizer will set the ideal SL/TP (in pips) for each order.
         sl_buy = self.sl
         sl_sell = self.sl
         self.rel_volume = config.get('rel_volume', self.params['rel_volume'])
@@ -68,7 +67,7 @@ class Plugin:
         return self.env
 
     def reset(self, genome=None):
-        self.returns = []  # Initialize returns to track rewards
+        self.returns = []
         observation, info, max_steps = self.env.reset(genome)
         return observation, info
 
@@ -81,7 +80,7 @@ class Plugin:
     def calculate_fitness(self, rewards, equity_curve=None):
         if self.fitness_function == 'sharpe_ratio':
             return self._calculate_sharpe_ratio(equity_curve)
-        else:  # Default to brute_profit
+        else:
             return rewards.sum() / len(rewards)
 
     def _calculate_sharpe_ratio(self, equity_curve):
@@ -103,7 +102,7 @@ class AutomationEnv(gym.Env):
         self.balance_ant = self.balance
         self.equity_ant = self.balance
         self.current_step = 0
-        self.order_status = 0  # 0 = no order, 1 = buy open, 2 = sell open
+        self.order_status = 0  # 0 = no order, 1 = BUY order open, 2 = SELL order open
         self.order_price = 0.0
         self.order_close = 0.0
         self.ticks_per_hour = 1
@@ -128,9 +127,9 @@ class AutomationEnv(gym.Env):
         self.margin = 0.0
         self.order_time = 0
         self.num_ticks = self.x_train.shape[0]
-        self.num_closes = 0  # Track number of closes
-        self.c_c = 0       # Closing cause
-        self.ant_c_c = 0   # Previous closing cause
+        self.num_closes = 0
+        self.c_c = 0
+        self.ant_c_c = 0
         self.max_order_volume = max_order_volume
         self.min_order_volume = min_order_volume
         if self.y_train is None:
@@ -138,8 +137,8 @@ class AutomationEnv(gym.Env):
         else:
             self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.y_train.shape[1],), dtype=np.float32)
         self.action_space = gym.spaces.Tuple((
-            gym.spaces.Discrete(3),  # Buy, sell, hold
-            gym.spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32)  # Continuous volume action
+            gym.spaces.Discrete(3),  # Buy, Sell, Hold
+            gym.spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32)
         ))
         self.genome = genome
         self.reset(genome)
@@ -159,7 +158,7 @@ class AutomationEnv(gym.Env):
         self.margin = 0.0
         self.order_time = 0
         self.max_dd_pips = 0
-        self.genome = genome
+        self.genome = genome 
         self.kolmogorov_c = 0
         if self.genome is not None:
             try:
@@ -196,7 +195,7 @@ class AutomationEnv(gym.Env):
             self.max_steps = max_steps - 1
         return observation, info, max_steps
     
-    def step(self, action, verbose=True, step_fitness=0.0, genome_id=0, num_closes=0, reward_auc_prev=0.0, act_values=[0.0, 0.0, 0.0]):
+    def step(self, action, step_fitness=0.0, genome_id=0, num_closes=0, reward_auc_prev=0.0, act_values=[0.0, 0.0, 0.0]):
         if self.done:
             return np.zeros(self.x_train.shape[1]), self.reward, self.done, {}
         if self.current_step >= self.max_steps:
@@ -227,7 +226,7 @@ class AutomationEnv(gym.Env):
             self.equity = self.balance + self.real_profit
             self.c_c = 0
         if not self.done:
-            # --- Order Entry Logic (unchanged) ---
+            # --- Order Entry Logic ---
             if (self.order_status == 0) and discrete_action == 1:
                 self.order_status = 1
                 self.order_price = High + self.spread
@@ -244,10 +243,9 @@ class AutomationEnv(gym.Env):
                     self.order_volume = max_volume
                 if self.order_volume < self.min_order_volume:
                     self.order_volume = self.min_order_volume
-                if verbose:
-                    print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Buy, Price: {self.order_price}, volume_action: {volume_action}, Volume: {self.order_volume}")
-                    print(f"Current balance (after BUY action): {self.balance}, Number of closes: {self.num_closes}")
-                    print(f"Order Status after buy action: {self.order_status}")
+                print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Buy, Price: {self.order_price}, volume_action: {volume_action}, Volume: {self.order_volume}")
+                print(f"Current balance (after BUY action): {self.balance}, Number of closes: {self.num_closes}")
+                print(f"Order Status after buy action: {self.order_status}")
             if (self.order_status == 0) and discrete_action == 2:
                 self.order_status = 2
                 self.order_price = Low
@@ -264,11 +262,10 @@ class AutomationEnv(gym.Env):
                     self.order_volume = max_volume
                 if self.order_volume < self.min_order_volume:
                     self.order_volume = self.min_order_volume
-                if verbose:
-                    print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Sell, Price: {self.order_price}, volume_action: {volume_action}, Volume: {self.order_volume}")
-                    print(f"Current balance (after SELL action): {self.balance}, Number of closes: {self.num_closes}")
-                    print(f"Order Status after sell action: {self.order_status}")
-            # --- Manual close logic (unchanged) ---
+                print(f"{self.x_train[self.current_step, 0]} - Opening order - Action: Sell, Price: {self.order_price}, volume_action: {volume_action}, Volume: {self.order_volume}")
+                print(f"Current balance (after SELL action): {self.balance}, Number of closes: {self.num_closes}")
+                print(f"Order Status after sell action: {self.order_status}")
+            # --- Manual close logic ---
             if ((self.order_status == 1 and discrete_action == 2) or 
                 (self.order_status == 2 and discrete_action == 1)) or \
                (self.order_status == 1 and discrete_action == 0) or \
@@ -304,13 +301,12 @@ class AutomationEnv(gym.Env):
                     }
                     self.order_volume = 0.0
                     self.orders_list.append(order)
-                    if verbose:
-                        print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Normal Close")
-                        print(f"Current balance: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
-                        print(f"Order Status after normal close: {self.order_status}")
+                    print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Normal Close")
+                    print(f"Current balance: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
+                    print(f"Order Status after normal close: {self.order_status}")
             # --- Fixed SL and TP Checks (in pips) ---
             if self.order_status == 1:
-                current_tp = self.tp_buy  # Fixed TP for BUY (in pips, as set when order opened)
+                current_tp = self.tp_buy  # Fixed TP for BUY (in pips)
                 current_sl = self.sl_buy  # Fixed SL for BUY (in pips)
             elif self.order_status == 2:
                 current_tp = self.tp_sell  # Fixed TP for SELL (in pips)
@@ -343,10 +339,9 @@ class AutomationEnv(gym.Env):
                 }
                 self.order_volume = 0.0
                 self.orders_list.append(order)
-                if verbose:
-                    print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Stop Loss")
-                    print(f"Current balance: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
-                    print(f"Order Status after stop loss: {self.order_status}")
+                print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Stop Loss")
+                print(f"Current balance: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
+                print(f"Order Status after stop loss: {self.order_status}")
             if self.order_status == 2 and self.profit_pips >= current_tp:
                 self.profit_pips = ((self.order_price - (High + self.spread)) / self.pip_cost)
                 self.real_profit = self.profit_pips * self.pip_cost * self.order_volume
@@ -373,10 +368,9 @@ class AutomationEnv(gym.Env):
                 }
                 self.order_volume = 0.0
                 self.orders_list.append(order)
-                if verbose:
-                    print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Take Profit")
-                    print(f"Current balance: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
-                    print(f"Order Status after take profit: {self.order_status}")
+                print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Take Profit")
+                print(f"Current balance: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
+                print(f"Order Status after take profit: {self.order_status}")
             if (self.order_status == 1 or self.order_status == 2):
                 if (self.current_step - self.order_time) > self.max_order_time:
                     if self.order_status == 1:
@@ -409,10 +403,9 @@ class AutomationEnv(gym.Env):
                     }
                     self.order_volume = 0.0
                     self.orders_list.append(order)
-                    if verbose:
-                        print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Order Timeout")
-                        print(f"Current balance: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
-                        print(f"Order Status after timeout: {self.order_status}")
+                    print(f"{self.x_train[self.current_step, 0]} - Closed order at {self.order_close} - Cause: Order Timeout")
+                    print(f"Current balance: {self.balance}, Profit PIPS: {self.profit_pips}, Real Profit: {self.real_profit}, Number of closes: {self.num_closes}")
+                    print(f"Order Status after timeout: {self.order_status}")
         margin_call_lambda = 100
         reward_margin_call = 0.0
         reward = 0.0
@@ -462,13 +455,13 @@ class AutomationEnv(gym.Env):
             return -100
         sharpe_ratio = (mean_return - adjusted_risk_free_rate) / (return_std)
         if sharpe_ratio > 1 and len(returns) < 30:
-            sharpe_ratio = sharpe_ratio/10
+            sharpe_ratio = sharpe_ratio / 10
         if sharpe_ratio > 1 and len(returns) < 20:
-            sharpe_ratio = sharpe_ratio/10
+            sharpe_ratio = sharpe_ratio / 10
         if sharpe_ratio > 1 and len(returns) < 10:
-            sharpe_ratio = sharpe_ratio/10
+            sharpe_ratio = sharpe_ratio / 10
         if sharpe_ratio > 1 and len(returns) < 5:
-            sharpe_ratio = sharpe_ratio/10
+            sharpe_ratio = sharpe_ratio / 10
         return sharpe_ratio
 
     def kolmogorov_complexity(self, genome):
