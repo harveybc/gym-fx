@@ -16,7 +16,13 @@ Config keys:
     atr_period: int   — ATR window (default 14), GA-tunable
     k_sl: float       — SL = k_sl * ATR (default 2.0), GA-tunable
     k_tp: float       — TP = k_tp * ATR (default 3.0), GA-tunable
-    position_size: float
+    position_size: float  — fallback flat units per order if rel_volume is None
+    rel_volume: float | None  — fraction of cash to risk per order (Project 2
+        heuristic default: 0.10). When set, size = clamp(cash * rel_volume *
+        leverage, min_order_volume, max_order_volume) and overrides position_size.
+    leverage: float   — broker leverage multiplier (default 1.0; Project 2 FX=100)
+    min_order_volume: float
+    max_order_volume: float
 """
 from __future__ import annotations
 
@@ -30,6 +36,18 @@ class Plugin:
         "k_sl": 2.0,
         "k_tp": 3.0,
         "position_size": 1.0,
+        # Project 2 heuristic-strategy sizing (direction_atr plugin defaults):
+        # rel_volume=0.10, leverage=100, min=10_000, max=1_000_000.
+        # Leave rel_volume=None to disable and use flat position_size.
+        "rel_volume": None,
+        "leverage": 1.0,
+        "min_order_volume": 0.0,
+        "max_order_volume": 1e12,
+        # "fx_units": size = cash * rel_volume * leverage  (Project 2 FX default,
+        #    assumes 1 unit ~= $1 notional, correct for EURUSD-class quotes).
+        # "notional": size = cash * rel_volume * leverage / price  (correct for
+        #    instruments whose price is the per-unit cost, e.g. BTC/ETH spot).
+        "size_mode": "fx_units",
     }
 
     def __init__(self, config: Dict[str, Any] | None = None):
@@ -59,7 +77,7 @@ class Plugin:
         period = int(p["atr_period"])
         k_sl = float(p["k_sl"])
         k_tp = float(p["k_tp"])
-        size = float(p["position_size"])
+        size = self._compute_size(bt_strategy, p)
 
         high = float(bt_strategy.data.high[0])
         low = float(bt_strategy.data.low[0])
@@ -102,6 +120,28 @@ class Plugin:
                     bt_strategy.sell_bracket(size=size, stopprice=stop, limitprice=limit)
                 else:
                     bt_strategy.sell(size=size)
+
+    def _compute_size(self, bt_strategy, p: Dict[str, Any]) -> float:
+        rel = p.get("rel_volume")
+        if rel is None:
+            return float(p["position_size"])
+        try:
+            cash = float(bt_strategy.broker.getcash())
+        except Exception:
+            cash = float(p.get("position_size", 1.0))
+        leverage = float(p.get("leverage", 1.0))
+        min_vol = float(p.get("min_order_volume", 0.0))
+        max_vol = float(p.get("max_order_volume", 1e12))
+        mode = str(p.get("size_mode", "fx_units")).lower()
+        if mode == "notional":
+            try:
+                price = float(bt_strategy.data.close[0])
+            except Exception:
+                price = 0.0
+            raw = (cash * float(rel) * leverage) / price if price > 0 else 0.0
+        else:
+            raw = cash * float(rel) * leverage
+        return max(min_vol, min(raw, max_vol))
 
     def _resolve(self, config: Dict[str, Any]) -> Dict[str, Any]:
         merged = dict(self.params)
