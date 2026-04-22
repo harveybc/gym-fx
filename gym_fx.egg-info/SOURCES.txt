@@ -32,3 +32,5 @@ reward_plugins/pnl_reward.py
 reward_plugins/sharpe_reward.py
 strategy_plugins/__init__.py
 strategy_plugins/default_strategy.py
+strategy_plugins/direct_atr_sltp.py
+strategy_plugins/direct_fixed_sltp.py

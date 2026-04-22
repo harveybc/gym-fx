@@ -68,7 +68,16 @@ class GymFxEnv(gym.Env):
         self.total_bars = int(len(self.dataframe))
 
         # --- action / observation spaces ------------------------------------
-        self.action_space = spaces.Discrete(3)
+        self.action_space_mode = str(self.config.get("action_space_mode", "discrete")).lower()
+        if self.action_space_mode == "continuous":
+            self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
+            # Threshold for mapping continuous actions to {-1, 0, +1}
+            self.continuous_action_threshold = float(
+                self.config.get("continuous_action_threshold", 0.33)
+            )
+        else:
+            self.action_space = spaces.Discrete(3)
+            self.continuous_action_threshold = None
         self.observation_space = spaces.Dict(
             {
                 "prices": spaces.Box(low=-np.inf, high=np.inf, shape=(self.window_size,), dtype=np.float32),
@@ -109,6 +118,8 @@ class GymFxEnv(gym.Env):
             bridge=self.bridge,
             position_size=self.position_size,
             min_equity=self.min_equity,
+            strategy_plugin=self.strategy_plugin,
+            config=self.config,
         )
 
         self._runner = threading.Thread(target=self._run_cerebro, name="gym-fx-cerebro", daemon=True)
@@ -121,12 +132,7 @@ class GymFxEnv(gym.Env):
         if self.bridge is None:
             raise RuntimeError("Call reset() before step().")
 
-        try:
-            a = int(action)
-        except Exception:
-            a = 0
-        if a not in (0, 1, 2):
-            a = 0
+        a = self._coerce_action(action)
 
         if self.bridge.terminated:
             return self._make_observation(), 0.0, True, False, self._make_info()
@@ -174,7 +180,29 @@ class GymFxEnv(gym.Env):
     # ----------------------------------------------------------------------
     # Internals
     # ----------------------------------------------------------------------
-    def _run_cerebro(self) -> None:
+
+    # ----------------------------------------------------------------------
+    # Action handling
+    # ----------------------------------------------------------------------
+    def _coerce_action(self, action) -> int:
+        """Map the agent action (Discrete int or Box[-1,+1]) to {0,1,2}."""
+        if self.action_space_mode == "continuous":
+            try:
+                val = float(np.asarray(action).reshape(-1)[0])
+            except Exception:
+                val = 0.0
+            thr = self.continuous_action_threshold or 0.33
+            if val >= thr:
+                return 1  # long
+            if val <= -thr:
+                return 2  # short
+            return 0  # hold
+        try:
+            a = int(action)
+        except Exception:
+            a = 0
+        return a if a in (0, 1, 2) else 0
+    def _run_cerebro(self):
         try:
             result = self._cerebro.run(maxcpus=1, stdstats=False)
             self._strategy_instance = result[0] if result else None

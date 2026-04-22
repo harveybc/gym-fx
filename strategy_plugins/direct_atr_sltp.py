@@ -1,0 +1,119 @@
+"""
+direct_atr_sltp.py
+
+Strategy plugin that places bracket orders with SL/TP sized by rolling ATR.
+    SL distance = k_sl * ATR(atr_period)
+    TP distance = k_tp * ATR(atr_period)
+
+The plugin maintains its own rolling True-Range buffer from the backtrader
+data lines (no backtrader indicator needed — avoids minperiod coupling with
+BTBridgeStrategy). Until the ATR buffer is warmed, orders are placed without
+brackets (falls back to plain buy/sell) so the env doesn't stall.
+
+Action semantics: {0=hold, 1=long, 2=short} — same as direct_fixed_sltp.
+
+Config keys:
+    atr_period: int   — ATR window (default 14), GA-tunable
+    k_sl: float       — SL = k_sl * ATR (default 2.0), GA-tunable
+    k_tp: float       — TP = k_tp * ATR (default 3.0), GA-tunable
+    position_size: float
+"""
+from __future__ import annotations
+
+from collections import deque
+from typing import Any, Deque, Dict
+
+
+class Plugin:
+    plugin_params = {
+        "atr_period": 14,
+        "k_sl": 2.0,
+        "k_tp": 3.0,
+        "position_size": 1.0,
+    }
+
+    def __init__(self, config: Dict[str, Any] | None = None):
+        self.params = self.plugin_params.copy()
+        if config:
+            self.set_params(**config)
+        self._tr_buffer: Deque[float] = deque()
+        self._prev_close: float | None = None
+
+    def set_params(self, **kwargs: Any) -> None:
+        for k, v in kwargs.items():
+            if k in self.plugin_params:
+                self.params[k] = v
+
+    def decide_action(self, obs, info, step: int) -> int:
+        return 0
+
+    def on_reset(self, bt_strategy, config: Dict[str, Any]) -> None:
+        self._tr_buffer = deque(maxlen=int(self._resolve(config)["atr_period"]))
+        self._prev_close = None
+
+    # ------------------------------------------------------------------
+    # BTBridgeStrategy contract
+    # ------------------------------------------------------------------
+    def apply_action(self, bt_strategy, action: int, config: Dict[str, Any]) -> None:
+        p = self._resolve(config)
+        period = int(p["atr_period"])
+        k_sl = float(p["k_sl"])
+        k_tp = float(p["k_tp"])
+        size = float(p["position_size"])
+
+        high = float(bt_strategy.data.high[0])
+        low = float(bt_strategy.data.low[0])
+        close = float(bt_strategy.data.close[0])
+
+        # Update ATR buffer with True Range
+        if self._prev_close is None:
+            tr = high - low
+        else:
+            tr = max(high - low, abs(high - self._prev_close), abs(low - self._prev_close))
+        self._prev_close = close
+        if self._tr_buffer.maxlen != period:
+            self._tr_buffer = deque(self._tr_buffer, maxlen=period)
+        self._tr_buffer.append(tr)
+
+        if action == 0:
+            return
+
+        pos_size = bt_strategy.position.size
+        ready = len(self._tr_buffer) >= period
+        atr = sum(self._tr_buffer) / len(self._tr_buffer) if self._tr_buffer else 0.0
+
+        if action == 1:  # long
+            if pos_size < 0:
+                bt_strategy.close()
+            if pos_size <= 0:
+                if ready and atr > 0.0:
+                    stop = close - k_sl * atr
+                    limit = close + k_tp * atr
+                    bt_strategy.buy_bracket(size=size, stopprice=stop, limitprice=limit)
+                else:
+                    bt_strategy.buy(size=size)
+        elif action == 2:  # short
+            if pos_size > 0:
+                bt_strategy.close()
+            if pos_size >= 0:
+                if ready and atr > 0.0:
+                    stop = close + k_sl * atr
+                    limit = close - k_tp * atr
+                    bt_strategy.sell_bracket(size=size, stopprice=stop, limitprice=limit)
+                else:
+                    bt_strategy.sell(size=size)
+
+    def _resolve(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        merged = dict(self.params)
+        for k in self.plugin_params:
+            if k in config and config[k] is not None:
+                merged[k] = config[k]
+        return merged
+
+    # Exposed for the GA optimizer to enumerate tunable hyperparameters.
+    def hparam_schema(self):
+        return [
+            ("atr_period", 7, 30, "int"),
+            ("k_sl", 1.0, 4.0, "float"),
+            ("k_tp", 1.5, 6.0, "float"),
+        ]

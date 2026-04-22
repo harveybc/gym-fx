@@ -21,3 +21,5 @@ sharpe_reward = reward_plugins.sharpe_reward:Plugin
 
 [strategy.plugins]
 default_strategy = strategy_plugins.default_strategy:Plugin
+direct_atr_sltp = strategy_plugins.direct_atr_sltp:Plugin
+direct_fixed_sltp = strategy_plugins.direct_fixed_sltp:Plugin

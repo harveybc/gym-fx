@@ -72,18 +72,34 @@ class BTBridgeStrategy(bt.Strategy):
     Parameters:
       bridge (BTBridge): shared state.
       position_size (float): units per order.
+      strategy_plugin: optional object exposing `apply_action(bt_strategy, action, config)`
+        that takes over order placement for SL/TP bracket logic. When None
+        or the plugin lacks `apply_action`, the default buy/sell/close flow
+        is used.
+      config (dict): env config forwarded to the strategy_plugin.
     """
 
     params = (
         ("bridge", None),
         ("position_size", 1.0),
         ("min_equity", 100.0),
+        ("strategy_plugin", None),
+        ("config", None),
     )
 
     def __init__(self) -> None:  # type: ignore[no-redef]
         self.bridge: BTBridge = self.p.bridge
         self._started: bool = False
         self._order_cost_accum: float = 0.0
+        self._strategy_plugin = self.p.strategy_plugin
+        self._plugin_apply = getattr(self._strategy_plugin, "apply_action", None) if self._strategy_plugin else None
+        self._plugin_config = self.p.config or {}
+        plugin_reset = getattr(self._strategy_plugin, "on_reset", None) if self._strategy_plugin else None
+        if callable(plugin_reset):
+            try:
+                plugin_reset(self, self._plugin_config)
+            except Exception:
+                pass
 
     # --- backtrader lifecycle --------------------------------------------------
     def start(self) -> None:
@@ -141,6 +157,17 @@ class BTBridgeStrategy(bt.Strategy):
     # --- helpers ---------------------------------------------------------------
     def _apply_action(self, action: int) -> None:
         self._order_cost_accum = 0.0
+
+        # Delegate to strategy plugin if it implements apply_action (SL/TP bracket logic).
+        if callable(self._plugin_apply):
+            try:
+                self._plugin_apply(self, int(action), self._plugin_config)
+                return
+            except Exception:
+                # Fall back to default flow if the plugin fails, so a broken
+                # strategy plugin does not kill the env silently.
+                pass
+
         current_size = self.position.size  # backtrader position size
         size = float(self.p.position_size)
 
@@ -184,6 +211,8 @@ def build_cerebro(
     bridge: BTBridge,
     position_size: float,
     min_equity: float,
+    strategy_plugin: Optional[Any] = None,
+    config: Optional[Dict[str, Any]] = None,
     analyzers: Optional[Dict[str, Any]] = None,
 ) -> bt.Cerebro:
     """Factory that wires a cerebro with the bridge strategy, feed, broker and analyzers."""
@@ -195,6 +224,8 @@ def build_cerebro(
         bridge=bridge,
         position_size=position_size,
         min_equity=min_equity,
+        strategy_plugin=strategy_plugin,
+        config=config or {},
     )
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
     cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name="sharpe", timeframe=bt.TimeFrame.Days)
@@ -205,3 +236,4 @@ def build_cerebro(
         for name, (klass, kwargs) in analyzers.items():
             cerebro.addanalyzer(klass, _name=name, **(kwargs or {}))
     return cerebro
+
