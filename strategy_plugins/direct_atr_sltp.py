@@ -26,8 +26,23 @@ Config keys:
 """
 from __future__ import annotations
 
+import json
+import os
 from collections import deque
 from typing import Any, Deque, Dict
+
+
+_AUDIT_PATH = os.environ.get("GYMFX_BRACKET_AUDIT")
+
+
+def _audit_emit(rec: Dict[str, Any]) -> None:
+    if not _AUDIT_PATH:
+        return
+    try:
+        with open(_AUDIT_PATH, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec) + "\n")
+    except Exception:
+        pass
 
 
 class Plugin:
@@ -138,6 +153,10 @@ class Plugin:
                 stop = close - sl_dist
                 limit = close + tp_dist
                 bt_strategy.buy_bracket(size=size, stopprice=stop, limitprice=limit)
+                _audit_emit({
+                    "kind": "long_bracket", "entry": close, "stop": stop,
+                    "limit": limit, "size": size, "atr": atr,
+                })
         elif action == 2:  # short
             if pos_size > 0:
                 bt_strategy.close()
@@ -145,6 +164,10 @@ class Plugin:
                 stop = close + sl_dist
                 limit = close - tp_dist
                 bt_strategy.sell_bracket(size=size, stopprice=stop, limitprice=limit)
+                _audit_emit({
+                    "kind": "short_bracket", "entry": close, "stop": stop,
+                    "limit": limit, "size": size, "atr": atr,
+                })
 
     def _compute_size(self, bt_strategy, p: Dict[str, Any]) -> float:
         rel = p.get("rel_volume")
