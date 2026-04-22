@@ -1,0 +1,13 @@
+{
+  "steps": 467,
+  "final_equity": 9999.98825,
+  "total_return": -1.174999999964399e-06,
+  "max_drawdown": 1.5049998837485921e-06,
+  "sharpe": -0.7747344385288191,
+  "sum_rewards": -0.011749999999665306,
+  "actions_taken": {
+    "hold": 466,
+    "long": 1,
+    "short": 0
+  }
+}

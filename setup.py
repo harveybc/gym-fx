@@ -1,24 +1,38 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
-setup (
-       name='gym-forex',
-       version='0.1',
-       packages=find_packages(),
-
-       # Declare your packages' dependencies here, for eg:
-       # install_requires=['foo>=3'],
-
-       # Fill in these to make your Egg ready for upload to
-       # PyPI
-       author='HarveyD',
-       author_email='',
-
-       #summary = 'Just another Python package for the cheese shop',
-       url='',
-       license='',
-       long_description='Long description of the package',
-
-       # could also include long_description, download_url, classifiers, etc.
-
-  
-       )
+setup(
+    name="gym-fx",
+    version="0.2.0",
+    packages=find_packages(),
+    entry_points={
+        "console_scripts": [
+            "gym-fx-env=app.main:main",
+        ],
+        "data_feed.plugins": [
+            "default_data_feed=data_feed_plugins.default_data_feed:Plugin",
+        ],
+        "broker.plugins": [
+            "default_broker=broker_plugins.default_broker:Plugin",
+        ],
+        "strategy.plugins": [
+            "default_strategy=strategy_plugins.default_strategy:Plugin",
+        ],
+        "preprocessor.plugins": [
+            "default_preprocessor=preprocessor_plugins.default_preprocessor:Plugin",
+        ],
+        "reward.plugins": [
+            "pnl_reward=reward_plugins.pnl_reward:Plugin",
+        ],
+        "metrics.plugins": [
+            "default_metrics=metrics_plugins.default_metrics:Plugin",
+        ],
+    },
+    install_requires=[
+        "pandas",
+        "numpy",
+        "requests",
+    ],
+    author="Harvey Bastidas",
+    author_email="your.email@example.com",
+    description="Environment-only FX trading package for agent-multi integration.",
+)

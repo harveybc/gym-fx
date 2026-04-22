@@ -1,0 +1,22 @@
+{
+  "mode": "inference",
+  "driver_mode": "random",
+  "steps": 490,
+  "input_data_file": "examples/data/eurusd_sample.csv",
+  "date_column": "DATE_TIME",
+  "price_column": "CLOSE",
+  "headers": true,
+  "window_size": 32,
+  "initial_cash": 10000.0,
+  "position_size": 1.0,
+  "commission": 0.0,
+  "slippage": 0.0,
+  "data_feed_plugin": "default_data_feed",
+  "broker_plugin": "default_broker",
+  "strategy_plugin": "default_strategy",
+  "preprocessor_plugin": "default_preprocessor",
+  "reward_plugin": "pnl_reward",
+  "metrics_plugin": "default_metrics",
+  "results_file": "examples/results/random_driver_summary.json",
+  "save_config": "examples/config/random_driver_out.json"
+}
