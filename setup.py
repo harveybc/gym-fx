@@ -13,6 +13,7 @@ setup(
         ],
         "broker.plugins": [
             "default_broker=broker_plugins.default_broker:Plugin",
+            "oanda_broker=broker_plugins.oanda_broker:Plugin",
         ],
         "strategy.plugins": [
             "default_strategy=strategy_plugins.default_strategy:Plugin",
@@ -22,6 +23,8 @@ setup(
         ],
         "reward.plugins": [
             "pnl_reward=reward_plugins.pnl_reward:Plugin",
+            "sharpe_reward=reward_plugins.sharpe_reward:Plugin",
+            "dd_penalized_reward=reward_plugins.dd_penalized_reward:Plugin",
         ],
         "metrics.plugins": [
             "default_metrics=metrics_plugins.default_metrics:Plugin",
@@ -29,6 +32,8 @@ setup(
     },
     install_requires=[
         "pandas",
+        "backtrader",
+        "gymnasium",
         "numpy",
         "requests",
     ],

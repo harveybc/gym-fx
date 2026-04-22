@@ -1,0 +1,5 @@
+pandas
+backtrader
+gymnasium
+numpy
+requests

@@ -1,0 +1,8 @@
+app
+broker_plugins
+data_feed_plugins
+gym_fx
+metrics_plugins
+preprocessor_plugins
+reward_plugins
+strategy_plugins

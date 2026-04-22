@@ -1,68 +1,60 @@
+"""
+default_metrics.py
+
+Summarizes performance from backtrader analyzer outputs plus final equity.
+"""
 from __future__ import annotations
 
-import math
+from typing import Any, Dict, Optional
 
 
 class Plugin:
-    plugin_params = {
-        "annualization_factor": 252.0,
-    }
+    plugin_params: Dict[str, Any] = {}
 
-    def __init__(self, config=None):
+    def __init__(self, config: Dict[str, Any] | None = None):
         self.params = self.plugin_params.copy()
         if config:
             self.set_params(**config)
 
-    def set_params(self, **kwargs):
+    def set_params(self, **kwargs: Any) -> None:
         self.params.update(kwargs)
 
-    def summarize(self, equity_curve, rewards, actions, config):
-        if not equity_curve:
-            return {
-                "steps": 0,
-                "final_equity": None,
-                "total_return": None,
-                "max_drawdown": None,
-                "sharpe": None,
-            }
+    def summarize(
+        self,
+        *,
+        initial_cash: float,
+        final_equity: float,
+        analyzers: Dict[str, Any],
+        config: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        trades = analyzers.get("trades") or {}
+        sharpe = analyzers.get("sharpe") or {}
+        drawdown = analyzers.get("drawdown") or {}
+        sqn = analyzers.get("sqn") or {}
 
-        start = float(equity_curve[0])
-        end = float(equity_curve[-1])
-        total_return = (end / start - 1.0) if start else 0.0
+        total_return = (float(final_equity) / float(initial_cash) - 1.0) if initial_cash else 0.0
 
-        peak = equity_curve[0]
-        max_dd = 0.0
-        for v in equity_curve:
-            peak = max(peak, v)
-            if peak:
-                dd = (peak - v) / peak
-                max_dd = max(max_dd, dd)
-
-        rets = []
-        for i in range(1, len(equity_curve)):
-            prev = float(equity_curve[i - 1])
-            curr = float(equity_curve[i])
-            rets.append((curr - prev) / prev if prev else 0.0)
-
-        sharpe = None
-        if rets:
-            mean_r = sum(rets) / len(rets)
-            var_r = sum((r - mean_r) ** 2 for r in rets) / max(1, (len(rets) - 1))
-            std_r = math.sqrt(var_r)
-            if std_r > 0:
-                ann = float(config.get("annualization_factor", self.params["annualization_factor"]))
-                sharpe = (mean_r / std_r) * math.sqrt(ann)
+        def _get(d: Any, *path: str, default: Any = None) -> Any:
+            cur: Any = d
+            for k in path:
+                if cur is None:
+                    return default
+                if hasattr(cur, "get"):
+                    cur = cur.get(k, None)
+                else:
+                    return default
+            return cur if cur is not None else default
 
         return {
-            "steps": len(actions),
-            "final_equity": end,
-            "total_return": total_return,
-            "max_drawdown": max_dd,
-            "sharpe": sharpe,
-            "sum_rewards": float(sum(rewards)) if rewards else 0.0,
-            "actions_taken": {
-                "hold": sum(1 for a in actions if a == 0),
-                "long": sum(1 for a in actions if a == 1),
-                "short": sum(1 for a in actions if a == 2),
-            },
+            "initial_cash": float(initial_cash),
+            "final_equity": float(final_equity),
+            "total_return": float(total_return),
+            "max_drawdown_pct": _get(drawdown, "max", "drawdown"),
+            "max_drawdown_money": _get(drawdown, "max", "moneydown"),
+            "sharpe_ratio": _get(sharpe, "sharperatio"),
+            "sqn": _get(sqn, "sqn"),
+            "trades_total": _get(trades, "total", "total", default=0),
+            "trades_won": _get(trades, "won", "total", default=0),
+            "trades_lost": _get(trades, "lost", "total", default=0),
+            "avg_trade_pnl": _get(trades, "pnl", "net", "average"),
         }

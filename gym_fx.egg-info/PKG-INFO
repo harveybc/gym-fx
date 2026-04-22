@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: gym-fx
+Version: 0.2.0
+Summary: Environment-only FX trading package for agent-multi integration.
+Author: Harvey Bastidas
+Author-email: your.email@example.com
+Requires-Dist: pandas
+Requires-Dist: backtrader
+Requires-Dist: gymnasium
+Requires-Dist: numpy
+Requires-Dist: requests
+Dynamic: author
+Dynamic: author-email
+Dynamic: requires-dist
+Dynamic: summary

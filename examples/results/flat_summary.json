@@ -1,7 +1,7 @@
 {
   "initial_cash": 10000.0,
-  "final_equity": 10000.095791583166,
-  "total_return": 9.579158316563863e-06,
+  "final_equity": 10000.0,
+  "total_return": 0.0,
   "max_drawdown_pct": null,
   "max_drawdown_money": null,
   "sharpe_ratio": null,
