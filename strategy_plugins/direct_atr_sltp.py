@@ -48,6 +48,12 @@ class Plugin:
         # "notional": size = cash * rel_volume * leverage / price  (correct for
         #    instruments whose price is the per-unit cost, e.g. BTC/ETH spot).
         "size_mode": "fx_units",
+        # SL/TP distance clamps as fraction of price. Prevent degenerate
+        # brackets when ATR is pathological (flash-crash bar, thin liquidity).
+        # Defaults allow 0.1%..20% of price, which covers realistic FX/crypto
+        # volatility bands. Set to None to disable a bound.
+        "min_sltp_frac": 0.001,
+        "max_sltp_frac": 0.20,
     }
 
     def __init__(self, config: Dict[str, Any] | None = None):
@@ -100,26 +106,45 @@ class Plugin:
         ready = len(self._tr_buffer) >= period
         atr = sum(self._tr_buffer) / len(self._tr_buffer) if self._tr_buffer else 0.0
 
+        # Require a warmed ATR and a positive size, otherwise skip the trade
+        # entirely rather than emit a naked (SL/TP-less) order. This guarantees
+        # every filled order has both brackets attached.
+        if not ready or atr <= 0.0 or size <= 0.0 or close <= 0.0:
+            return
+
+        # Clamp SL/TP distances to sane fractions of price to prevent degenerate
+        # brackets from pathological ATR spikes (flash crashes, thin bars).
+        sl_dist = k_sl * atr
+        tp_dist = k_tp * atr
+        min_frac = p.get("min_sltp_frac")
+        max_frac = p.get("max_sltp_frac")
+        if min_frac is not None:
+            floor = float(min_frac) * close
+            sl_dist = max(sl_dist, floor)
+            tp_dist = max(tp_dist, floor)
+        if max_frac is not None:
+            ceil = float(max_frac) * close
+            sl_dist = min(sl_dist, ceil)
+            tp_dist = min(tp_dist, ceil)
+        # Final safety: SL must stay above zero on shorts too (close + sl_dist
+        # is always > 0 for long-stop; short TP = close - tp_dist must be > 0).
+        if tp_dist >= close:
+            tp_dist = close * 0.5
+
         if action == 1:  # long
             if pos_size < 0:
                 bt_strategy.close()
             if pos_size <= 0:
-                if ready and atr > 0.0:
-                    stop = close - k_sl * atr
-                    limit = close + k_tp * atr
-                    bt_strategy.buy_bracket(size=size, stopprice=stop, limitprice=limit)
-                else:
-                    bt_strategy.buy(size=size)
+                stop = close - sl_dist
+                limit = close + tp_dist
+                bt_strategy.buy_bracket(size=size, stopprice=stop, limitprice=limit)
         elif action == 2:  # short
             if pos_size > 0:
                 bt_strategy.close()
             if pos_size >= 0:
-                if ready and atr > 0.0:
-                    stop = close + k_sl * atr
-                    limit = close - k_tp * atr
-                    bt_strategy.sell_bracket(size=size, stopprice=stop, limitprice=limit)
-                else:
-                    bt_strategy.sell(size=size)
+                stop = close + sl_dist
+                limit = close - tp_dist
+                bt_strategy.sell_bracket(size=size, stopprice=stop, limitprice=limit)
 
     def _compute_size(self, bt_strategy, p: Dict[str, Any]) -> float:
         rel = p.get("rel_volume")
