@@ -191,3 +191,6 @@ This report becomes the foundation for any future Project 4 (e.g., NEAT capstone
 ## 9. Approval to Begin
 
 User approves master plan. Agent begins by reading `10_PHASE_1_OVERVIEW.md`.
+
+
+# TODO 5: falta diferenciar dos cosas, una es el conjunto de características (y su periodicidad para usar como entrada de los diferentes modelos de rl y extractores de características) y la otra cosa es seleccionar el activo para hacer el trading y la periodicidad usada en las simulaciones. 

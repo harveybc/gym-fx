@@ -245,6 +245,8 @@ Target folder: `~/Documents/financial_data/alternative_data/exchange_flows/crypt
 
 ## 4. Task 1.5.C: Polygon US equities + options + news (Gamma)
 
+#  TODO: news?  uw news estamos usando? como obtenemos datos alimentables a nuestros modelos de rl desde news? tendríamos que hacer algúntipos de sentiment analysis o algo, pero esto es un overkill, creo que eso lo podemos probar en otro proyecto, no usemos news, pero si podemos usar calendario financiero y sy=us sresultados.
+
 Polygon Developer tier ($79/mo) includes:
 - Stocks: 5+ years of 1m, 5m, 15m, 1h, daily aggregates for all US stocks
 - Options: 5 years of options chain data
