@@ -36,6 +36,8 @@ Agent needs the following manual setup completed by user. Items can be done in a
 
 ## Required (per user-approved Stage 1.2 catalog):
 
+# TODO: verificar que no se esté descargando datos redundantemente antes de iniciar las suscriptions , ya que algunos datos gratuitos ya se descargaron y no vanecesitaríamos los servicios pagos, asegúrrate de especificar exáctamente que datos vamos a descargar de cada suscripción paga o datos gratuitos priorizando los gratuitos y verificando que no haya datos redundantes o suscripciones innecesarias.
+
 ### A. Glassnode Standard Subscription ($30/mo)
 1. Visit https://glassnode.com/pricing
 2. Subscribe to Standard tier ($30/month)

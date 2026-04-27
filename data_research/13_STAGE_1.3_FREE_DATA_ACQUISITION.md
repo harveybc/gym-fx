@@ -378,6 +378,8 @@ Per pair (EUR/USD, USD/JPY at minimum, others if user has bandwidth):
 
 ### Task 1.3.J: OANDA cross-validation (Dragon)
 
+# TODO: porque bajamos los pares de fx dos veces, una desde histfiles (mi trabajo manual) y otra desde oanda?
+
 User must provide OANDA credentials (already pending from Project 2 setup; verify).
 
 Script: `_scripts/fetch_oanda_validation.py`

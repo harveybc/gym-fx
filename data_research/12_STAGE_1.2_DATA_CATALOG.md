@@ -98,6 +98,9 @@ The catalog is organized by data category. Each entry specifies:
 
 ### 3.1 G10 Major Pairs
 
+# TODO: do not use 1m, nor weekly, nor daily, we neet the other periodicities tho
+
+
 For ALL of the following, acquire 1m, 5m, 15m, 1h, 4h, daily, weekly:
 
 | Pair | Source | Cost | Coverage | Method | Folder | Priority |
