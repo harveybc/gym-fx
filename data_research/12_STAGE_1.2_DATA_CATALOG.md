@@ -38,7 +38,7 @@ The catalog is organized by data category. Each entry specifies:
 | Dow Jones daily | yfinance | Free | 1992-present, daily | API | `market_data/equities/us_indices/dji/` | HIGH | Industrial reference |
 | Russell 2000 daily | yfinance | Free | 1987-present, daily | API | `market_data/equities/us_indices/rut/` | HIGH | Small-cap reference |
 | VIX daily | yfinance + FRED | Free | 1990-present, daily | API | `market_data/equities/us_indices/vix/` | HIGH | Volatility regime |
-| SPX intraday 1m | Polygon.io | $30/mo Starter | 5+ years intraday | API | `market_data/equities/us_indices/spx_intraday/` | HIGH | Higher frequency |
+| SPX intraday 5m | Polygon.io | $30/mo Starter | 5+ years intraday | API | `market_data/equities/us_indices/spx_intraday/` | HIGH | Higher frequency |
 | SPY ETF tick | Polygon.io Starter | $30/mo | 5+ years tick | API | `market_data/equities/etfs/spy_tick/` | MEDIUM | Microstructure |
 
 ### 2.2 US Individual Stocks
@@ -47,7 +47,7 @@ The catalog is organized by data category. Each entry specifies:
 |--------|----------|------|----------|--------|--------|----------|---------------|
 | S&P 500 components daily | yfinance | Free | Variable per stock, daily | API | `market_data/equities/us_individual/sp500/` | HIGH | Cross-sectional features |
 | NASDAQ-100 components daily | yfinance | Free | Variable, daily | API | `market_data/equities/us_individual/ndx100/` | HIGH | Tech sector |
-| Top 1000 by market cap intraday | Polygon.io Developer | $79/mo | 5+ years 1m bars | API | `market_data/equities/us_individual/top1000_1m/` | MEDIUM | If budget allows |
+| Top 1000 by market cap intraday | Polygon.io Developer | $79/mo | 5+ years 5m bars | API | `market_data/equities/us_individual/top1000_5m/` | MEDIUM | If budget allows |
 
 ### 2.3 European Equity Indices
 
@@ -98,25 +98,25 @@ The catalog is organized by data category. Each entry specifies:
 
 ### 3.1 G10 Major Pairs
 
-# TODO: do not use 1m, nor weekly, nor daily, we neet the other periodicities tho
+# TODO: Harvey commands to not  to use 1m, nor weekly, nor daily, we neet the other periodicities tho
 
 
-For ALL of the following, acquire 1m, 5m, 15m, 1h, 4h, daily, weekly:
+For ALL of the following, acquire 5m, 15m, 1h, 4h:
 
 | Pair | Source | Cost | Coverage | Method | Folder | Priority |
 |------|--------|------|----------|--------|--------|----------|
-| EUR/USD | HistData | Free | 2005-present, 1m | bulk download | `market_data/forex/g10/eurusd/` | HIGH |
-| USD/JPY | HistData | Free | 2005-present, 1m | bulk download | `market_data/forex/g10/usdjpy/` | HIGH |
-| GBP/USD | HistData | Free | 2005-present, 1m | bulk download | `market_data/forex/g10/gbpusd/` | HIGH |
-| USD/CHF | HistData | Free | 2005-present, 1m | bulk download | `market_data/forex/g10/usdchf/` | HIGH |
-| AUD/USD | HistData | Free | 2005-present, 1m | bulk download | `market_data/forex/g10/audusd/` | HIGH |
-| USD/CAD | HistData | Free | 2005-present, 1m | bulk download | `market_data/forex/g10/usdcad/` | HIGH |
-| NZD/USD | HistData | Free | 2005-present, 1m | bulk download | `market_data/forex/g10/nzdusd/` | HIGH |
-| EUR/GBP | HistData | Free | 2005-present, 1m | bulk download | `market_data/forex/g10/eurgbp/` | HIGH |
-| EUR/JPY | HistData | Free | 2005-present, 1m | bulk download | `market_data/forex/g10/eurjpy/` | HIGH |
-| GBP/JPY | HistData | Free | 2005-present, 1m | bulk download | `market_data/forex/g10/gbpjpy/` | HIGH |
-| EUR/CHF | HistData | Free | 2005-present, 1m | bulk download | `market_data/forex/g10/eurchf/` | MEDIUM |
-| AUD/JPY | HistData | Free | 2005-present, 1m | bulk download | `market_data/forex/g10/audjpy/` | MEDIUM |
+| EUR/USD | HistData | Free | 2005-present, 5m | bulk download | `market_data/forex/g10/eurusd/` | HIGH |
+| USD/JPY | HistData | Free | 2005-present, 5m | bulk download | `market_data/forex/g10/usdjpy/` | HIGH |
+| GBP/USD | HistData | Free | 2005-present, 5m | bulk download | `market_data/forex/g10/gbpusd/` | HIGH |
+| USD/CHF | HistData | Free | 2005-present, 5m | bulk download | `market_data/forex/g10/usdchf/` | HIGH |
+| AUD/USD | HistData | Free | 2005-present, 5m | bulk download | `market_data/forex/g10/audusd/` | HIGH |
+| USD/CAD | HistData | Free | 2005-present, 5m | bulk download | `market_data/forex/g10/usdcad/` | HIGH |
+| NZD/USD | HistData | Free | 2005-present, 5m | bulk download | `market_data/forex/g10/nzdusd/` | HIGH |
+| EUR/GBP | HistData | Free | 2005-present, 5m | bulk download | `market_data/forex/g10/eurgbp/` | HIGH |
+| EUR/JPY | HistData | Free | 2005-present, 5m | bulk download | `market_data/forex/g10/eurjpy/` | HIGH |
+| GBP/JPY | HistData | Free | 2005-present, 5m | bulk download | `market_data/forex/g10/gbpjpy/` | HIGH |
+| EUR/CHF | HistData | Free | 2005-present, 5m | bulk download | `market_data/forex/g10/eurchf/` | MEDIUM |
+| AUD/JPY | HistData | Free | 2005-present, 5m | bulk download | `market_data/forex/g10/audjpy/` | MEDIUM |
 
 User has already downloaded EUR/USD and USD/JPY 5m. Stage 1.3 procedure: agent verifies and supplements; user re-downloads remaining pairs as needed.
 
@@ -146,7 +146,7 @@ User has already downloaded EUR/USD and USD/JPY 5m. Stage 1.3 procedure: agent v
 
 ### 4.1 Spot Top 50 by Market Cap
 
-For ALL: acquire 5m, 15m, 1h, 4h, daily.
+For ALL: acquire 5m, 15m, 1h, 4h.
 
 | Asset | Source | Cost | Coverage | Method | Folder | Priority |
 |-------|--------|------|----------|--------|--------|----------|
@@ -612,12 +612,14 @@ Content:
 
 ## Subscription Decisions Required from User
 
+# for now we are not using twitter or any other text based news, lets let that for a future project.
+# we need to review all sugested subscriptions, since we do not want paid redundant data.
+
 User must decide whether to subscribe to:
 - Glassnode Standard ($30/mo)
 - CryptoQuant Standard ($39/mo)
 - Polygon.io Developer ($79/mo)
 - FMP Starter ($14/mo)
-- Twitter/X API Basic ($100/mo) — OPTIONAL
 
 User responds via chat with approved subscription list.
 
