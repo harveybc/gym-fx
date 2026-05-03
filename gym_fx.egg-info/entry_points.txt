@@ -13,6 +13,7 @@ default_metrics = metrics_plugins.default_metrics:Plugin
 
 [preprocessor.plugins]
 default_preprocessor = preprocessor_plugins.default_preprocessor:Plugin
+feature_window_preprocessor = preprocessor_plugins.feature_window_preprocessor:Plugin
 
 [reward.plugins]
 dd_penalized_reward = reward_plugins.dd_penalized_reward:Plugin

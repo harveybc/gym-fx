@@ -69,6 +69,20 @@ class Plugin:
         # volatility bands. Set to None to disable a bound.
         "min_sltp_frac": 0.001,
         "max_sltp_frac": 0.20,
+        # ----- Session/weekend filter (avoid weekend volatility) ----------
+        # When `session_filter` is True, new entries are only allowed inside
+        # the entry window [entry_dow_start@entry_hour_start ..
+        # force_close_dow@force_close_hour). Outside that window the strategy
+        # IGNORES long/short actions (treats them as hold). Once the bar
+        # crosses into the force-close zone (>= force_close_dow@hour up to
+        # entry_dow_start@hour of next week), any open position is flattened
+        # immediately with a market close, regardless of agent action.
+        # dow: Monday=0 ... Sunday=6 (Python datetime.weekday()).
+        "session_filter": False,
+        "entry_dow_start": 0,        # Monday
+        "entry_hour_start": 12,      # 12:00 (mid-morning, 12h after typical open)
+        "force_close_dow": 4,        # Friday
+        "force_close_hour": 20,      # 20:00 — flatten everything from here
     }
 
     def __init__(self, config: Dict[str, Any] | None = None):
@@ -114,7 +128,25 @@ class Plugin:
             self._tr_buffer = deque(self._tr_buffer, maxlen=period)
         self._tr_buffer.append(tr)
 
+        # ---- Session/weekend filter -------------------------------------
+        # Forcefully flatten positions outside the trading window and ignore
+        # entry actions outside the entry window. This is enforced by the
+        # env regardless of what the agent decides.
+        in_entry_window, in_close_zone = self._session_state(bt_strategy, p)
+        if in_close_zone and bt_strategy.position.size != 0:
+            bt_strategy.close()
+            _audit_emit({
+                "kind": "session_force_close",
+                "entry": close,
+                "size": float(bt_strategy.position.size),
+            })
+            return  # do not open a new position on a force-close bar
+
         if action == 0:
+            return
+
+        # Block new entries outside the entry window.
+        if p.get("session_filter") and not in_entry_window:
             return
 
         pos_size = bt_strategy.position.size
@@ -197,6 +229,30 @@ class Plugin:
             if k in config and config[k] is not None:
                 merged[k] = config[k]
         return merged
+
+    def _session_state(self, bt_strategy, p: Dict[str, Any]) -> tuple[bool, bool]:
+        """Return (in_entry_window, in_close_zone) for the current bar.
+
+        Trading week (using Python weekday convention Mon=0 .. Sun=6):
+            entry_window = [entry_dow_start@entry_hour_start ..
+                            force_close_dow@force_close_hour)
+            close_zone   = complement (forces flatten on every bar there)
+
+        When `session_filter` is False, entries are unrestricted and
+        nothing is force-closed (returns (True, False)).
+        """
+        if not p.get("session_filter"):
+            return True, False
+        try:
+            dt = bt_strategy.data.datetime.datetime(0)
+        except Exception:
+            return True, False
+        # Minute-of-week as a single comparable scalar.
+        cur = dt.weekday() * 24 * 60 + dt.hour * 60 + dt.minute
+        start = int(p["entry_dow_start"]) * 24 * 60 + int(p["entry_hour_start"]) * 60
+        end = int(p["force_close_dow"]) * 24 * 60 + int(p["force_close_hour"]) * 60
+        in_entry = (start <= cur < end)
+        return in_entry, (not in_entry)
 
     # Exposed for the GA optimizer to enumerate tunable hyperparameters.
     def hparam_schema(self):

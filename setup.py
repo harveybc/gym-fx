@@ -22,6 +22,7 @@ setup(
         ],
         "preprocessor.plugins": [
             "default_preprocessor=preprocessor_plugins.default_preprocessor:Plugin",
+            "feature_window_preprocessor=preprocessor_plugins.feature_window_preprocessor:Plugin",
         ],
         "reward.plugins": [
             "pnl_reward=reward_plugins.pnl_reward:Plugin",

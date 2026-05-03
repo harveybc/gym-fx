@@ -26,6 +26,7 @@ metrics_plugins/__init__.py
 metrics_plugins/default_metrics.py
 preprocessor_plugins/__init__.py
 preprocessor_plugins/default_preprocessor.py
+preprocessor_plugins/feature_window_preprocessor.py
 reward_plugins/__init__.py
 reward_plugins/dd_penalized_reward.py
 reward_plugins/pnl_reward.py
@@ -34,3 +35,4 @@ strategy_plugins/__init__.py
 strategy_plugins/default_strategy.py
 strategy_plugins/direct_atr_sltp.py
 strategy_plugins/direct_fixed_sltp.py
+tests/test_feature_window_preprocessor.py
