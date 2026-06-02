@@ -48,6 +48,7 @@ class BTBridge:
         self.trade_count: int = 0
         self.commission_paid: float = 0.0
         self.last_trade_cost: float = 0.0
+        self.execution_diagnostics: Dict[str, int] = {}
 
     def reset(self, initial_cash: float, total_bars: int) -> None:
         self.action_ready.clear()
@@ -64,6 +65,17 @@ class BTBridge:
         self.trade_count = 0
         self.commission_paid = 0.0
         self.last_trade_cost = 0.0
+        self.execution_diagnostics = {
+            "entry_actions_seen": 0,
+            "entry_orders_submitted": 0,
+            "blocked_session_filter": 0,
+            "blocked_atr_warmup": 0,
+            "blocked_non_positive_atr": 0,
+            "blocked_non_positive_size": 0,
+            "blocked_non_positive_price": 0,
+            "default_orders_submitted": 0,
+            "plugin_apply_errors": 0,
+        }
 
 
 class BTBridgeStrategy(bt.Strategy):
@@ -166,6 +178,9 @@ class BTBridgeStrategy(bt.Strategy):
             except Exception:
                 # Fall back to default flow if the plugin fails, so a broken
                 # strategy plugin does not kill the env silently.
+                self.bridge.execution_diagnostics["plugin_apply_errors"] = (
+                    self.bridge.execution_diagnostics.get("plugin_apply_errors", 0) + 1
+                )
                 pass
 
         current_size = self.position.size  # backtrader position size
@@ -175,19 +190,34 @@ class BTBridgeStrategy(bt.Strategy):
         if target_dir is None:
             # hold: no change
             return
+        self.bridge.execution_diagnostics["entry_actions_seen"] = (
+            self.bridge.execution_diagnostics.get("entry_actions_seen", 0) + 1
+        )
 
         if target_dir == +1:
             if current_size < 0:
                 self.close()
                 self.buy(size=size)
+                self.bridge.execution_diagnostics["default_orders_submitted"] = (
+                    self.bridge.execution_diagnostics.get("default_orders_submitted", 0) + 2
+                )
             elif current_size == 0:
                 self.buy(size=size)
+                self.bridge.execution_diagnostics["default_orders_submitted"] = (
+                    self.bridge.execution_diagnostics.get("default_orders_submitted", 0) + 1
+                )
         elif target_dir == -1:
             if current_size > 0:
                 self.close()
                 self.sell(size=size)
+                self.bridge.execution_diagnostics["default_orders_submitted"] = (
+                    self.bridge.execution_diagnostics.get("default_orders_submitted", 0) + 2
+                )
             elif current_size == 0:
                 self.sell(size=size)
+                self.bridge.execution_diagnostics["default_orders_submitted"] = (
+                    self.bridge.execution_diagnostics.get("default_orders_submitted", 0) + 1
+                )
 
     def _publish_obs(self) -> None:
         broker = self.broker
@@ -236,4 +266,3 @@ def build_cerebro(
         for name, (klass, kwargs) in analyzers.items():
             cerebro.addanalyzer(klass, _name=name, **(kwargs or {}))
     return cerebro
-

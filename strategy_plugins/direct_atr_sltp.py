@@ -113,6 +113,11 @@ class Plugin:
         k_sl = float(p["k_sl"])
         k_tp = float(p["k_tp"])
         size = self._compute_size(bt_strategy, p)
+        diag = getattr(getattr(bt_strategy, "bridge", None), "execution_diagnostics", None)
+
+        def inc(key: str, amount: int = 1) -> None:
+            if isinstance(diag, dict):
+                diag[key] = int(diag.get(key, 0)) + int(amount)
 
         high = float(bt_strategy.data.high[0])
         low = float(bt_strategy.data.low[0])
@@ -145,8 +150,11 @@ class Plugin:
         if action == 0:
             return
 
+        inc("entry_actions_seen")
+
         # Block new entries outside the entry window.
         if p.get("session_filter") and not in_entry_window:
+            inc("blocked_session_filter")
             return
 
         pos_size = bt_strategy.position.size
@@ -156,7 +164,17 @@ class Plugin:
         # Require a warmed ATR and a positive size, otherwise skip the trade
         # entirely rather than emit a naked (SL/TP-less) order. This guarantees
         # every filled order has both brackets attached.
-        if not ready or atr <= 0.0 or size <= 0.0 or close <= 0.0:
+        if not ready:
+            inc("blocked_atr_warmup")
+            return
+        if atr <= 0.0:
+            inc("blocked_non_positive_atr")
+            return
+        if size <= 0.0:
+            inc("blocked_non_positive_size")
+            return
+        if close <= 0.0:
+            inc("blocked_non_positive_price")
             return
 
         # Clamp SL/TP distances to sane fractions of price to prevent degenerate
@@ -185,6 +203,7 @@ class Plugin:
                 stop = close - sl_dist
                 limit = close + tp_dist
                 bt_strategy.buy_bracket(size=size, stopprice=stop, limitprice=limit)
+                inc("entry_orders_submitted")
                 _audit_emit({
                     "kind": "long_bracket", "entry": close, "stop": stop,
                     "limit": limit, "size": size, "atr": atr,
@@ -196,6 +215,7 @@ class Plugin:
                 stop = close + sl_dist
                 limit = close - tp_dist
                 bt_strategy.sell_bracket(size=size, stopprice=stop, limitprice=limit)
+                inc("entry_orders_submitted")
                 _audit_emit({
                     "kind": "short_bracket", "entry": close, "stop": stop,
                     "limit": limit, "size": size, "atr": atr,
