@@ -12,7 +12,7 @@ def parse_args():
     parser.add_argument("--input_data_file", type=str)
     parser.add_argument("--date_column", type=str)
     parser.add_argument("--price_column", type=str)
-    parser.add_argument("--headers", action="store_true")
+    parser.add_argument("--headers", action="store_true", default=None)
     parser.add_argument("--max_rows", type=int)
 
     parser.add_argument("--window_size", type=int)
@@ -32,6 +32,6 @@ def parse_args():
     parser.add_argument("--results_file", type=str)
     parser.add_argument("--load_config", type=str)
     parser.add_argument("--save_config", type=str)
-    parser.add_argument("--quiet_mode", action="store_true")
+    parser.add_argument("--quiet_mode", action="store_true", default=None)
 
     return parser.parse_known_args()

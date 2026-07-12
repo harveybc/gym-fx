@@ -7,7 +7,7 @@ from app.cli import parse_args
 from app.config import DEFAULT_VALUES
 from app.config_handler import load_config, save_config
 from app.config_merger import merge_config, process_unknown_args
-from app.env import GymFxEnv
+from gym_fx import build_environment
 from app.plugin_loader import load_plugin
 
 
@@ -44,7 +44,7 @@ def _run_env(config: Dict[str, Any]) -> Dict[str, Any]:
     )
     config = merge_config(config, plugin_defaults, {}, {}, {}, {})
 
-    env = GymFxEnv(
+    env = build_environment(
         config=config,
         data_feed_plugin=data_feed,
         broker_plugin=broker,
@@ -54,17 +54,20 @@ def _run_env(config: Dict[str, Any]) -> Dict[str, Any]:
         metrics_plugin=metrics,
     )
 
-    obs, info = env.reset()
-    done = False
-    steps = int(config.get("steps", 500))
-    step_count = 0
-    while not done and step_count < steps:
-        action = strategy.decide_action(obs=obs, info=info, step=step_count)
-        obs, _, terminated, truncated, info = env.step(action)
-        done = bool(terminated or truncated)
-        step_count += 1
+    try:
+        obs, info = env.reset()
+        done = False
+        steps = int(config.get("steps", 500))
+        step_count = 0
+        while not done and step_count < steps:
+            action = strategy.decide_action(obs=obs, info=info, step=step_count)
+            obs, _, terminated, truncated, info = env.step(action)
+            done = bool(terminated or truncated)
+            step_count += 1
 
-    return env.summary()
+        return env.summary()
+    finally:
+        env.close()
 
 
 def main():

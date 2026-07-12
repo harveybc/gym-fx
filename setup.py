@@ -31,6 +31,7 @@ setup(
         ],
         "metrics.plugins": [
             "default_metrics=metrics_plugins.default_metrics:Plugin",
+            "trading_metrics=metrics_plugins.trading_metrics:Plugin",
         ],
     },
     install_requires=[
@@ -40,6 +41,9 @@ setup(
         "numpy",
         "requests",
     ],
+    extras_require={
+        "nautilus": ["nautilus_trader==1.230.0"],
+    },
     author="Harvey Bastidas",
     author_email="your.email@example.com",
     description="Environment-only FX trading package for agent-multi integration.",

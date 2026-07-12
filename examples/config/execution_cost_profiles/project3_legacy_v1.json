@@ -1,0 +1,14 @@
+{
+  "schema_version": "execution_cost_profile.v1",
+  "profile_id": "project3_legacy_v1",
+  "commission_rate_per_side": 0.0002,
+  "full_spread_rate": 0.0004,
+  "slippage_bps_per_side": 0.0,
+  "latency_ms": 0,
+  "financing_enabled": false,
+  "intrabar_collision_policy": "ohlc",
+  "limit_fill_policy": "touch",
+  "margin_model": "standard",
+  "enforce_margin_preflight": true,
+  "random_seed": 42
+}

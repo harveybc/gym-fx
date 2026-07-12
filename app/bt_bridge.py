@@ -75,6 +75,11 @@ class BTBridge:
             "blocked_non_positive_price": 0,
             "default_orders_submitted": 0,
             "plugin_apply_errors": 0,
+            "event_context_no_trade_active_steps": 0,
+            "event_context_action_overrides": 0,
+            "event_context_blocked_entries": 0,
+            "event_context_forced_flat_actions": 0,
+            "event_context_forced_flat_orders": 0,
         }
 
 
@@ -169,6 +174,18 @@ class BTBridgeStrategy(bt.Strategy):
     # --- helpers ---------------------------------------------------------------
     def _apply_action(self, action: int) -> None:
         self._order_cost_accum = 0.0
+
+        if int(action) == 3:
+            current_size = self.position.size
+            if current_size != 0:
+                self.close()
+                self.bridge.execution_diagnostics["default_orders_submitted"] = (
+                    self.bridge.execution_diagnostics.get("default_orders_submitted", 0) + 1
+                )
+                self.bridge.execution_diagnostics["event_context_forced_flat_orders"] = (
+                    self.bridge.execution_diagnostics.get("event_context_forced_flat_orders", 0) + 1
+                )
+            return
 
         # Delegate to strategy plugin if it implements apply_action (SL/TP bracket logic).
         if callable(self._plugin_apply):

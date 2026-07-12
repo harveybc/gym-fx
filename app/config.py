@@ -25,6 +25,8 @@ DEFAULT_VALUES = {
     "window_size": 32,
     "initial_cash": 10000.0,
     "position_size": 1.0,
+    "simulation_engine": "backtrader",
+    "execution_cost_profile": None,
     "commission": 0.0,
     "slippage": 0.0,
 

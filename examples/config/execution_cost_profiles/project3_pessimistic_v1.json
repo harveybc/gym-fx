@@ -1,0 +1,14 @@
+{
+  "schema_version": "execution_cost_profile.v1",
+  "profile_id": "project3_pessimistic_v1",
+  "commission_rate_per_side": 0.0002,
+  "full_spread_rate": 0.0004,
+  "slippage_bps_per_side": 2.0,
+  "latency_ms": 0,
+  "financing_enabled": true,
+  "intrabar_collision_policy": "worst_case",
+  "limit_fill_policy": "conservative",
+  "margin_model": "standard",
+  "enforce_margin_preflight": true,
+  "random_seed": 42
+}

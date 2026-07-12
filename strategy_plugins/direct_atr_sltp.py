@@ -6,13 +6,13 @@ Strategy plugin that places bracket orders with SL/TP sized by rolling ATR.
     TP distance = k_tp * ATR(atr_period)
 
 The plugin maintains its own rolling True-Range buffer from the backtrader
-data lines (no backtrader indicator needed — avoids minperiod coupling with
-BTBridgeStrategy). Until the ATR buffer is warmed, orders are placed without
-brackets (falls back to plain buy/sell) so the env doesn't stall.
+data lines (no backtrader indicator needed; avoids minperiod coupling with
+BTBridgeStrategy). Until the ATR buffer is warmed, entries are skipped so the
+environment never emits a naked order without SL/TP brackets.
 
 Action semantics: {0=hold, 1=long, 2=short} — same as direct_fixed_sltp.
 
-Config keys:
+    Config keys:
     atr_period: int   — ATR window (default 14), GA-tunable
     k_sl: float       — SL = k_sl * ATR (default 2.0), GA-tunable
     k_tp: float       — TP = k_tp * ATR (default 3.0), GA-tunable
@@ -23,6 +23,11 @@ Config keys:
     leverage: float   — broker leverage multiplier (default 1.0; Project 2 FX=100)
     min_order_volume: float
     max_order_volume: float
+    sltp_risk_mode: fixed_atr | rel_volume_aware_atr | margin_aware_atr
+        fixed_atr preserves the historical behavior exactly.
+        rel_volume_aware_atr shrinks SL/TP ATR multiples as rel_volume rises
+        above the baseline, while preserving the baseline point.
+        margin_aware_atr additionally caps SL by max_planned_loss_fraction.
 """
 from __future__ import annotations
 
@@ -69,6 +74,24 @@ class Plugin:
         # volatility bands. Set to None to disable a bound.
         "min_sltp_frac": 0.001,
         "max_sltp_frac": 0.20,
+        # ----- Risk-aware SL/TP geometry ---------------------------------
+        # fixed_atr keeps the historical baseline: SL=k_sl*ATR, TP=k_tp*ATR.
+        # rel_volume_aware_atr preserves that baseline at baseline_rel_volume
+        # and shrinks the effective ATR multiples as exposure approaches
+        # max_risk_rel_volume. This lets experiments compare fixed vs
+        # exposure-aware SL/TP without changing the old baseline.
+        "sltp_risk_mode": "fixed_atr",
+        "baseline_rel_volume": 0.05,
+        "max_risk_rel_volume": 0.50,
+        "rel_volume_sl_shrink_alpha": 0.35,
+        "rel_volume_tp_shrink_alpha": 0.20,
+        "min_k_sl": 1.0,
+        "min_reward_risk_ratio": 1.0,
+        # Optional equity fraction cap for the planned stop loss. For notional
+        # sizing this caps SL distance to:
+        #   price * max_planned_loss_fraction / (rel_volume * leverage)
+        # Leave None to avoid changing fixed_atr baseline behavior.
+        "max_planned_loss_fraction": None,
         # ----- Session/weekend filter (avoid weekend volatility) ----------
         # When `session_filter` is True, new entries are only allowed inside
         # the entry window [entry_dow_start@entry_hour_start ..
@@ -110,8 +133,6 @@ class Plugin:
     def apply_action(self, bt_strategy, action: int, config: Dict[str, Any]) -> None:
         p = self._resolve(config)
         period = int(p["atr_period"])
-        k_sl = float(p["k_sl"])
-        k_tp = float(p["k_tp"])
         size = self._compute_size(bt_strategy, p)
         diag = getattr(getattr(bt_strategy, "bridge", None), "execution_diagnostics", None)
 
@@ -179,8 +200,22 @@ class Plugin:
 
         # Clamp SL/TP distances to sane fractions of price to prevent degenerate
         # brackets from pathological ATR spikes (flash crashes, thin bars).
-        sl_dist = k_sl * atr
-        tp_dist = k_tp * atr
+        k_sl_eff, k_tp_eff = self._effective_sltp_multiples(p)
+        sl_dist = k_sl_eff * atr
+        tp_dist = k_tp_eff * atr
+        max_loss = p.get("max_planned_loss_fraction")
+        rel = p.get("rel_volume")
+        if str(p.get("sltp_risk_mode", "fixed_atr")).lower() == "margin_aware_atr" and max_loss is not None:
+            try:
+                rel_f = max(0.0, float(rel or 0.0))
+                leverage = max(1e-12, float(p.get("leverage", 1.0)))
+                max_loss_f = max(0.0, float(max_loss))
+            except (TypeError, ValueError):
+                rel_f = 0.0
+                leverage = 1.0
+                max_loss_f = 0.0
+            if rel_f > 0.0 and max_loss_f > 0.0:
+                sl_dist = min(sl_dist, close * max_loss_f / (rel_f * leverage))
         min_frac = p.get("min_sltp_frac")
         max_frac = p.get("max_sltp_frac")
         if min_frac is not None:
@@ -207,6 +242,8 @@ class Plugin:
                 _audit_emit({
                     "kind": "long_bracket", "entry": close, "stop": stop,
                     "limit": limit, "size": size, "atr": atr,
+                    "k_sl_eff": k_sl_eff, "k_tp_eff": k_tp_eff,
+                    "sltp_risk_mode": p.get("sltp_risk_mode"),
                 })
         elif action == 2:  # short
             if pos_size > 0:
@@ -219,7 +256,37 @@ class Plugin:
                 _audit_emit({
                     "kind": "short_bracket", "entry": close, "stop": stop,
                     "limit": limit, "size": size, "atr": atr,
+                    "k_sl_eff": k_sl_eff, "k_tp_eff": k_tp_eff,
+                    "sltp_risk_mode": p.get("sltp_risk_mode"),
                 })
+
+    def _effective_sltp_multiples(self, p: Dict[str, Any]) -> tuple[float, float]:
+        k_sl = max(0.0, float(p["k_sl"]))
+        k_tp = max(0.0, float(p["k_tp"]))
+        mode = str(p.get("sltp_risk_mode", "fixed_atr")).strip().lower()
+        if mode not in {"rel_volume_aware_atr", "margin_aware_atr"}:
+            return k_sl, k_tp
+
+        try:
+            rel = max(0.0, float(p.get("rel_volume") or 0.0))
+            baseline = max(0.0, float(p.get("baseline_rel_volume", 0.05)))
+            max_rel = max(baseline + 1e-12, float(p.get("max_risk_rel_volume", 0.50)))
+            sl_alpha = min(max(float(p.get("rel_volume_sl_shrink_alpha", 0.35)), 0.0), 0.95)
+            tp_alpha = min(max(float(p.get("rel_volume_tp_shrink_alpha", 0.20)), 0.0), 0.95)
+            min_k_sl = max(0.0, float(p.get("min_k_sl", 1.0)))
+            min_rr = max(0.0, float(p.get("min_reward_risk_ratio", 1.0)))
+        except (TypeError, ValueError):
+            return k_sl, max(k_tp, k_sl)
+
+        if rel <= baseline:
+            k_sl_eff = k_sl
+            k_tp_eff = k_tp
+        else:
+            exposure_progress = min(1.0, max(0.0, (rel - baseline) / (max_rel - baseline)))
+            k_sl_eff = max(min_k_sl, k_sl * (1.0 - sl_alpha * exposure_progress))
+            k_tp_eff = k_tp * (1.0 - tp_alpha * exposure_progress)
+        k_tp_eff = max(k_tp_eff, k_sl_eff * min_rr)
+        return k_sl_eff, k_tp_eff
 
     def _compute_size(self, bt_strategy, p: Dict[str, Any]) -> float:
         rel = p.get("rel_volume")

@@ -151,6 +151,33 @@ class GymFxEnv(gym.Env):
             )
         self._date_column = str(self.config.get("date_column", "DATE_TIME"))
         self._timeframe_hours = self._infer_timeframe_hours()
+        self.event_context_execution_overlay = bool(
+            self.config.get("event_context_execution_overlay", False)
+        )
+        self.event_context_no_trade_column = str(
+            self.config.get("event_context_no_trade_column", "event_no_trade_window_active")
+        )
+        self.event_context_no_trade_threshold = float(
+            self.config.get("event_context_no_trade_threshold", 0.5)
+        )
+        self.event_context_block_new_entries = bool(
+            self.config.get("event_context_block_new_entries", True)
+        )
+        self.event_context_force_flat = bool(
+            self.config.get("event_context_force_flat", False)
+        )
+        self.event_context_spread_stress_column = str(
+            self.config.get(
+                "event_context_spread_stress_column",
+                "event_spread_stress_multiplier",
+            )
+        )
+        self.event_context_slippage_stress_column = str(
+            self.config.get(
+                "event_context_slippage_stress_column",
+                "event_slippage_stress_multiplier",
+            )
+        )
 
         # --- runtime handles -------------------------------------------------
         self.bridge: Optional[BTBridge] = None
@@ -199,6 +226,8 @@ class GymFxEnv(gym.Env):
 
         raw_action = self._raw_action_value(action)
         a = self._coerce_action(action)
+        a, event_context_info = self._apply_event_context_overlay(a)
+        self._last_event_context_info = event_context_info
         self._record_action(raw_action, a)
 
         if self.bridge.terminated:
@@ -273,6 +302,87 @@ class GymFxEnv(gym.Env):
         except Exception:
             a = 0
         return a if a in (0, 1, 2) else 0
+
+    def _event_context_features(self, step_idx: int) -> Dict[str, float]:
+        """Read engineered event-context controls for the current bar.
+
+        The event overlay intentionally treats missing fields as neutral. This
+        keeps legacy configs unchanged while allowing explicit event-overlay
+        configs to alter execution when the engineered event columns exist.
+        """
+        idx = max(0, min(int(step_idx), len(self.dataframe) - 1))
+        row = self.dataframe.iloc[idx]
+
+        def read_float(column: str, default: float) -> float:
+            if not column or column not in self.dataframe.columns:
+                return float(default)
+            try:
+                val = row[column]
+                if val is None:
+                    return float(default)
+                return float(val)
+            except (TypeError, ValueError):
+                return float(default)
+
+        no_trade_value = read_float(self.event_context_no_trade_column, 0.0)
+        spread_mult = read_float(self.event_context_spread_stress_column, 1.0)
+        slippage_mult = read_float(self.event_context_slippage_stress_column, 1.0)
+        active = 1.0 if no_trade_value >= self.event_context_no_trade_threshold else 0.0
+        return {
+            "event_context_no_trade_value": no_trade_value,
+            "event_context_no_trade_active": active,
+            "event_context_spread_stress_multiplier": spread_mult,
+            "event_context_slippage_stress_multiplier": slippage_mult,
+        }
+
+    def _apply_event_context_overlay(self, action: int) -> tuple[int, Dict[str, Any]]:
+        if self.bridge is None:
+            return int(action), {}
+        step_idx = max(0, min(int(getattr(self.bridge, "bar_index", 0) or 0), self.total_bars))
+        features = self._event_context_features(step_idx)
+        active = bool(features["event_context_no_trade_active"] > 0.0)
+        before = int(action)
+        after = before
+        position = int(getattr(self.bridge, "position", 0) or 0)
+        blocked_entry = False
+        forced_flat = False
+        if self.event_context_execution_overlay and active:
+            diag = getattr(self.bridge, "execution_diagnostics", {}) or {}
+            diag["event_context_no_trade_active_steps"] = (
+                diag.get("event_context_no_trade_active_steps", 0) + 1
+            )
+            self.bridge.execution_diagnostics = diag
+            if self.event_context_force_flat and position != 0:
+                after = 3
+                forced_flat = True
+            elif self.event_context_block_new_entries and position == 0 and before in (1, 2):
+                after = 0
+                blocked_entry = True
+            if after != before:
+                diag["event_context_action_overrides"] = (
+                    diag.get("event_context_action_overrides", 0) + 1
+                )
+                if blocked_entry:
+                    diag["event_context_blocked_entries"] = (
+                        diag.get("event_context_blocked_entries", 0) + 1
+                    )
+                if forced_flat:
+                    diag["event_context_forced_flat_actions"] = (
+                        diag.get("event_context_forced_flat_actions", 0) + 1
+                    )
+                self.bridge.execution_diagnostics = diag
+
+        return after, {
+            **features,
+            "event_context_execution_overlay": bool(self.event_context_execution_overlay),
+            "event_context_action_before_overlay": before,
+            "event_context_action_after_overlay": after,
+            "event_context_action_overridden": bool(after != before),
+            "event_context_blocked_entry": bool(blocked_entry),
+            "event_context_forced_flat": bool(forced_flat),
+            "event_context_position_before_overlay": position,
+        }
+
     def _run_cerebro(self):
         try:
             result = self._cerebro.run(maxcpus=1, stdstats=False)
@@ -513,6 +623,7 @@ class GymFxEnv(gym.Env):
             "action_diagnostics": dict(self._action_diagnostics),
             "execution_diagnostics": dict(getattr(self.bridge, "execution_diagnostics", {}) or {}),
         }
+        info.update(dict(getattr(self, "_last_event_context_info", {}) or {}))
         if self.stage_b_force_close_obs:
             step_idx = max(0, min(self.bridge.bar_index, self.total_bars))
             info.update(self._force_close_features(step_idx))
@@ -545,11 +656,13 @@ class GymFxEnv(gym.Env):
         )
         summary["action_diagnostics"] = dict(self._action_diagnostics)
         summary["execution_diagnostics"] = dict(getattr(self.bridge, "execution_diagnostics", {}) or {})
+        summary["event_context_diagnostics"] = dict(getattr(self, "_last_event_context_info", {}) or {})
         return summary
 
     def _reset_action_diagnostics(self) -> None:
         self._last_raw_action_value = 0.0
         self._last_coerced_action = 0
+        self._last_event_context_info = {}
         self._action_diagnostics = {
             "steps": 0,
             "hold_actions": 0,
