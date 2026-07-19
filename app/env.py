@@ -28,6 +28,68 @@ except ImportError as exc:  # pragma: no cover
 from app.bt_bridge import BTBridge, build_cerebro
 
 
+def build_base_observation_space(
+    config: Dict[str, Any],
+    *,
+    window_size: int,
+) -> spaces.Dict:
+    """Describe exactly the observation blocks emitted by the preprocessor.
+
+    Legacy/default preprocessing has no feature list and therefore keeps the
+    historical prices + returns + agent-state contract. Feature-aware runs can
+    remove raw prices without leaving stale keys in Gymnasium's Dict space.
+    """
+    feature_columns = list(config.get("feature_columns") or [])
+    include_prices = bool(
+        config.get("include_price_window", not feature_columns)
+    )
+    include_agent_state = bool(config.get("include_agent_state", True))
+    observation_spaces: Dict[str, spaces.Space] = {}
+
+    if feature_columns:
+        observation_spaces["features"] = spaces.Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=(window_size, len(feature_columns)),
+            dtype=np.float32,
+        )
+    if include_prices:
+        observation_spaces.update({
+            "prices": spaces.Box(
+                low=-np.inf,
+                high=np.inf,
+                shape=(window_size,),
+                dtype=np.float32,
+            ),
+            "returns": spaces.Box(
+                low=-np.inf,
+                high=np.inf,
+                shape=(window_size,),
+                dtype=np.float32,
+            ),
+        })
+    if include_agent_state:
+        observation_spaces.update({
+            "position": spaces.Box(
+                low=-1.0, high=1.0, shape=(1,), dtype=np.float32
+            ),
+            "equity_norm": spaces.Box(
+                low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32
+            ),
+            "unrealized_pnl_norm": spaces.Box(
+                low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32
+            ),
+            "steps_remaining_norm": spaces.Box(
+                low=0.0, high=1.0, shape=(1,), dtype=np.float32
+            ),
+        })
+    if not observation_spaces:
+        raise ValueError(
+            "preprocessor observation contract emits no observation blocks"
+        )
+    return spaces.Dict(observation_spaces)
+
+
 class GymFxEnv(gym.Env):
     """Backtrader-backed forex trading env."""
 
@@ -78,15 +140,9 @@ class GymFxEnv(gym.Env):
         else:
             self.action_space = spaces.Discrete(3)
             self.continuous_action_threshold = None
-        self.observation_space = spaces.Dict(
-            {
-                "prices": spaces.Box(low=-np.inf, high=np.inf, shape=(self.window_size,), dtype=np.float32),
-                "returns": spaces.Box(low=-np.inf, high=np.inf, shape=(self.window_size,), dtype=np.float32),
-                "position": spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32),
-                "equity_norm": spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
-                "unrealized_pnl_norm": spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
-                "steps_remaining_norm": spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32),
-            }
+        self.observation_space = build_base_observation_space(
+            self.config,
+            window_size=self.window_size,
         )
 
         # Optional Stage B force-close / session-window context. Disabled by

@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 from preprocessor_plugins.feature_window_preprocessor import Plugin
+from app.env import build_base_observation_space
 
 
 def _make_df(rows: int = 100, n_features: int = 5, seed: int = 0) -> pd.DataFrame:
@@ -56,6 +57,38 @@ def test_feature_window_shape_and_columns():
     for k in ("position", "equity_norm", "unrealized_pnl_norm", "steps_remaining_norm"):
         assert obs[k].shape == (1,)
     assert np.all(np.isfinite(obs["features"]))
+
+
+def test_feature_aware_observation_space_excludes_disabled_raw_prices():
+    cfg = {
+        "feature_columns": ["feat_0", "feat_1"],
+        "include_price_window": False,
+        "include_agent_state": True,
+    }
+
+    observation_space = build_base_observation_space(cfg, window_size=32)
+
+    assert set(observation_space.spaces) == {
+        "features",
+        "position",
+        "equity_norm",
+        "unrealized_pnl_norm",
+        "steps_remaining_norm",
+    }
+    assert observation_space.spaces["features"].shape == (32, 2)
+
+
+def test_legacy_observation_space_keeps_prices_returns_and_state():
+    observation_space = build_base_observation_space({}, window_size=16)
+
+    assert set(observation_space.spaces) == {
+        "prices",
+        "returns",
+        "position",
+        "equity_norm",
+        "unrealized_pnl_norm",
+        "steps_remaining_norm",
+    }
 
 
 def test_binary_columns_passthrough():
@@ -144,3 +177,25 @@ def test_warmup_padding_at_start():
     )
     assert obs["features"].shape == (32, 3)
     assert np.all(np.isfinite(obs["features"]))
+
+
+def test_scaled_warmup_is_neutral_instead_of_raw_levels():
+    df = _make_df()
+    cfg = {
+        "window_size": 32,
+        "feature_columns": ["CLOSE", "bin_flag"],
+        "feature_binary_columns": ["bin_flag"],
+        "feature_scaling": "rolling_zscore",
+        "include_price_window": False,
+        "include_agent_state": False,
+    }
+
+    obs = Plugin(cfg).make_observation(
+        data=df,
+        step=0,
+        bridge_state=_bridge_state(step=0),
+        config=cfg,
+    )
+
+    np.testing.assert_array_equal(obs["features"][:, 0], np.zeros(32, dtype=np.float32))
+    assert set(np.unique(obs["features"][:, 1])).issubset({0.0, 1.0})

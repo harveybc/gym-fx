@@ -104,8 +104,14 @@ class Plugin:
         """Apply leakage-safe scaling. `history` is rows strictly before the
         current step (used to fit the scaler). Binary columns are passed
         through unchanged."""
-        if mode == "none" or history.shape[0] < 2:
+        if mode == "none":
             scaled = feature_window.astype(np.float32)
+        elif history.shape[0] < 2:
+            # There is not enough causal history to estimate a scale. A
+            # neutral continuous warm-up is safer than leaking raw level
+            # features (for example BTC prices) into an otherwise normalized
+            # observation contract.
+            scaled = np.zeros_like(feature_window, dtype=np.float32)
         else:
             mean = history.mean(axis=0)
             std = history.std(axis=0)
