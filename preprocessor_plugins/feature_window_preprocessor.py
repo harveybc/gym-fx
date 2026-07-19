@@ -54,6 +54,9 @@ class Plugin:
         self.params = self.plugin_params.copy()
         self._cached_columns: List[str] | None = None
         self._cached_binary_mask: np.ndarray | None = None
+        self._cached_matrix_data: pd.DataFrame | None = None
+        self._cached_matrix_columns: tuple[str, ...] | None = None
+        self._cached_matrix: np.ndarray | None = None
         if config:
             self.set_params(**config)
 
@@ -152,7 +155,18 @@ class Plugin:
         )
         clip = float(config.get("feature_clip", self.params["feature_clip"]))
 
-        values = data[cols].to_numpy(dtype=np.float64, copy=False)
+        column_key = tuple(cols)
+        if (
+            self._cached_matrix_data is data
+            and self._cached_matrix_columns == column_key
+            and self._cached_matrix is not None
+        ):
+            values = self._cached_matrix
+        else:
+            values = data[cols].to_numpy(dtype=np.float64, copy=False)
+            self._cached_matrix_data = data
+            self._cached_matrix_columns = column_key
+            self._cached_matrix = values
         n_rows, n_features = values.shape
 
         # Slice [step - window_size, step)

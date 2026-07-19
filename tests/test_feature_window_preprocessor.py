@@ -139,6 +139,35 @@ def test_no_future_leakage_in_scaling():
     np.testing.assert_array_equal(obs1["features"], obs2["features"])
 
 
+def test_feature_matrix_cache_preserves_exact_observations():
+    df = _make_df(rows=200)
+    cfg = {
+        "window_size": 32,
+        "feature_columns": ["CLOSE", "feat_0", "feat_1", "bin_flag"],
+        "feature_binary_columns": ["bin_flag"],
+        "feature_scaling": "rolling_zscore",
+        "feature_scaling_window": 64,
+        "include_price_window": False,
+        "include_agent_state": False,
+    }
+    cached = Plugin(cfg)
+
+    first = cached.make_observation(
+        data=df, step=80, bridge_state=_bridge_state(step=80), config=cfg
+    )
+    matrix = cached._cached_matrix
+    second = cached.make_observation(
+        data=df, step=81, bridge_state=_bridge_state(step=81), config=cfg
+    )
+    reference = Plugin(cfg).make_observation(
+        data=df, step=81, bridge_state=_bridge_state(step=81), config=cfg
+    )
+
+    assert first["features"].shape == (32, 4)
+    assert cached._cached_matrix is matrix
+    np.testing.assert_array_equal(second["features"], reference["features"])
+
+
 def test_missing_columns_raises():
     df = _make_df()
     cfg = {
