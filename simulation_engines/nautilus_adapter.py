@@ -9,10 +9,14 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict
+from dataclasses import replace
+from datetime import datetime
+from datetime import timezone
 from decimal import Decimal
 from typing import Any
 
 from simulation_engines.contracts import ExecutionCostProfile
+from simulation_engines.contracts import EntryExecutionRequest
 from simulation_engines.contracts import InstrumentSpec
 from simulation_engines.contracts import MarketFrame
 from simulation_engines.contracts import TargetAction
@@ -41,6 +45,13 @@ def _money_parts(value: Any) -> tuple[str, str]:
     text = str(value)
     amount, _, currency = text.partition(" ")
     return amount, currency
+
+
+def _utc_datetime_from_ns(timestamp_ns: int) -> datetime:
+    seconds, nanoseconds = divmod(timestamp_ns, 1_000_000_000)
+    return datetime.fromtimestamp(seconds, tz=timezone.utc).replace(
+        microsecond=nanoseconds // 1_000
+    )
 
 
 def _build_instrument(spec: InstrumentSpec, profile: ExecutionCostProfile):
@@ -146,16 +157,26 @@ class _ScriptedTargetStrategy:
         from nautilus_trader.model.enums import OrderSide
         from nautilus_trader.model.enums import OrderType
         from nautilus_trader.model.enums import PriceType
+        from nautilus_trader.model.enums import TimeInForce
         from nautilus_trader.model.identifiers import InstrumentId
         from nautilus_trader.trading.strategy import Strategy
 
         action_by_key = {(item.instrument_id, item.ts_event_ns): item for item in actions}
+        if len(action_by_key) != len(actions):
+            raise ValueError(
+                "actions must be unique by instrument_id and ts_event_ns"
+            )
 
         class ScriptedTargetStrategy(Strategy):
             def __init__(self) -> None:
                 super().__init__(StrategyConfig(log_events=False, log_commands=False))
                 self.current_units: dict[str, Decimal] = {}
-                self.active_action_ids: dict[str, str] = {}
+                self.active_entry_orders: dict[str, Any] = {}
+                self.order_context: dict[str, dict[str, Any]] = {}
+                self.order_objects: dict[str, Any] = {}
+                self.entry_actions: dict[str, TargetAction] = {}
+                self.deferred_protection: dict[str, TargetAction] = {}
+                self.protection_siblings: dict[str, Any] = {}
                 self.events: list[dict[str, Any]] = []
 
             def on_start(self) -> None:
@@ -163,13 +184,270 @@ class _ScriptedTargetStrategy:
                     self.subscribe_bars(bar_type)
                     self.subscribe_quote_ticks(bar_type.instrument_id)
 
+            def _entry_expiration(self, action: TargetAction):
+                expires_at_ns = action.entry_execution.expires_at_ns
+                if expires_at_ns is None:
+                    return TimeInForce.GTC, None
+                return (
+                    TimeInForce.GTD,
+                    _utc_datetime_from_ns(expires_at_ns),
+                )
+
+            def _remember_order(
+                self,
+                order,
+                action: TargetAction,
+                *,
+                role: str,
+                requested_order_type: str,
+            ) -> None:
+                client_order_id = str(order.client_order_id)
+                self.order_objects[client_order_id] = order
+                self.order_context[client_order_id] = {
+                    "action_id": action.action_id,
+                    "instrument_id": action.instrument_id,
+                    "role": role,
+                    "requested_order_type": requested_order_type,
+                }
+                if role == "entry":
+                    self.entry_actions[client_order_id] = action
+
+            def _remember_bracket(
+                self,
+                order_list,
+                action: TargetAction,
+            ) -> Any:
+                entry_order, stop_loss_order, take_profit_order = order_list.orders
+                self._remember_order(
+                    entry_order,
+                    action,
+                    role="entry",
+                    requested_order_type=action.entry_execution.order_type,
+                )
+                self._remember_order(
+                    stop_loss_order,
+                    action,
+                    role="stop_loss",
+                    requested_order_type="stop",
+                )
+                self._remember_order(
+                    take_profit_order,
+                    action,
+                    role="take_profit",
+                    requested_order_type="limit",
+                )
+                return entry_order
+
+            def _clear_active_entry(self, client_order_id: str) -> None:
+                context = self.order_context.get(client_order_id)
+                if context is None or context["role"] != "entry":
+                    return
+                instrument_id = context["instrument_id"]
+                active = self.active_entry_orders.get(instrument_id)
+                if active is not None and str(active.client_order_id) == client_order_id:
+                    self.active_entry_orders.pop(instrument_id, None)
+                self.deferred_protection.pop(client_order_id, None)
+                self.entry_actions.pop(client_order_id, None)
+
+            def _cancel_previous_entry(self, instrument_key: str, ts_event_ns: int) -> None:
+                pending = self.active_entry_orders.pop(instrument_key, None)
+                if pending is None or not pending.is_open:
+                    return
+                client_order_id = str(pending.client_order_id)
+                context = self.order_context.get(client_order_id, {})
+                self.events.append(
+                    {
+                        "event_type": "entry_cancel_requested",
+                        "ts_event_ns": ts_event_ns,
+                        "instrument_id": instrument_key,
+                        "action_id": context.get("action_id", "unattributed"),
+                        "client_order_id": client_order_id,
+                        "reason": "SUPERSEDED_BY_NEW_TARGET",
+                    }
+                )
+                self.cancel_order(pending)
+
+            def _record_entry_submission(
+                self,
+                action: TargetAction,
+                order,
+                quantity,
+            ) -> None:
+                request = action.entry_execution
+                self.events.append(
+                    {
+                        "event_type": "entry_submitted",
+                        "ts_event_ns": action.ts_event_ns,
+                        "instrument_id": action.instrument_id,
+                        "action_id": action.action_id,
+                        "client_order_id": str(order.client_order_id),
+                        "order_type": request.order_type,
+                        "quantity": str(quantity),
+                        "limit_price": (
+                            None
+                            if request.limit_price is None
+                            else str(request.limit_price)
+                        ),
+                        "trigger_price": (
+                            None
+                            if request.trigger_price is None
+                            else str(request.trigger_price)
+                        ),
+                        "expires_at_ns": request.expires_at_ns,
+                    }
+                )
+
+            def _submit_protection_after_stop_fill(self, event, action) -> None:
+                if (
+                    action.stop_loss_price is None
+                    or action.take_profit_price is None
+                ):
+                    return
+                instrument = self.cache.instrument(event.instrument_id)
+                exit_side = (
+                    OrderSide.SELL
+                    if str(event.order_side) in {"BUY", "1"}
+                    else OrderSide.BUY
+                )
+                quantity = instrument.make_qty(Decimal(str(event.last_qty)))
+                stop_loss = self.order_factory.stop_market(
+                    instrument_id=event.instrument_id,
+                    order_side=exit_side,
+                    quantity=quantity,
+                    trigger_price=instrument.make_price(action.stop_loss_price),
+                    reduce_only=True,
+                    tags=["STOP_LOSS", f"ACTION:{action.action_id}"],
+                )
+                take_profit = self.order_factory.limit(
+                    instrument_id=event.instrument_id,
+                    order_side=exit_side,
+                    quantity=quantity,
+                    price=instrument.make_price(action.take_profit_price),
+                    post_only=False,
+                    reduce_only=True,
+                    tags=["TAKE_PROFIT", f"ACTION:{action.action_id}"],
+                )
+                self._remember_order(
+                    stop_loss,
+                    action,
+                    role="stop_loss",
+                    requested_order_type="stop",
+                )
+                self._remember_order(
+                    take_profit,
+                    action,
+                    role="take_profit",
+                    requested_order_type="limit",
+                )
+                self.protection_siblings[
+                    str(stop_loss.client_order_id)
+                ] = take_profit
+                self.protection_siblings[
+                    str(take_profit.client_order_id)
+                ] = stop_loss
+                self.submit_order_list(
+                    self.order_factory.create_list([stop_loss, take_profit])
+                )
+                self.events.append(
+                    {
+                        "event_type": "protection_submitted",
+                        "ts_event_ns": int(event.ts_event),
+                        "instrument_id": str(event.instrument_id),
+                        "action_id": action.action_id,
+                        "stop_loss_order_id": str(stop_loss.client_order_id),
+                        "take_profit_order_id": str(take_profit.client_order_id),
+                    }
+                )
+
+            def _cancel_protection_sibling(self, client_order_id: str) -> None:
+                sibling = self.protection_siblings.pop(client_order_id, None)
+                if sibling is None:
+                    return
+                sibling_id = str(sibling.client_order_id)
+                self.protection_siblings.pop(sibling_id, None)
+                if sibling.is_open:
+                    self.cancel_order(sibling)
+
+            def _submit_market_fallback(self, event, action: TargetAction) -> None:
+                request = action.entry_execution
+                if request.unfilled_fallback != "market":
+                    return
+                instrument_key = action.instrument_id
+                current = self.current_units.get(instrument_key, Decimal(0))
+                delta = action.target_units - current
+                if delta == 0:
+                    return
+                instrument_id = InstrumentId.from_str(instrument_key)
+                instrument = self.cache.instrument(instrument_id)
+                side = OrderSide.BUY if delta > 0 else OrderSide.SELL
+                quantity = instrument.make_qty(abs(delta))
+                fallback_action = replace(
+                    action,
+                    ts_event_ns=int(event.ts_event),
+                    action_id=f"{action.action_id}:market_fallback",
+                    entry_execution=EntryExecutionRequest(),
+                )
+                has_protection = (
+                    current == 0
+                    and action.stop_loss_price is not None
+                    and action.take_profit_price is not None
+                )
+                if has_protection:
+                    order_list = self.order_factory.bracket(
+                        instrument_id=instrument_id,
+                        order_side=side,
+                        quantity=quantity,
+                        entry_order_type=OrderType.MARKET,
+                        time_in_force=TimeInForce.GTC,
+                        sl_trigger_price=instrument.make_price(
+                            action.stop_loss_price
+                        ),
+                        tp_price=instrument.make_price(
+                            action.take_profit_price
+                        ),
+                        tp_post_only=False,
+                    )
+                    fallback_order = self._remember_bracket(
+                        order_list,
+                        fallback_action,
+                    )
+                    self.submit_order_list(order_list)
+                else:
+                    fallback_order = self.order_factory.market(
+                        instrument_id=instrument_id,
+                        order_side=side,
+                        quantity=quantity,
+                    )
+                    self._remember_order(
+                        fallback_order,
+                        fallback_action,
+                        role="entry",
+                        requested_order_type="market_fallback",
+                    )
+                    self.submit_order(fallback_order)
+                self.active_entry_orders[instrument_key] = fallback_order
+                self.events.append(
+                    {
+                        "event_type": "entry_market_fallback_submitted",
+                        "ts_event_ns": int(event.ts_event),
+                        "instrument_id": instrument_key,
+                        "action_id": action.action_id,
+                        "fallback_action_id": fallback_action.action_id,
+                        "expired_client_order_id": str(event.client_order_id),
+                        "client_order_id": str(fallback_order.client_order_id),
+                        "quantity": str(quantity),
+                    }
+                )
+
             def on_bar(self, bar) -> None:
                 instrument_key = str(bar.bar_type.instrument_id)
                 action = action_by_key.get((instrument_key, int(bar.ts_event)))
                 if action is None:
                     return
+                self._cancel_previous_entry(instrument_key, int(bar.ts_event))
                 current = self.current_units.get(instrument_key, Decimal(0))
                 delta = action.target_units - current
+                request = action.entry_execution
                 self.events.append(
                     {
                         "event_type": "target_requested",
@@ -179,9 +457,20 @@ class _ScriptedTargetStrategy:
                         "target_units": str(action.target_units),
                         "current_units": str(current),
                         "delta_units": str(delta),
+                        "entry_order_type": request.order_type,
+                        "entry_limit_price": (
+                            None
+                            if request.limit_price is None
+                            else str(request.limit_price)
+                        ),
+                        "entry_trigger_price": (
+                            None
+                            if request.trigger_price is None
+                            else str(request.trigger_price)
+                        ),
+                        "entry_expires_at_ns": request.expires_at_ns,
                     }
                 )
-                self.active_action_ids[instrument_key] = action.action_id
                 if delta == 0:
                     return
                 side = OrderSide.BUY if delta > 0 else OrderSide.SELL
@@ -196,10 +485,15 @@ class _ScriptedTargetStrategy:
                         opening_units = abs(delta) - abs(current)
                     if opening_units > 0:
                         account = self.cache.account_for_venue(instrument_id.venue)
+                        preflight_price = (
+                            request.limit_price
+                            or request.trigger_price
+                            or Decimal(str(bar.close))
+                        )
                         required = account.calculate_margin_init(
                             instrument,
                             instrument.make_qty(opening_units),
-                            instrument.make_price(bar.close),
+                            instrument.make_price(preflight_price),
                         )
                         free = account.balance_free(required.currency)
                         if free is None:
@@ -235,31 +529,100 @@ class _ScriptedTargetStrategy:
                                 }
                             )
                             return
-                if (
+                has_protection = (
                     current == 0
                     and action.stop_loss_price is not None
                     and action.take_profit_price is not None
-                ):
+                )
+                time_in_force, expire_time = self._entry_expiration(action)
+                if has_protection and request.order_type in {"market", "limit"}:
+                    bracket_kwargs = {
+                        "instrument_id": instrument_id,
+                        "order_side": side,
+                        "quantity": quantity,
+                        "entry_order_type": (
+                            OrderType.MARKET
+                            if request.order_type == "market"
+                            else OrderType.LIMIT
+                        ),
+                        "time_in_force": time_in_force,
+                        "expire_time": expire_time,
+                        "sl_trigger_price": instrument.make_price(
+                            action.stop_loss_price
+                        ),
+                        "tp_price": instrument.make_price(
+                            action.take_profit_price
+                        ),
+                        "tp_post_only": False,
+                    }
+                    if request.order_type == "limit":
+                        bracket_kwargs["entry_price"] = instrument.make_price(
+                            request.limit_price
+                        )
                     order_list = self.order_factory.bracket(
-                        instrument_id=instrument_id,
-                        order_side=side,
-                        quantity=quantity,
-                        entry_order_type=OrderType.MARKET,
-                        sl_trigger_price=instrument.make_price(action.stop_loss_price),
-                        tp_price=instrument.make_price(action.take_profit_price),
-                        tp_post_only=False,
+                        **bracket_kwargs
                     )
+                    entry_order = self._remember_bracket(order_list, action)
                     self.submit_order_list(order_list)
-                else:
-                    order = self.order_factory.market(
+                elif request.order_type == "market":
+                    entry_order = self.order_factory.market(
                         instrument_id=instrument_id,
                         order_side=side,
                         quantity=quantity,
                     )
-                    self.submit_order(order)
+                    self._remember_order(
+                        entry_order,
+                        action,
+                        role="entry",
+                        requested_order_type="market",
+                    )
+                    self.submit_order(entry_order)
+                elif request.order_type == "limit":
+                    entry_order = self.order_factory.limit(
+                        instrument_id=instrument_id,
+                        order_side=side,
+                        quantity=quantity,
+                        price=instrument.make_price(request.limit_price),
+                        time_in_force=time_in_force,
+                        expire_time=expire_time,
+                        post_only=False,
+                    )
+                    self._remember_order(
+                        entry_order,
+                        action,
+                        role="entry",
+                        requested_order_type="limit",
+                    )
+                    self.submit_order(entry_order)
+                else:
+                    entry_order = self.order_factory.stop_market(
+                        instrument_id=instrument_id,
+                        order_side=side,
+                        quantity=quantity,
+                        trigger_price=instrument.make_price(
+                            request.trigger_price
+                        ),
+                        time_in_force=time_in_force,
+                        expire_time=expire_time,
+                    )
+                    self._remember_order(
+                        entry_order,
+                        action,
+                        role="entry",
+                        requested_order_type="stop",
+                    )
+                    if has_protection:
+                        self.deferred_protection[
+                            str(entry_order.client_order_id)
+                        ] = action
+                    self.submit_order(entry_order)
+                self.active_entry_orders[instrument_key] = entry_order
+                self._record_entry_submission(action, entry_order, quantity)
 
             def on_order_filled(self, event) -> None:
                 instrument_key = str(event.instrument_id)
+                client_order_id = str(event.client_order_id)
+                context = self.order_context.get(client_order_id, {})
                 signed = Decimal(str(event.last_qty))
                 if str(event.order_side) in {"SELL", "2"}:
                     signed = -signed
@@ -272,10 +635,12 @@ class _ScriptedTargetStrategy:
                         "event_type": "order_filled",
                         "ts_event_ns": int(event.ts_event),
                         "instrument_id": instrument_key,
-                        "action_id": self.active_action_ids.get(
-                            instrument_key, "unattributed"
+                        "action_id": context.get("action_id", "unattributed"),
+                        "client_order_id": client_order_id,
+                        "order_role": context.get("role", "unattributed"),
+                        "requested_order_type": context.get(
+                            "requested_order_type", "unattributed"
                         ),
-                        "client_order_id": str(event.client_order_id),
                         "side": str(event.order_side),
                         "quantity": str(event.last_qty),
                         "price": str(event.last_px),
@@ -284,30 +649,74 @@ class _ScriptedTargetStrategy:
                         "position_units_after": str(self.current_units[instrument_key]),
                     }
                 )
-                if self.current_units[instrument_key] == 0:
-                    self.active_action_ids.pop(instrument_key, None)
+                role = context.get("role")
+                if role == "entry":
+                    action = self.deferred_protection.get(client_order_id)
+                    if action is not None:
+                        self._submit_protection_after_stop_fill(event, action)
+                    order = self.order_objects.get(client_order_id)
+                    if order is not None and order.is_closed:
+                        self._clear_active_entry(client_order_id)
+                elif role in {"stop_loss", "take_profit"}:
+                    self._cancel_protection_sibling(client_order_id)
+
+            def _record_terminal_order_event(self, event, event_type: str) -> None:
+                client_order_id = str(event.client_order_id)
+                context = self.order_context.get(client_order_id, {})
+                self.events.append(
+                    {
+                        "event_type": event_type,
+                        "ts_event_ns": int(event.ts_event),
+                        "instrument_id": str(event.instrument_id),
+                        "action_id": context.get("action_id", "unattributed"),
+                        "client_order_id": client_order_id,
+                        "order_role": context.get("role", "unattributed"),
+                        "requested_order_type": context.get(
+                            "requested_order_type", "unattributed"
+                        ),
+                    }
+                )
+                self._clear_active_entry(client_order_id)
+                self._cancel_protection_sibling(client_order_id)
+
+            def on_order_expired(self, event) -> None:
+                action = self.entry_actions.get(str(event.client_order_id))
+                self._record_terminal_order_event(event, "order_expired")
+                if action is not None:
+                    self._submit_market_fallback(event, action)
+
+            def on_order_canceled(self, event) -> None:
+                self._record_terminal_order_event(event, "order_canceled")
 
             def on_order_rejected(self, event) -> None:
+                client_order_id = str(event.client_order_id)
+                context = self.order_context.get(client_order_id, {})
                 self.events.append(
                     {
                         "event_type": "order_rejected",
                         "ts_event_ns": int(event.ts_event),
                         "instrument_id": str(event.instrument_id),
-                        "client_order_id": str(event.client_order_id),
+                        "action_id": context.get("action_id", "unattributed"),
+                        "client_order_id": client_order_id,
                         "reason": str(event.reason),
                     }
                 )
+                self._clear_active_entry(client_order_id)
 
             def on_order_denied(self, event) -> None:
+                client_order_id = str(event.client_order_id)
+                context = self.order_context.get(client_order_id, {})
                 self.events.append(
                     {
                         "event_type": "order_denied",
                         "ts_event_ns": int(event.ts_event),
                         "instrument_id": str(event.instrument_id),
-                        "client_order_id": str(event.client_order_id),
+                        "action_id": context.get("action_id", "unattributed"),
+                        "client_order_id": client_order_id,
                         "reason": str(event.reason),
                     }
                 )
+                self._clear_active_entry(client_order_id)
 
         return ScriptedTargetStrategy()
 

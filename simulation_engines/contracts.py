@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from dataclasses import field
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -138,6 +139,98 @@ class MarketFrame:
 
 
 @dataclass(frozen=True)
+class EntryExecutionRequest:
+    """Engine-neutral instructions for opening or changing a target position.
+
+    ``expires_at_ns`` is the absolute UTC deadline for a pending limit or stop
+    entry. A missing deadline means good-till-canceled. Market entries remain
+    immediate and cannot carry a deadline.
+    """
+
+    order_type: str = "market"
+    limit_price: Decimal | None = None
+    trigger_price: Decimal | None = None
+    expires_at_ns: int | None = None
+    unfilled_fallback: str = "cancel"
+
+    def __post_init__(self) -> None:
+        order_type = str(self.order_type).strip().lower()
+        if order_type not in {"market", "limit", "stop"}:
+            raise ValueError("entry order_type must be market, limit, or stop")
+        object.__setattr__(self, "order_type", order_type)
+
+        if self.limit_price is not None:
+            limit_price = _decimal(self.limit_price, "entry limit_price")
+            if limit_price <= 0:
+                raise ValueError("entry limit_price must be positive")
+            object.__setattr__(self, "limit_price", limit_price)
+        if self.trigger_price is not None:
+            trigger_price = _decimal(self.trigger_price, "entry trigger_price")
+            if trigger_price <= 0:
+                raise ValueError("entry trigger_price must be positive")
+            object.__setattr__(self, "trigger_price", trigger_price)
+        if self.expires_at_ns is not None:
+            expires_at_ns = int(self.expires_at_ns)
+            if expires_at_ns <= 0:
+                raise ValueError("entry expires_at_ns must be positive")
+            object.__setattr__(self, "expires_at_ns", expires_at_ns)
+        fallback = str(self.unfilled_fallback).strip().lower()
+        if fallback not in {"cancel", "market"}:
+            raise ValueError("entry unfilled_fallback must be cancel or market")
+        object.__setattr__(self, "unfilled_fallback", fallback)
+
+        if order_type == "market":
+            if self.limit_price is not None or self.trigger_price is not None:
+                raise ValueError("market entry cannot carry limit or trigger prices")
+            if self.expires_at_ns is not None:
+                raise ValueError("market entry cannot carry expires_at_ns")
+            if fallback != "cancel":
+                raise ValueError("market entry cannot carry an unfilled fallback")
+        elif order_type == "limit":
+            if self.limit_price is None:
+                raise ValueError("limit entry requires limit_price")
+            if self.trigger_price is not None:
+                raise ValueError("limit entry cannot carry trigger_price")
+        elif self.trigger_price is None:
+            raise ValueError("stop entry requires trigger_price")
+        elif self.limit_price is not None:
+            raise ValueError("stop entry cannot carry limit_price")
+
+    @classmethod
+    def from_bar_ttl(
+        cls,
+        *,
+        order_type: str,
+        action_ts_ns: int,
+        timeframe_minutes: int,
+        valid_for_bars: int | None = None,
+        limit_price: Any | None = None,
+        trigger_price: Any | None = None,
+        unfilled_fallback: str = "cancel",
+    ) -> "EntryExecutionRequest":
+        """Resolve a router's relative bar TTL into an absolute GTD deadline."""
+        normalized_type = str(order_type).strip().lower()
+        expires_at_ns = None
+        if normalized_type != "market":
+            if valid_for_bars is None:
+                raise ValueError("pending entry requires valid_for_bars")
+            bars = int(valid_for_bars)
+            minutes = int(timeframe_minutes)
+            if bars < 1:
+                raise ValueError("valid_for_bars must be >= 1")
+            if minutes < 1:
+                raise ValueError("timeframe_minutes must be >= 1")
+            expires_at_ns = int(action_ts_ns) + bars * minutes * 60 * 1_000_000_000
+        return cls(
+            order_type=normalized_type,
+            limit_price=limit_price,
+            trigger_price=trigger_price,
+            expires_at_ns=expires_at_ns,
+            unfilled_fallback=unfilled_fallback,
+        )
+
+
+@dataclass(frozen=True)
 class TargetAction:
     instrument_id: str
     ts_event_ns: int
@@ -145,6 +238,16 @@ class TargetAction:
     action_id: str
     stop_loss_price: Decimal | None = None
     take_profit_price: Decimal | None = None
+    entry_execution: EntryExecutionRequest = field(
+        default_factory=EntryExecutionRequest
+    )
+
+    def __post_init__(self) -> None:
+        if (
+            self.entry_execution.expires_at_ns is not None
+            and self.entry_execution.expires_at_ns <= self.ts_event_ns
+        ):
+            raise ValueError("entry expiration must be after the action timestamp")
 
 
 def load_execution_cost_profile(path: str | Path) -> ExecutionCostProfile:

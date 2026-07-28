@@ -1,6 +1,7 @@
 """Authoritative simulation-engine adapters used by gym-fx."""
 
 from simulation_engines.contracts import ExecutionCostProfile
+from simulation_engines.contracts import EntryExecutionRequest
 from simulation_engines.contracts import InstrumentSpec
 from simulation_engines.contracts import MarketFrame
 from simulation_engines.contracts import TargetAction
@@ -8,6 +9,7 @@ from simulation_engines.contracts import load_execution_cost_profile
 
 __all__ = [
     "ExecutionCostProfile",
+    "EntryExecutionRequest",
     "InstrumentSpec",
     "MarketFrame",
     "TargetAction",

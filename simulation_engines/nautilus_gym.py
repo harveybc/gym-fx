@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from dataclasses import replace
 from decimal import Decimal
 from typing import Any
 
@@ -235,9 +236,29 @@ class NautilusGymFxEnv(GymFxEnv):
         profile_path = self.config.get("execution_cost_profile")
         if not profile_path:
             raise ValueError("execution_cost_profile is required for Nautilus")
-        self._nautilus_profile = load_execution_cost_profile(profile_path)
+        self._nautilus_base_profile = load_execution_cost_profile(profile_path)
+        self._nautilus_profile = self._nautilus_base_profile
         self._nautilus_engine = None
         self._nautilus_result = None
+
+    def set_execution_cost_context(self, **kwargs):
+        super().set_execution_cost_context(**kwargs)
+        context = self._execution_cost_context
+        scenario_id = str(context.get("scenario_id") or "curriculum")
+        self._nautilus_profile = replace(
+            self._nautilus_base_profile,
+            profile_id=(
+                f"{self._nautilus_base_profile.profile_id}::{scenario_id}"
+            ),
+            commission_rate_per_side=Decimal(
+                str(context["commission_fraction_per_side"])
+            ),
+            full_spread_rate=Decimal(str(context["full_spread_rate"])),
+            slippage_bps_per_side=Decimal(
+                str(context["slippage_bps_per_side"])
+            ),
+            financing_enabled=bool(context["financing_enabled"]),
+        )
 
     def reset(self, *, seed=None, options=None):
         from nautilus_trader.backtest.engine import BacktestEngine

@@ -28,6 +28,15 @@ except ImportError as exc:  # pragma: no cover
 from app.bt_bridge import BTBridge, build_cerebro
 
 
+EXECUTION_COST_OBSERVATION_NAMES = (
+    "execution_cost_commission_fraction_per_side_normalized",
+    "execution_cost_full_spread_rate_normalized",
+    "execution_cost_slippage_bps_per_side_normalized",
+    "execution_cost_financing_enabled",
+    "execution_cost_phase_progress",
+)
+
+
 def build_base_observation_space(
     config: Dict[str, Any],
     *,
@@ -205,6 +214,28 @@ class GymFxEnv(gym.Env):
                     "margin_available_norm": spaces.Box(low=0.0, high=np.inf, shape=(1,), dtype=np.float32),
                 }
             )
+        self.execution_cost_observation_enabled = bool(
+            self.config.get("execution_cost_observation_enabled", False)
+        )
+        self._execution_cost_observation = np.zeros(
+            len(EXECUTION_COST_OBSERVATION_NAMES), dtype=np.float32
+        )
+        self._execution_cost_context: Dict[str, Any] = {}
+        if self.execution_cost_observation_enabled:
+            self.observation_space = spaces.Dict(
+                {
+                    **self.observation_space.spaces,
+                    **{
+                        name: spaces.Box(
+                            low=0.0,
+                            high=1.0,
+                            shape=(1,),
+                            dtype=np.float32,
+                        )
+                        for name in EXECUTION_COST_OBSERVATION_NAMES
+                    },
+                }
+            )
         self._date_column = str(self.config.get("date_column", "DATE_TIME"))
         self._timeframe_hours = self._infer_timeframe_hours()
         self.event_context_execution_overlay = bool(
@@ -332,6 +363,56 @@ class GymFxEnv(gym.Env):
 
     def close(self):
         self._teardown_runner()
+
+    def set_execution_cost_context(
+        self,
+        *,
+        observable_names,
+        observable_vector,
+        cost_patch: Dict[str, Any],
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Apply one visible execution-cost scenario before the next reset."""
+        names = tuple(str(name) for name in observable_names)
+        if names != EXECUTION_COST_OBSERVATION_NAMES:
+            raise ValueError(
+                "execution cost observation contract mismatch: "
+                f"expected {EXECUTION_COST_OBSERVATION_NAMES}, got {names}"
+            )
+        vector = np.asarray(observable_vector, dtype=np.float32).reshape(-1)
+        if vector.shape != (len(EXECUTION_COST_OBSERVATION_NAMES),):
+            raise ValueError("execution cost observation vector has invalid shape")
+        if not np.all(np.isfinite(vector)) or np.any(vector < 0.0) or np.any(vector > 1.0):
+            raise ValueError("execution cost observation values must be finite in [0, 1]")
+
+        commission = float(cost_patch["commission_fraction_per_side"])
+        full_spread = float(cost_patch["full_spread_rate"])
+        slippage_bps = float(cost_patch["slippage_bps_per_side"])
+        if (
+            not np.all(np.isfinite([commission, full_spread, slippage_bps]))
+            or min(commission, full_spread, slippage_bps) < 0.0
+        ):
+            raise ValueError("execution cost patch values must be finite and nonnegative")
+        financing = cost_patch.get("financing_enabled", False)
+        if not isinstance(financing, bool):
+            raise ValueError("financing_enabled must be boolean")
+
+        self._execution_cost_observation = vector
+        self._execution_cost_context = dict(metadata or {})
+        self._execution_cost_context.update(
+            {
+                "commission_fraction_per_side": commission,
+                "full_spread_rate": full_spread,
+                "slippage_bps_per_side": slippage_bps,
+                "financing_enabled": financing,
+            }
+        )
+        self.config.update(self._execution_cost_context)
+        # Backtrader compatibility: one adverse quote displacement per fill.
+        adverse_fill_rate = full_spread / 2.0 + slippage_bps / 10_000.0
+        self.config["commission"] = commission
+        self.config["slippage"] = adverse_fill_rate
+        self.config["slippage_perc"] = adverse_fill_rate
 
     # ----------------------------------------------------------------------
     # Internals
@@ -505,6 +586,13 @@ class GymFxEnv(gym.Env):
             obs["margin_available_norm"] = np.array(
                 [self._safe_margin_available_norm()], dtype=np.float32
             )
+        if getattr(self, "execution_cost_observation_enabled", False):
+            obs = dict(obs)
+            for name, value in zip(
+                EXECUTION_COST_OBSERVATION_NAMES,
+                self._execution_cost_observation,
+            ):
+                obs[name] = np.array([value], dtype=np.float32)
         return obs
 
     def _infer_timeframe_hours(self) -> float:
@@ -680,6 +768,8 @@ class GymFxEnv(gym.Env):
             "execution_diagnostics": dict(getattr(self.bridge, "execution_diagnostics", {}) or {}),
         }
         info.update(dict(getattr(self, "_last_event_context_info", {}) or {}))
+        if getattr(self, "execution_cost_observation_enabled", False):
+            info["execution_cost_context"] = dict(self._execution_cost_context)
         if self.stage_b_force_close_obs:
             step_idx = max(0, min(self.bridge.bar_index, self.total_bars))
             info.update(self._force_close_features(step_idx))
@@ -713,6 +803,8 @@ class GymFxEnv(gym.Env):
         summary["action_diagnostics"] = dict(self._action_diagnostics)
         summary["execution_diagnostics"] = dict(getattr(self.bridge, "execution_diagnostics", {}) or {})
         summary["event_context_diagnostics"] = dict(getattr(self, "_last_event_context_info", {}) or {})
+        if getattr(self, "execution_cost_observation_enabled", False):
+            summary["execution_cost_context"] = dict(self._execution_cost_context)
         return summary
 
     def _reset_action_diagnostics(self) -> None:
