@@ -26,6 +26,7 @@ DEFAULT_VALUES = {
     "initial_cash": 10000.0,
     "position_size": 1.0,
     "simulation_engine": "backtrader",
+    "require_protected_entries": False,
     "execution_cost_profile": None,
     "commission": 0.0,
     "slippage": 0.0,

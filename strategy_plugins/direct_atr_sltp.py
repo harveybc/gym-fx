@@ -36,6 +36,8 @@ import os
 from collections import deque
 from typing import Any, Deque, Dict
 
+import backtrader as bt
+
 
 _AUDIT_PATH = os.environ.get("GYMFX_BRACKET_AUDIT")
 
@@ -106,6 +108,19 @@ class Plugin:
         "entry_hour_start": 12,      # 12:00 (mid-morning, 12h after typical open)
         "force_close_dow": 4,        # Friday
         "force_close_hour": 20,      # 20:00 — flatten everything from here
+        # ----- Protected entry execution --------------------------------
+        # Every risk-increasing order is a Backtrader bracket whose parent can
+        # be market, limit, or stop. SL and TP children are always attached.
+        "entry_order_mode": "adaptive",  # adaptive|market|limit|stop
+        "full_spread_rate": 0.0,
+        "market_urgency_threshold": 0.75,
+        "market_max_spread_bps": 8.0,
+        "stop_breakout_threshold": 0.65,
+        "limit_offset_spread_multiple": 0.5,
+        "limit_offset_atr_multiple": 0.05,
+        "stop_offset_spread_multiple": 0.5,
+        "stop_offset_atr_multiple": 0.05,
+        "breakout_lookback": 12,
     }
 
     def __init__(self, config: Dict[str, Any] | None = None):
@@ -114,6 +129,10 @@ class Plugin:
             self.set_params(**config)
         self._tr_buffer: Deque[float] = deque()
         self._prev_close: float | None = None
+        self._high_buffer: Deque[float] = deque()
+        self._low_buffer: Deque[float] = deque()
+        self._bracket_orders: list[Any] = []
+        self._pending_side: int = 0
 
     def set_params(self, **kwargs: Any) -> None:
         for k, v in kwargs.items():
@@ -126,6 +145,20 @@ class Plugin:
     def on_reset(self, bt_strategy, config: Dict[str, Any]) -> None:
         self._tr_buffer = deque(maxlen=int(self._resolve(config)["atr_period"]))
         self._prev_close = None
+        lookback = max(2, int(self._resolve(config)["breakout_lookback"]))
+        self._high_buffer = deque(maxlen=lookback)
+        self._low_buffer = deque(maxlen=lookback)
+        self._bracket_orders = []
+        self._pending_side = 0
+
+    def notify_order(self, bt_strategy, order, config: Dict[str, Any]) -> None:
+        del bt_strategy, order, config
+        if self._bracket_orders and not any(
+            bool(getattr(item, "alive", lambda: False)())
+            for item in self._bracket_orders
+        ):
+            self._bracket_orders = []
+            self._pending_side = 0
 
     # ------------------------------------------------------------------
     # BTBridgeStrategy contract
@@ -143,6 +176,8 @@ class Plugin:
         high = float(bt_strategy.data.high[0])
         low = float(bt_strategy.data.low[0])
         close = float(bt_strategy.data.close[0])
+        prior_high = max(self._high_buffer) if self._high_buffer else high
+        prior_low = min(self._low_buffer) if self._low_buffer else low
 
         # Update ATR buffer with True Range
         if self._prev_close is None:
@@ -153,6 +188,16 @@ class Plugin:
         if self._tr_buffer.maxlen != period:
             self._tr_buffer = deque(self._tr_buffer, maxlen=period)
         self._tr_buffer.append(tr)
+        lookback = max(2, int(p["breakout_lookback"]))
+        if self._high_buffer.maxlen != lookback:
+            self._high_buffer = deque(self._high_buffer, maxlen=lookback)
+            self._low_buffer = deque(self._low_buffer, maxlen=lookback)
+        self._high_buffer.append(high)
+        self._low_buffer.append(low)
+
+        if action == 3:
+            self._flatten(bt_strategy, inc, reason="forced_flat")
+            return
 
         # ---- Session/weekend filter -------------------------------------
         # Forcefully flatten positions outside the trading window and ignore
@@ -160,7 +205,7 @@ class Plugin:
         # env regardless of what the agent decides.
         in_entry_window, in_close_zone = self._session_state(bt_strategy, p)
         if in_close_zone and bt_strategy.position.size != 0:
-            bt_strategy.close()
+            self._flatten(bt_strategy, inc, reason="session_force_close")
             _audit_emit({
                 "kind": "session_force_close",
                 "entry": close,
@@ -179,6 +224,23 @@ class Plugin:
             return
 
         pos_size = bt_strategy.position.size
+        requested_side = 1 if action == 1 else -1
+        live_bracket = self._has_live_bracket()
+        if live_bracket:
+            current_side = 1 if pos_size > 0 else (-1 if pos_size < 0 else self._pending_side)
+            if current_side == requested_side:
+                inc("blocked_existing_protected_position")
+                return
+            self._flatten(bt_strategy, inc, reason="protected_reversal")
+            return
+        if pos_size != 0:
+            current_side = 1 if pos_size > 0 else -1
+            if current_side == requested_side:
+                inc("blocked_existing_protected_position")
+                return
+            self._flatten(bt_strategy, inc, reason="position_reversal")
+            return
+
         ready = len(self._tr_buffer) >= period
         atr = sum(self._tr_buffer) / len(self._tr_buffer) if self._tr_buffer else 0.0
 
@@ -231,34 +293,160 @@ class Plugin:
         if tp_dist >= close:
             tp_dist = close * 0.5
 
-        if action == 1:  # long
-            if pos_size < 0:
-                bt_strategy.close()
-            if pos_size <= 0:
-                stop = close - sl_dist
-                limit = close + tp_dist
-                bt_strategy.buy_bracket(size=size, stopprice=stop, limitprice=limit)
-                inc("entry_orders_submitted")
-                _audit_emit({
-                    "kind": "long_bracket", "entry": close, "stop": stop,
-                    "limit": limit, "size": size, "atr": atr,
-                    "k_sl_eff": k_sl_eff, "k_tp_eff": k_tp_eff,
-                    "sltp_risk_mode": p.get("sltp_risk_mode"),
-                })
-        elif action == 2:  # short
-            if pos_size > 0:
-                bt_strategy.close()
-            if pos_size >= 0:
-                stop = close + sl_dist
-                limit = close - tp_dist
-                bt_strategy.sell_bracket(size=size, stopprice=stop, limitprice=limit)
-                inc("entry_orders_submitted")
-                _audit_emit({
-                    "kind": "short_bracket", "entry": close, "stop": stop,
-                    "limit": limit, "size": size, "atr": atr,
-                    "k_sl_eff": k_sl_eff, "k_tp_eff": k_tp_eff,
-                    "sltp_risk_mode": p.get("sltp_risk_mode"),
-                })
+        breakout_score = self._breakout_score(
+            action=action,
+            close=close,
+            prior_high=prior_high,
+            prior_low=prior_low,
+            atr=atr,
+        )
+        order_type, entry_price = self._route_entry(
+            bt_strategy=bt_strategy,
+            action=action,
+            close=close,
+            atr=atr,
+            breakout_score=breakout_score,
+            params=p,
+        )
+        protected_entry = close if entry_price is None else entry_price
+        if action == 1:
+            stop = protected_entry - sl_dist
+            limit = protected_entry + tp_dist
+            submit = bt_strategy.buy_bracket
+        else:
+            stop = protected_entry + sl_dist
+            limit = protected_entry - tp_dist
+            submit = bt_strategy.sell_bracket
+        if min(protected_entry, stop, limit) <= 0.0:
+            inc("blocked_invalid_bracket_geometry")
+            return
+
+        kwargs: Dict[str, Any] = {
+            "size": size,
+            "exectype": {
+                "market": bt.Order.Market,
+                "limit": bt.Order.Limit,
+                "stop": bt.Order.Stop,
+            }[order_type],
+            "stopprice": stop,
+            "stopexec": bt.Order.Stop,
+            "limitprice": limit,
+            "limitexec": bt.Order.Limit,
+        }
+        if entry_price is not None:
+            kwargs["price"] = entry_price
+        orders = submit(**kwargs)
+        self._bracket_orders = list(orders or [])
+        self._pending_side = requested_side
+        inc("entry_orders_submitted")
+        inc(f"protected_{order_type}_entries")
+        _audit_emit({
+            "kind": f"{'long' if action == 1 else 'short'}_{order_type}_bracket",
+            "entry": protected_entry,
+            "stop": stop,
+            "limit": limit,
+            "size": size,
+            "atr": atr,
+            "breakout_score": breakout_score,
+            "k_sl_eff": k_sl_eff,
+            "k_tp_eff": k_tp_eff,
+            "sltp_risk_mode": p.get("sltp_risk_mode"),
+        })
+
+    def _has_live_bracket(self) -> bool:
+        return any(
+            bool(getattr(order, "alive", lambda: False)())
+            for order in self._bracket_orders
+        )
+
+    def _flatten(self, bt_strategy, inc, *, reason: str) -> None:
+        for order in self._bracket_orders:
+            if bool(getattr(order, "alive", lambda: False)()):
+                bt_strategy.cancel(order)
+                inc("protected_bracket_cancellations")
+        self._bracket_orders = []
+        self._pending_side = 0
+        if bt_strategy.position.size != 0:
+            bt_strategy.close()
+            inc("risk_reducing_close_orders")
+            if reason == "forced_flat":
+                inc("event_context_forced_flat_orders")
+
+    @staticmethod
+    def _breakout_score(
+        *,
+        action: int,
+        close: float,
+        prior_high: float,
+        prior_low: float,
+        atr: float,
+    ) -> float:
+        if atr <= 0.0:
+            return 0.0
+        distance = (
+            close - prior_high
+            if action == 1
+            else prior_low - close
+        )
+        return max(0.0, min(1.0, distance / atr))
+
+    def _route_entry(
+        self,
+        *,
+        bt_strategy,
+        action: int,
+        close: float,
+        atr: float,
+        breakout_score: float,
+        params: Dict[str, Any],
+    ) -> tuple[str, float | None]:
+        mode = str(params["entry_order_mode"]).strip().lower()
+        if mode not in {"adaptive", "market", "limit", "stop"}:
+            raise ValueError(
+                "entry_order_mode must be adaptive, market, limit, or stop"
+            )
+        raw_action = float(
+            getattr(getattr(bt_strategy, "bridge", None), "raw_action_slot", 0.0)
+            or 0.0
+        )
+        urgency = min(1.0, abs(raw_action))
+        if urgency == 0.0:
+            urgency = 1.0
+        spread_rate = max(
+            0.0,
+            float(params.get("full_spread_rate") or 0.0),
+        )
+        spread_bps = spread_rate * 10_000.0
+        if mode == "adaptive":
+            if (
+                urgency >= float(params["market_urgency_threshold"])
+                and spread_bps <= float(params["market_max_spread_bps"])
+            ):
+                mode = "market"
+            elif (
+                breakout_score * urgency * urgency
+                >= float(params["stop_breakout_threshold"])
+            ):
+                mode = "stop"
+            else:
+                mode = "limit"
+        if mode == "market":
+            return mode, None
+
+        if mode == "limit":
+            spread_multiple = float(params["limit_offset_spread_multiple"])
+            atr_multiple = float(params["limit_offset_atr_multiple"])
+            direction = -1.0 if action == 1 else 1.0
+        else:
+            spread_multiple = float(params["stop_offset_spread_multiple"])
+            atr_multiple = float(params["stop_offset_atr_multiple"])
+            direction = 1.0 if action == 1 else -1.0
+        offset = max(
+            close * 1e-8,
+            close * spread_rate * spread_multiple,
+            atr * atr_multiple,
+        )
+        return mode, close + direction * offset
 
     def _effective_sltp_multiples(self, p: Dict[str, Any]) -> tuple[float, float]:
         k_sl = max(0.0, float(p["k_sl"]))

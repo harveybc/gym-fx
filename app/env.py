@@ -321,6 +321,7 @@ class GymFxEnv(gym.Env):
             return self._make_observation(), 0.0, True, False, self._make_info()
 
         self.bridge.action_slot = a
+        self.bridge.raw_action_slot = raw_action
         self.bridge.obs_ready.clear()
         self.bridge.action_ready.set()
         self._wait_obs()

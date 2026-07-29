@@ -35,6 +35,7 @@ class BTBridge:
         self.obs_ready = threading.Event()
 
         self.action_slot: int = 0
+        self.raw_action_slot: float = 0.0
         self.stop_requested: bool = False
         self.terminated: bool = False
 
@@ -54,6 +55,7 @@ class BTBridge:
         self.action_ready.clear()
         self.obs_ready.clear()
         self.action_slot = 0
+        self.raw_action_slot = 0.0
         self.stop_requested = False
         self.terminated = False
         self.equity = float(initial_cash)
@@ -75,6 +77,12 @@ class BTBridge:
             "blocked_non_positive_price": 0,
             "default_orders_submitted": 0,
             "plugin_apply_errors": 0,
+            "protected_entry_rejections": 0,
+            "protected_market_entries": 0,
+            "protected_limit_entries": 0,
+            "protected_stop_entries": 0,
+            "protected_bracket_cancellations": 0,
+            "risk_reducing_close_orders": 0,
             "event_context_no_trade_active_steps": 0,
             "event_context_action_overrides": 0,
             "event_context_blocked_entries": 0,
@@ -111,12 +119,21 @@ class BTBridgeStrategy(bt.Strategy):
         self._strategy_plugin = self.p.strategy_plugin
         self._plugin_apply = getattr(self._strategy_plugin, "apply_action", None) if self._strategy_plugin else None
         self._plugin_config = self.p.config or {}
+        self._require_protected_entries = bool(
+            self._plugin_config.get("require_protected_entries", False)
+        )
+        if self._require_protected_entries and not callable(self._plugin_apply):
+            raise ValueError(
+                "require_protected_entries=true requires a strategy plugin "
+                "that implements apply_action()"
+            )
         plugin_reset = getattr(self._strategy_plugin, "on_reset", None) if self._strategy_plugin else None
         if callable(plugin_reset):
             try:
                 plugin_reset(self, self._plugin_config)
             except Exception:
-                pass
+                if self._require_protected_entries:
+                    raise
 
     # --- backtrader lifecycle --------------------------------------------------
     def start(self) -> None:
@@ -128,6 +145,13 @@ class BTBridgeStrategy(bt.Strategy):
             comm = float(getattr(order.executed, "comm", 0.0) or 0.0)
             self._order_cost_accum += comm
             self.bridge.commission_paid += comm
+        plugin_notify = (
+            getattr(self._strategy_plugin, "notify_order", None)
+            if self._strategy_plugin
+            else None
+        )
+        if callable(plugin_notify):
+            plugin_notify(self, order, self._plugin_config)
 
     def notify_trade(self, trade: bt.Trade) -> None:
         if trade.isclosed:
@@ -175,6 +199,24 @@ class BTBridgeStrategy(bt.Strategy):
     def _apply_action(self, action: int) -> None:
         self._order_cost_accum = 0.0
 
+        # Delegate to strategy plugin if it implements apply_action (SL/TP bracket logic).
+        if callable(self._plugin_apply):
+            try:
+                self._plugin_apply(self, int(action), self._plugin_config)
+                return
+            except Exception:
+                self.bridge.execution_diagnostics["plugin_apply_errors"] = (
+                    self.bridge.execution_diagnostics.get("plugin_apply_errors", 0) + 1
+                )
+                if self._require_protected_entries:
+                    self.bridge.execution_diagnostics["protected_entry_rejections"] = (
+                        self.bridge.execution_diagnostics.get(
+                            "protected_entry_rejections", 0
+                        )
+                        + int(action in (1, 2))
+                    )
+                    return
+
         if int(action) == 3:
             current_size = self.position.size
             if current_size != 0:
@@ -182,23 +224,16 @@ class BTBridgeStrategy(bt.Strategy):
                 self.bridge.execution_diagnostics["default_orders_submitted"] = (
                     self.bridge.execution_diagnostics.get("default_orders_submitted", 0) + 1
                 )
+                self.bridge.execution_diagnostics["risk_reducing_close_orders"] = (
+                    self.bridge.execution_diagnostics.get(
+                        "risk_reducing_close_orders", 0
+                    )
+                    + 1
+                )
                 self.bridge.execution_diagnostics["event_context_forced_flat_orders"] = (
                     self.bridge.execution_diagnostics.get("event_context_forced_flat_orders", 0) + 1
                 )
             return
-
-        # Delegate to strategy plugin if it implements apply_action (SL/TP bracket logic).
-        if callable(self._plugin_apply):
-            try:
-                self._plugin_apply(self, int(action), self._plugin_config)
-                return
-            except Exception:
-                # Fall back to default flow if the plugin fails, so a broken
-                # strategy plugin does not kill the env silently.
-                self.bridge.execution_diagnostics["plugin_apply_errors"] = (
-                    self.bridge.execution_diagnostics.get("plugin_apply_errors", 0) + 1
-                )
-                pass
 
         current_size = self.position.size  # backtrader position size
         size = float(self.p.position_size)
@@ -206,6 +241,14 @@ class BTBridgeStrategy(bt.Strategy):
         target_dir = {0: None, 1: +1, 2: -1}.get(action)
         if target_dir is None:
             # hold: no change
+            return
+        if self._require_protected_entries:
+            self.bridge.execution_diagnostics["protected_entry_rejections"] = (
+                self.bridge.execution_diagnostics.get(
+                    "protected_entry_rejections", 0
+                )
+                + 1
+            )
             return
         self.bridge.execution_diagnostics["entry_actions_seen"] = (
             self.bridge.execution_diagnostics.get("entry_actions_seen", 0) + 1
