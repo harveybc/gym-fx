@@ -241,8 +241,14 @@ class TargetAction:
     entry_execution: EntryExecutionRequest = field(
         default_factory=EntryExecutionRequest
     )
+    market_available: bool = True
+    signal_valid: bool = True
 
     def __post_init__(self) -> None:
+        if not isinstance(self.market_available, bool):
+            raise ValueError("market_available must be a boolean")
+        if not isinstance(self.signal_valid, bool):
+            raise ValueError("signal_valid must be a boolean")
         if (
             self.entry_execution.expires_at_ns is not None
             and self.entry_execution.expires_at_ns <= self.ts_event_ns

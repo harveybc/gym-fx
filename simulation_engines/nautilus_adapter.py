@@ -471,6 +471,24 @@ class _ScriptedTargetStrategy:
                         "entry_expires_at_ns": request.expires_at_ns,
                     }
                 )
+                rejection_reason = None
+                if not action.market_available:
+                    rejection_reason = "MARKET_UNAVAILABLE"
+                elif not action.signal_valid:
+                    rejection_reason = "STALE_OR_INVALID_SIGNAL"
+                if rejection_reason is not None:
+                    self.events.append(
+                        {
+                            "event_type": "intent_rejected",
+                            "ts_event_ns": int(bar.ts_event),
+                            "instrument_id": instrument_key,
+                            "action_id": action.action_id,
+                            "reason": rejection_reason,
+                            "target_units": str(action.target_units),
+                            "position_units_after": str(current),
+                        }
+                    )
+                    return
                 if delta == 0:
                     return
                 side = OrderSide.BUY if delta > 0 else OrderSide.SELL

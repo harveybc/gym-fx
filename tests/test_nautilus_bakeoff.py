@@ -12,7 +12,7 @@ from simulation_engines.bakeoff import build_margin_rejection_fixture
 from simulation_engines.bakeoff import build_rollover_rate_fixture
 from simulation_engines.bakeoff import build_financing_fixture
 from simulation_engines.bakeoff import export_execution_reports
-from simulation_engines.contracts import load_execution_cost_profile
+from simulation_engines.contracts import TargetAction, load_execution_cost_profile
 from simulation_engines.nautilus_adapter import NautilusReplayAdapter
 
 
@@ -92,6 +92,91 @@ def test_nautilus_standard_margin_rejects_oversized_target():
     assert "preflight_denied" in types
     assert "order_filled" not in types
     assert result["summary"]["account.SIM.balance.USD.total"] == "10000.00 USD"
+
+
+def test_unavailable_market_intent_cannot_fill_or_change_account_ledger():
+    profile = load_execution_cost_profile(PROFILE)
+    instruments, frames, _ = build_multi_asset_fixture()
+    eurusd_frames = [
+        frame for frame in frames if frame.instrument_id == "EUR/USD.SIM"
+    ][:2]
+    action = TargetAction(
+        "EUR/USD.SIM",
+        eurusd_frames[0].ts_event_ns,
+        Decimal("1000"),
+        "closed-session-entry",
+        market_available=False,
+    )
+
+    result = NautilusReplayAdapter(profile).run(
+        instrument_specs=[instruments[0]],
+        frames=eurusd_frames,
+        actions=[action],
+        initial_cash=Decimal("10000"),
+        financing_rate_data=build_rollover_rate_fixture(),
+    )
+
+    rejected = [
+        event
+        for event in result["events"]
+        if event["event_type"] == "intent_rejected"
+    ]
+    assert len(rejected) == 1
+    assert rejected[0]["reason"] == "MARKET_UNAVAILABLE"
+    assert rejected[0]["position_units_after"] == "0"
+    assert not [
+        event
+        for event in result["events"]
+        if event["event_type"] == "order_filled"
+    ]
+    assert result["summary"]["account.SIM.balance.USD.total"] == "10000.00 USD"
+
+
+def test_stale_signal_cannot_increase_an_existing_position():
+    profile = load_execution_cost_profile(PROFILE)
+    instruments, frames, _ = build_multi_asset_fixture()
+    eurusd_frames = [
+        frame for frame in frames if frame.instrument_id == "EUR/USD.SIM"
+    ][:3]
+    actions = [
+        TargetAction(
+            "EUR/USD.SIM",
+            eurusd_frames[0].ts_event_ns,
+            Decimal("1000"),
+            "fresh-entry",
+        ),
+        TargetAction(
+            "EUR/USD.SIM",
+            eurusd_frames[1].ts_event_ns,
+            Decimal("3000"),
+            "stale-increase",
+            signal_valid=False,
+        ),
+    ]
+
+    result = NautilusReplayAdapter(profile).run(
+        instrument_specs=[instruments[0]],
+        frames=eurusd_frames,
+        actions=actions,
+        initial_cash=Decimal("100000"),
+        financing_rate_data=build_rollover_rate_fixture(),
+    )
+
+    fills = [
+        event
+        for event in result["events"]
+        if event["event_type"] == "order_filled"
+    ]
+    rejected = [
+        event
+        for event in result["events"]
+        if event["event_type"] == "intent_rejected"
+    ]
+    assert len(fills) == 1
+    assert len(rejected) == 1
+    assert rejected[0]["reason"] == "STALE_OR_INVALID_SIGNAL"
+    assert rejected[0]["position_units_after"] == "1000"
+    assert fills[-1]["position_units_after"] == "1000"
 
 
 def test_nautilus_fx_rollover_changes_account_balance_at_boundary():
