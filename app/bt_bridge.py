@@ -50,6 +50,14 @@ class BTBridge:
         self.commission_paid: float = 0.0
         self.last_trade_cost: float = 0.0
         self.execution_diagnostics: Dict[str, int] = {}
+        # Solvency continuation ledgers (owner curriculum order, WP-C):
+        # operational equity is the broker value above; economic equity is
+        # operational equity MINUS accumulated recapitalization debt, so a
+        # recapitalization can never manufacture performance.
+        self.recapitalization_debt: float = 0.0
+        self.recapitalization_count: int = 0
+        self.would_margin_call_events: list = []
+        self.termination_cause: Optional[str] = None
 
     def reset(self, initial_cash: float, total_bars: int) -> None:
         self.action_ready.clear()
@@ -67,6 +75,10 @@ class BTBridge:
         self.trade_count = 0
         self.commission_paid = 0.0
         self.last_trade_cost = 0.0
+        self.recapitalization_debt = 0.0
+        self.recapitalization_count = 0
+        self.would_margin_call_events = []
+        self.termination_cause = None
         self.execution_diagnostics = {
             "entry_actions_seen": 0,
             "entry_orders_submitted": 0,
@@ -110,6 +122,13 @@ class BTBridgeStrategy(bt.Strategy):
         ("min_equity", 100.0),
         ("strategy_plugin", None),
         ("config", None),
+        # WP-C: "normal_realistic" terminates on breach exactly as before;
+        # "easy_chronological_continuation" (train-only, enforced by the
+        # env) records the would-be margin call, liquidates retaining the
+        # full economic loss, recapitalizes ONLY operational capital as
+        # debt, and continues the chronological episode.
+        ("solvency_mode", "normal_realistic"),
+        ("recap_target_equity", None),
     )
 
     def __init__(self) -> None:  # type: ignore[no-redef]
@@ -179,9 +198,13 @@ class BTBridgeStrategy(bt.Strategy):
         self._publish_obs()
 
         if self._is_broke():
-            self.bridge.terminated = True
-            self.env.runstop()
-            return
+            if self.p.solvency_mode == "easy_chronological_continuation":
+                self._continue_after_would_margin_call()
+            else:
+                self.bridge.termination_cause = "min_equity"
+                self.bridge.terminated = True
+                self.env.runstop()
+                return
 
         # wait for the next action from the env
         self.bridge.action_ready.wait()
@@ -192,8 +215,56 @@ class BTBridgeStrategy(bt.Strategy):
 
     def stop(self) -> None:
         # Data exhausted: mark terminated and signal the env so it stops waiting.
+        if self.bridge.termination_cause is None:
+            self.bridge.termination_cause = (
+                "external_stop" if self.bridge.stop_requested else "data_end"
+            )
         self.bridge.terminated = True
         self.bridge.obs_ready.set()
+
+    def _continue_after_would_margin_call(self) -> None:
+        """WP-C easy mode: record the would-be margin call, liquidate
+        retaining the FULL economic loss, recapitalize only operational
+        capital (journaled as debt, never profit), and continue the
+        chronological episode. Conservation is exact by construction:
+        adding recap cash raises broker value and debt by the same
+        amount, so economic equity (value - debt) is unchanged at the
+        recap instant and thereafter tracks only real trading results."""
+        equity_before = float(self.bridge.equity)
+        event = {
+            "cause": "would_margin_call",
+            "bar_index": int(self.bridge.bar_index),
+            "timestamp": self.data.datetime.datetime(0).isoformat(),
+            "position": int(self.position.size),
+            "equity_before": equity_before,
+            "min_equity": float(self.p.min_equity),
+        }
+        # Liquidate: cancel resting orders, close any open position at the
+        # next chronological bar. The realized loss stays in the ledgers.
+        for order in list(self.broker.get_orders_open() or []):
+            try:
+                self.cancel(order)
+            except Exception:
+                pass
+        if self.position.size != 0:
+            self.close()
+        target = float(
+            self.p.recap_target_equity
+            if self.p.recap_target_equity is not None
+            else self.broker.startingcash
+        )
+        recap_amount = max(0.0, target - float(self.broker.getvalue()))
+        if recap_amount > 0.0:
+            self.broker.add_cash(recap_amount)
+        self.bridge.recapitalization_debt += recap_amount
+        self.bridge.recapitalization_count += 1
+        event["recap_amount"] = recap_amount
+        event["debt_total"] = float(self.bridge.recapitalization_debt)
+        self.bridge.would_margin_call_events.append(event)
+        # Republish so the env sees post-recap operational equity and the
+        # updated debt in the SAME step that recorded the event.
+        self.bridge.prev_equity = equity_before
+        self.bridge.equity = float(self.broker.getvalue())
 
     # --- helpers ---------------------------------------------------------------
     def _apply_action(self, action: int) -> None:
@@ -316,6 +387,9 @@ def build_cerebro(
         min_equity=min_equity,
         strategy_plugin=strategy_plugin,
         config=config or {},
+        solvency_mode=(config or {}).get("solvency_mode",
+                                         "normal_realistic"),
+        recap_target_equity=(config or {}).get("recap_target_equity"),
     )
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
     cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name="sharpe", timeframe=bt.TimeFrame.Days)

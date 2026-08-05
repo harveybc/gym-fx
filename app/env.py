@@ -130,6 +130,30 @@ class GymFxEnv(gym.Env):
         self.price_column = self.config.get("price_column", "CLOSE")
         self.min_equity = float(self.config.get("min_equity", self.initial_cash * 0.01))
 
+        # --- solvency mode (owner curriculum order, WP-C) -------------------
+        # normal_realistic: breach terminates exactly as before (mandatory
+        # for train-tail, validation, protected test and any Paper check).
+        # easy_chronological_continuation: TRAIN-ONLY — a would-be margin
+        # call liquidates (keeping the loss), recapitalizes operational
+        # capital as journaled debt and continues chronologically.
+        self.solvency_mode = str(
+            self.config.get("solvency_mode", "normal_realistic"))
+        if self.solvency_mode not in (
+                "normal_realistic", "easy_chronological_continuation"):
+            raise ValueError(
+                f"unknown solvency_mode {self.solvency_mode!r}")
+        if self.solvency_mode == "easy_chronological_continuation":
+            env_mode = str(self.config.get("env_mode", ""))
+            if env_mode != "training":
+                raise ValueError(
+                    "easy_chronological_continuation is train-only:"
+                    f" env_mode={env_mode!r} may never enable relaxed"
+                    " solvency dynamics (validation, test and Paper/Demo"
+                    " always run normal_realistic)")
+        self.config["recap_target_equity"] = float(
+            self.config.get("recap_target_equity", self.initial_cash))
+        self._last_recap_debt = 0.0
+
         # --- load feed + sanity ---------------------------------------------
         self.dataframe = self.data_feed_plugin.load_data(self.config)
         if self.dataframe is None or len(self.dataframe) < self.window_size + 2:
@@ -287,6 +311,7 @@ class GymFxEnv(gym.Env):
         self.bridge = BTBridge(initial_cash=self.initial_cash)
         self.bridge.reset(initial_cash=self.initial_cash, total_bars=self.total_bars)
         self._reset_action_diagnostics()
+        self._last_recap_debt = 0.0
 
         bt_feed = self.data_feed_plugin.build_bt_feed(self.dataframe, self.config)
         broker = self.broker_plugin.build_bt_broker(self.config)
@@ -329,10 +354,19 @@ class GymFxEnv(gym.Env):
         prev_equity = self.bridge.prev_equity
         new_equity = self.bridge.equity
 
+        # WP-C: reward always flows from ECONOMIC equity (operational
+        # equity minus recapitalization debt), so a recapitalization can
+        # never manufacture reward — in normal mode debt is always zero
+        # and this is identical to the previous behavior.
+        new_debt = float(self.bridge.recapitalization_debt)
+        economic_prev = prev_equity - self._last_recap_debt
+        economic_new = new_equity - new_debt
+        self._last_recap_debt = new_debt
+
         base_reward = float(
             self.reward_plugin.compute_reward(
-                prev_equity=prev_equity,
-                new_equity=new_equity,
+                prev_equity=economic_prev,
+                new_equity=economic_new,
                 step=self.bridge.bar_index,
                 config=self.config,
             )
@@ -340,7 +374,11 @@ class GymFxEnv(gym.Env):
         force_close_penalty = self._force_close_reward_penalty(self.bridge.bar_index)
         reward = base_reward - force_close_penalty
 
-        terminated = bool(self.bridge.terminated or new_equity <= self.min_equity)
+        terminated = bool(
+            self.bridge.terminated
+            or (self.solvency_mode == "normal_realistic"
+                and new_equity <= self.min_equity)
+        )
         truncated = False
 
         obs = self._make_observation()
@@ -349,8 +387,16 @@ class GymFxEnv(gym.Env):
             reward=reward,
             base_reward=base_reward,
             force_close_reward_penalty=force_close_penalty,
-            pnl=new_equity - prev_equity,
+            pnl=economic_new - economic_prev,
+            operational_pnl=new_equity - prev_equity,
             trade_cost=self.bridge.last_trade_cost,
+            solvency_mode=self.solvency_mode,
+            economic_equity=economic_new,
+            recapitalization_debt=new_debt,
+            recapitalization_count=int(self.bridge.recapitalization_count),
+            would_margin_call_count=len(
+                self.bridge.would_margin_call_events),
+            termination_cause=self.bridge.termination_cause,
         )
 
         if terminated:
