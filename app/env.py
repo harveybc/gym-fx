@@ -170,6 +170,13 @@ class GymFxEnv(gym.Env):
             self.continuous_action_threshold = float(
                 self.config.get("continuous_action_threshold", 0.33)
             )
+            if (
+                not np.isfinite(self.continuous_action_threshold)
+                or not 0.0 <= self.continuous_action_threshold < 1.0
+            ):
+                raise ValueError(
+                    "continuous_action_threshold must be finite in [0, 1)"
+                )
         else:
             self.action_space = spaces.Discrete(3)
             self.continuous_action_threshold = None
@@ -475,7 +482,21 @@ class GymFxEnv(gym.Env):
                 val = float(np.asarray(action).reshape(-1)[0])
             except Exception:
                 val = 0.0
-            thr = self.continuous_action_threshold or 0.33
+            # Zero is an intentional curriculum setting: every non-zero
+            # policy output becomes directional while an exact zero remains
+            # HOLD. Do not replace it with the legacy default through truthy
+            # fallback semantics.
+            thr = (
+                0.33
+                if self.continuous_action_threshold is None
+                else float(self.continuous_action_threshold)
+            )
+            if thr == 0.0:
+                if val > 0.0:
+                    return 1
+                if val < 0.0:
+                    return 2
+                return 0
             if val >= thr:
                 return 1  # long
             if val <= -thr:
