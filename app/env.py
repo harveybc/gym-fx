@@ -820,11 +820,34 @@ class GymFxEnv(gym.Env):
             float(getattr(self.bridge, "position", 0) or 0)
         )
 
+    def flatten_step(self):
+        """Close any open exposure through the SAME execution path the
+        policy uses (AUD-F1-20260806-152).
+
+        Action 3 is the simulator's explicit risk-reducing close: it
+        cancels resting orders and closes the position with the real
+        configured commission/slippage. Returns the post-close info so
+        the caller can PROVE flatness instead of asserting it.
+        """
+        if self.bridge is None:
+            raise RuntimeError("Call reset() before flatten_step().")
+        if self.bridge.terminated:
+            return self._make_info()
+        self.bridge.action_slot = 3
+        self.bridge.raw_action_slot = 0.0
+        self.bridge.obs_ready.clear()
+        self.bridge.action_ready.set()
+        self._wait_obs()
+        return self._make_info()
+
     def _make_info(self) -> Dict[str, Any]:
         assert self.bridge is not None
         info = {
             "equity": self.bridge.equity,
             "position": self.bridge.position,
+            "position_units": getattr(self.bridge, "position_units", None),
+            "open_order_count": getattr(
+                self.bridge, "open_order_count", None),
             "price": self.bridge.price,
             "bar_index": self.bridge.bar_index,
             "total_bars": self.total_bars,

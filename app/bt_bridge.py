@@ -69,6 +69,10 @@ class BTBridge:
         self.equity = float(initial_cash)
         self.prev_equity = float(initial_cash)
         self.position = 0
+        # Signed position QUANTITY and live-order count (152). `position`
+        # above stays a direction for backwards compatibility.
+        self.position_units = 0.0
+        self.open_order_count = 0
         self.price = 0.0
         self.bar_index = 0
         self.total_bars = int(total_bars)
@@ -356,6 +360,15 @@ class BTBridgeStrategy(bt.Strategy):
         self.bridge.prev_equity = self.bridge.equity
         self.bridge.equity = float(broker.getvalue())
         self.bridge.position = int(1 if pos > 0 else (-1 if pos < 0 else 0))
+        # AUD-F1-20260806-152: `position` is a DIRECTION. Downstream
+        # accounting (handover close costs) needs the signed QUANTITY
+        # and the live-order count, so publish both explicitly.
+        self.bridge.position_units = float(pos)
+        try:
+            self.bridge.open_order_count = len(
+                self.broker.get_orders_open() or [])
+        except Exception:
+            self.bridge.open_order_count = None
         self.bridge.price = float(self.data.close[0])
         self.bridge.bar_index = int(len(self.data))
         self.bridge.last_trade_cost = float(self._order_cost_accum)
