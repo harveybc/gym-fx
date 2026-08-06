@@ -820,7 +820,7 @@ class GymFxEnv(gym.Env):
             float(getattr(self.bridge, "position", 0) or 0)
         )
 
-    def flatten_step(self):
+    def flatten_step(self, max_bars: int = 5):
         """Close any open exposure through the SAME execution path the
         policy uses (AUD-F1-20260806-152).
 
@@ -833,11 +833,29 @@ class GymFxEnv(gym.Env):
             raise RuntimeError("Call reset() before flatten_step().")
         if self.bridge.terminated:
             return self._make_info()
-        self.bridge.action_slot = 3
-        self.bridge.raw_action_slot = 0.0
-        self.bridge.obs_ready.clear()
-        self.bridge.action_ready.set()
-        self._wait_obs()
+        # Bounded liquidation: submit the cancel+close, then advance
+        # until the simulator reports flat (an order submitted on bar N
+        # fills on bar N+1) or the bounded attempts are exhausted. The
+        # caller PROVES flatness from the returned facts.
+        self.bridge.force_flat_request = True
+        try:
+            for _attempt in range(int(max_bars)):
+                self.bridge.action_slot = 3
+                self.bridge.raw_action_slot = 0.0
+                self.bridge.obs_ready.clear()
+                self.bridge.action_ready.set()
+                self._wait_obs()
+                if self.bridge.terminated:
+                    break
+                flat = (
+                    abs(float(getattr(self.bridge, "position_units", 0)
+                              or 0.0)) <= 1e-12
+                    and int(getattr(self.bridge, "open_order_count", 0)
+                            or 0) == 0)
+                if flat:
+                    break
+        finally:
+            self.bridge.force_flat_request = False
         return self._make_info()
 
     def _make_info(self) -> Dict[str, Any]:

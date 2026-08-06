@@ -73,6 +73,7 @@ class BTBridge:
         # above stays a direction for backwards compatibility.
         self.position_units = 0.0
         self.open_order_count = 0
+        self.force_flat_request = False
         self.price = 0.0
         self.bar_index = 0
         self.total_bars = int(total_bars)
@@ -273,6 +274,25 @@ class BTBridgeStrategy(bt.Strategy):
     # --- helpers ---------------------------------------------------------------
     def _apply_action(self, action: int) -> None:
         self._order_cost_accum = 0.0
+
+        # AUD-F1-20260806-152: an operator/handover liquidation must
+        # take the SAME path the margin-call liquidation uses — cancel
+        # every resting order (including protective brackets) and close
+        # the position with real configured costs — and must not be
+        # intercepted by the strategy plugin.
+        if getattr(self.bridge, "force_flat_request", False):
+            for order in list(self.broker.get_orders_open() or []):
+                try:
+                    self.cancel(order)
+                except Exception:
+                    pass
+            if self.position.size != 0:
+                self.close()
+                self.bridge.execution_diagnostics[
+                    "handover_close_orders"] = (
+                    self.bridge.execution_diagnostics.get(
+                        "handover_close_orders", 0) + 1)
+            return
 
         # Delegate to strategy plugin if it implements apply_action (SL/TP bracket logic).
         if callable(self._plugin_apply):
