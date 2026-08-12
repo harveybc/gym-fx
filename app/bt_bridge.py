@@ -200,7 +200,11 @@ class BTBridgeStrategy(bt.Strategy):
 
         action = int(self.bridge.action_slot)
         self._apply_action(action)
-        self._publish_obs()
+        # Publish the state only after terminal conditions have been bound to
+        # this real transition.  Otherwise the final bar wakes the Gym thread
+        # as non-terminal and forces one synthetic action merely to discover
+        # Backtrader's subsequent ``stop()`` callback.
+        self._publish_obs(signal=False)
 
         if self._is_broke():
             if self.p.solvency_mode == "easy_chronological_continuation":
@@ -208,8 +212,15 @@ class BTBridgeStrategy(bt.Strategy):
             else:
                 self.bridge.termination_cause = "min_equity"
                 self.bridge.terminated = True
-                self.env.runstop()
-                return
+        if (not self.bridge.terminated
+                and self.bridge.bar_index >= self.bridge.total_bars):
+            self.bridge.termination_cause = "data_end"
+            self.bridge.terminated = True
+
+        self.bridge.obs_ready.set()
+        if self.bridge.terminated:
+            self.env.runstop()
+            return
 
         # wait for the next action from the env
         self.bridge.action_ready.wait()
@@ -374,7 +385,7 @@ class BTBridgeStrategy(bt.Strategy):
                     self.bridge.execution_diagnostics.get("default_orders_submitted", 0) + 1
                 )
 
-    def _publish_obs(self) -> None:
+    def _publish_obs(self, *, signal: bool = True) -> None:
         broker = self.broker
         pos = self.position.size
         self.bridge.prev_equity = self.bridge.equity
@@ -392,7 +403,8 @@ class BTBridgeStrategy(bt.Strategy):
         self.bridge.price = float(self.data.close[0])
         self.bridge.bar_index = int(len(self.data))
         self.bridge.last_trade_cost = float(self._order_cost_accum)
-        self.bridge.obs_ready.set()
+        if signal:
+            self.bridge.obs_ready.set()
 
     def _is_broke(self) -> bool:
         return self.bridge.equity <= float(self.p.min_equity)

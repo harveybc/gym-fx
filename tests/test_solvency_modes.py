@@ -93,7 +93,10 @@ def test_easy_mode_continues_after_would_be_ruin(tmp_path):
     assert final["recapitalization_debt"] > 0.0
     # Ran through to data exhaustion — later bars were reached.
     assert final["termination_cause"] == "data_end"
-    assert len(infos) > 150
+    assert final["bar_index"] == env.total_bars
+    # One policy transition per input bar.  A synthetic terminal action used
+    # only to release the Backtrader thread must never become a scored step.
+    assert len(infos) == env.total_bars
 
 
 def test_conservation_and_no_recap_gain(tmp_path):
