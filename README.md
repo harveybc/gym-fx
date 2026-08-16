@@ -3,22 +3,30 @@
 Gymnasium-compatible trading environment for FX and crypto time series. It
 wraps a [backtrader](https://www.backtrader.com/) simulation behind a standard
 `gym.Env` step/reset interface so reinforcement-learning agents can trade a
-historical price feed with realistic order execution, protected stop-loss /
-take-profit brackets, margin and solvency accounting, execution-cost models and
-session/event context. Every moving part — data feed, broker, strategy
-(order execution), preprocessor, reward and metrics — is a plugin selected by
-name from a JSON config.
+historical price feed with order execution, protected stop-loss / take-profit
+brackets, margin and solvency accounting, execution-cost models and
+session/event context. Data feed, broker, strategy (order execution),
+preprocessor, reward and metrics are each a plugin selected by name from a JSON
+config.
 
 ## Status
 
-**Lifecycle: ACTIVE-CORE.** This environment is the execution layer consumed by
-the [agent-multi](https://github.com/harveybc/agent-multi) RL training and
-optimization pipelines. It is actively maintained; its behavior is part of the
-evidence contract of ongoing experiments.
+**Active.** This environment is the execution layer consumed by the
+[agent-multi](https://github.com/harveybc/agent-multi) RL training and
+optimization pipelines, so changes to its behavior affect the results of
+experiments already in progress.
 
 > **Disclaimer:** everything in this repository operates on historical or
 > synthetic data in simulation/backtest mode. Nothing here executes real-capital
 > trades, and none of the examples or configurations are financial advice.
+
+## Run this with an AI agent
+
+Paste this into Claude Code, Cursor, Codex, GitHub Copilot or any coding agent with shell access:
+
+> Read `AGENTS.md` in this repository and follow the **Agent quickstart** section end to end: set up the environment, run the smoke test, execute the example episode, then tell me the exact file paths or URL where I can see the results and one analysis I should try first.
+
+`AGENTS.md` is the [agents.md](https://agents.md) convention, read natively by most coding agents.
 
 ## Role and non-responsibilities
 
@@ -68,7 +76,7 @@ Key mechanisms, each covered by tests:
   loss is retained, operational capital is recapitalized as debt and the
   chronological episode continues). See
   [`tests/test_solvency_modes.py`](tests/test_solvency_modes.py).
-- **Diagnostics for evidence trails** — the observation includes price and
+- **Diagnostics** — the observation includes price and
   returns windows; per-step `info` carries raw event-context and execution
   values, and the end-of-episode summary contains `action_diagnostics` and
   `execution_diagnostics` counters (entries seen, protected rejections,
@@ -165,8 +173,7 @@ prefer a dedicated environment per application when plugin names matter.
 ## Tests
 
 ```bash
-python -m pytest tests --collect-only -q   # observed: "84 tests collected in 0.77s"
-python -m pytest tests                     # full run: unverified for this README
+python -m pytest tests -q   # observed: 84 passed in ~2s (48 warnings)
 ```
 
 The suite covers protected order execution, solvency modes, continuous-action
