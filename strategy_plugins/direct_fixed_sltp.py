@@ -2,7 +2,8 @@
 direct_fixed_sltp.py
 
 Strategy plugin that places bracket orders with fixed-pip SL/TP around each
-agent-directed entry. Expected action semantics: {0=hold, 1=long, 2=short}.
+agent-directed entry. Expected action semantics:
+{0=hold, 1=long, 2=short, 3=close}.
 
 Contract hook (`apply_action`): called by BTBridgeStrategy with
     apply_action(bt_strategy, action, config)
@@ -61,9 +62,20 @@ class Plugin:
         if action == 0:
             return  # hold — existing bracket (if any) manages the position
 
+        if action == 3:
+            for order in list(getattr(bt_strategy, "_owned_orders", ())):
+                try:
+                    bt_strategy.cancel(order)
+                except Exception:
+                    continue
+            if pos_size != 0:
+                bt_strategy.close()
+            return
+
         if action == 1:  # long
             if pos_size < 0:
                 bt_strategy.close()
+                return  # close first; a later bar may enter long
             if pos_size <= 0:
                 stop = price - sl_pips * pip
                 limit = price + tp_pips * pip
@@ -71,6 +83,7 @@ class Plugin:
         elif action == 2:  # short
             if pos_size > 0:
                 bt_strategy.close()
+                return  # close first; a later bar may enter short
             if pos_size >= 0:
                 stop = price + sl_pips * pip
                 limit = price - tp_pips * pip

@@ -7,8 +7,8 @@ step/reset API agents interact with.
 
 Action space (v0): Discrete(3) where 0=hold, 1=long, 2=short.
 Observation space: Dict provided by the preprocessor plugin. This env
-forwards a bridge_state dict so the preprocessor can include the agent's
-own position/equity/unrealized-pnl/steps-remaining features.
+forwards a bridge_state dict so the preprocessor can include live-observable
+position, equity, unrealized-PnL and holding-duration features.
 """
 from __future__ import annotations
 
@@ -53,6 +53,9 @@ def build_base_observation_space(
         config.get("include_price_window", not feature_columns)
     )
     include_agent_state = bool(config.get("include_agent_state", True))
+    agent_state_contract = str(
+        config.get("agent_state_contract", "legacy_episode_v1")
+    ).strip().lower()
     observation_spaces: Dict[str, spaces.Space] = {}
 
     if feature_columns:
@@ -78,6 +81,13 @@ def build_base_observation_space(
             ),
         })
     if include_agent_state:
+        if agent_state_contract not in {
+            "legacy_episode_v1", "live_stationary_v2"
+        }:
+            raise ValueError(
+                "agent_state_contract must be legacy_episode_v1 or "
+                f"live_stationary_v2; got {agent_state_contract!r}"
+            )
         observation_spaces.update({
             "position": spaces.Box(
                 low=-1.0, high=1.0, shape=(1,), dtype=np.float32
@@ -88,7 +98,11 @@ def build_base_observation_space(
             "unrealized_pnl_norm": spaces.Box(
                 low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32
             ),
-            "steps_remaining_norm": spaces.Box(
+            (
+                "holding_duration_norm"
+                if agent_state_contract == "live_stationary_v2"
+                else "steps_remaining_norm"
+            ): spaces.Box(
                 low=0.0, high=1.0, shape=(1,), dtype=np.float32
             ),
         })
@@ -166,7 +180,19 @@ class GymFxEnv(gym.Env):
         self.action_space_mode = str(self.config.get("action_space_mode", "discrete")).lower()
         if self.action_space_mode == "continuous":
             self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
-            # Threshold for mapping continuous actions to {-1, 0, +1}
+            self.continuous_action_contract = str(
+                self.config.get(
+                    "continuous_action_contract", "legacy_directional_v1"
+                )
+            )
+            if self.continuous_action_contract not in (
+                "legacy_directional_v1", "target_exposure_hysteresis_v2"
+            ):
+                raise ValueError(
+                    "continuous_action_contract must be "
+                    "legacy_directional_v1 or target_exposure_hysteresis_v2"
+                )
+            # Entry threshold for mapping continuous actions to {-1, 0, +1}.
             self.continuous_action_threshold = float(
                 self.config.get("continuous_action_threshold", 0.33)
             )
@@ -177,9 +203,35 @@ class GymFxEnv(gym.Env):
                 raise ValueError(
                     "continuous_action_threshold must be finite in [0, 1)"
                 )
+            exit_default = min(0.05, self.continuous_action_threshold / 2.0)
+            self.continuous_exit_threshold = float(
+                self.config.get("continuous_exit_threshold", exit_default)
+            )
+            if (
+                not np.isfinite(self.continuous_exit_threshold)
+                or self.continuous_exit_threshold < 0.0
+                or (
+                    self.continuous_action_contract
+                    == "target_exposure_hysteresis_v2"
+                    and (
+                        self.continuous_exit_threshold
+                        >= self.continuous_action_threshold
+                        and not (
+                            self.continuous_action_threshold == 0.0
+                            and self.continuous_exit_threshold == 0.0
+                        )
+                    )
+                )
+            ):
+                raise ValueError(
+                    "continuous_exit_threshold must be finite, non-negative, "
+                    "and below continuous_action_threshold for the v2 contract"
+                )
         else:
             self.action_space = spaces.Discrete(3)
+            self.continuous_action_contract = None
             self.continuous_action_threshold = None
+            self.continuous_exit_threshold = None
         self.observation_space = build_base_observation_space(
             self.config,
             window_size=self.window_size,
@@ -476,7 +528,13 @@ class GymFxEnv(gym.Env):
     # Action handling
     # ----------------------------------------------------------------------
     def _coerce_action(self, action) -> int:
-        """Map the agent action (Discrete int or Box[-1,+1]) to {0,1,2}."""
+        """Map an agent action to hold/long/short/explicit-close.
+
+        ``legacy_directional_v1`` preserves the historical three-action
+        mapping. ``target_exposure_hysteresis_v2`` interprets the scalar as a
+        desired exposure: strong values target long/short, weak values close
+        existing exposure, and the band between the two thresholds holds.
+        """
         if self.action_space_mode == "continuous":
             try:
                 val = float(np.asarray(action).reshape(-1)[0])
@@ -496,17 +554,42 @@ class GymFxEnv(gym.Env):
                     return 1
                 if val < 0.0:
                     return 2
+                if (
+                    getattr(self, "continuous_action_contract", None)
+                    == "target_exposure_hysteresis_v2"
+                    and self._has_actionable_exposure()
+                ):
+                    return 3
                 return 0
             if val >= thr:
                 return 1  # long
             if val <= -thr:
                 return 2  # short
+            if (
+                getattr(self, "continuous_action_contract", None)
+                == "target_exposure_hysteresis_v2"
+                and abs(val) <= float(self.continuous_exit_threshold)
+                and self._has_actionable_exposure()
+            ):
+                return 3  # model-requested close to flat
             return 0  # hold
         try:
             a = int(action)
         except Exception:
             a = 0
         return a if a in (0, 1, 2) else 0
+
+    def _has_actionable_exposure(self) -> bool:
+        bridge = getattr(self, "bridge", None)
+        if bridge is None:
+            return False
+        position = float(
+            getattr(bridge, "position_units", None)
+            or getattr(bridge, "position", 0.0)
+            or 0.0
+        )
+        open_orders = int(getattr(bridge, "open_order_count", 0) or 0)
+        return abs(position) > 1e-12 or open_orders > 0
 
     def _event_context_features(self, step_idx: int) -> Dict[str, float]:
         """Read engineered event-context controls for the current bar.
@@ -614,9 +697,12 @@ class GymFxEnv(gym.Env):
         step_idx = max(0, min(self.bridge.bar_index, self.total_bars))
         bridge_state = {
             "position": self.bridge.position,
+            "position_units": self.bridge.position_units,
             "equity": self.bridge.equity,
             "initial_cash": self.initial_cash,
             "price": self.bridge.price,
+            "entry_price": self.bridge.entry_price,
+            "holding_bars": self.bridge.holding_bars,
             "bar_index": self.bridge.bar_index,
             "total_bars": self.total_bars,
         }
@@ -925,12 +1011,15 @@ class GymFxEnv(gym.Env):
             "hold_actions": 0,
             "long_actions": 0,
             "short_actions": 0,
+            "explicit_close_actions": 0,
             "non_hold_actions": 0,
             "continuous_deadband_actions": 0,
             "raw_abs_sum": 0.0,
             "raw_min": None,
             "raw_max": None,
             "continuous_action_threshold": self.continuous_action_threshold,
+            "continuous_exit_threshold": self.continuous_exit_threshold,
+            "continuous_action_contract": self.continuous_action_contract,
         }
 
     def _raw_action_value(self, action) -> float:
@@ -955,6 +1044,9 @@ class GymFxEnv(gym.Env):
             diag["non_hold_actions"] += 1
         elif coerced_action == 2:
             diag["short_actions"] += 1
+            diag["non_hold_actions"] += 1
+        elif coerced_action == 3:
+            diag["explicit_close_actions"] += 1
             diag["non_hold_actions"] += 1
         else:
             diag["hold_actions"] += 1

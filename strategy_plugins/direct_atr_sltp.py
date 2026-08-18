@@ -10,7 +10,8 @@ data lines (no backtrader indicator needed; avoids minperiod coupling with
 BTBridgeStrategy). Until the ATR buffer is warmed, entries are skipped so the
 environment never emits a naked order without SL/TP brackets.
 
-Action semantics: {0=hold, 1=long, 2=short} — same as direct_fixed_sltp.
+Action semantics: {0=hold, 1=long, 2=short, 3=close}. Action 3 is the
+model-visible risk-reducing close used by the v2 target-exposure contract.
 
     Config keys:
     atr_period: int   — ATR window (default 14), GA-tunable
@@ -196,7 +197,11 @@ class Plugin:
         self._low_buffer.append(low)
 
         if action == 3:
-            self._flatten(bt_strategy, inc, reason="forced_flat")
+            forced = bool(getattr(bt_strategy, "force_flat_request", False))
+            reason = "forced_flat" if forced else "model_early_close"
+            self._flatten(bt_strategy, inc, reason=reason)
+            if not forced:
+                inc("model_early_close_actions")
             return
 
         # ---- Session/weekend filter -------------------------------------
@@ -371,6 +376,8 @@ class Plugin:
             inc("risk_reducing_close_orders")
             if reason == "forced_flat":
                 inc("event_context_forced_flat_orders")
+            if reason == "model_early_close":
+                inc("model_early_close_orders")
 
     @staticmethod
     def _breakout_score(

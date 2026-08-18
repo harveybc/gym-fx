@@ -24,9 +24,12 @@ def _make_df(rows: int = 100, n_features: int = 5, seed: int = 0) -> pd.DataFram
 def _bridge_state(initial_cash: float = 10000.0, step: int = 32, total: int = 100):
     return {
         "position": 0,
+        "position_units": 0.0,
         "equity": initial_cash,
         "initial_cash": initial_cash,
         "price": 100.0,
+        "entry_price": 0.0,
+        "holding_bars": 0,
         "bar_index": step,
         "total_bars": total,
     }
@@ -89,6 +92,54 @@ def test_legacy_observation_space_keeps_prices_returns_and_state():
         "unrealized_pnl_norm",
         "steps_remaining_norm",
     }
+
+
+def test_live_stationary_agent_state_uses_entry_price_and_holding_duration():
+    df = _make_df()
+    cfg = {
+        "window_size": 32,
+        "feature_columns": ["feat_0", "feat_1"],
+        "feature_scaling": "rolling_zscore",
+        "include_price_window": False,
+        "include_agent_state": True,
+        "agent_state_contract": "live_stationary_v2",
+        "holding_duration_scale_bars": 20,
+    }
+    bridge = _bridge_state(initial_cash=10_000.0, step=40)
+    bridge.update({
+        "position": 1,
+        "position_units": 2.0,
+        "price": 105.0,
+        "entry_price": 100.0,
+        "holding_bars": 5,
+        # This must not affect a stationary live observation.
+        "total_bars": 999_999,
+    })
+
+    obs = Plugin(cfg).make_observation(
+        data=df, step=40, bridge_state=bridge, config=cfg
+    )
+
+    assert "steps_remaining_norm" not in obs
+    assert obs["unrealized_pnl_norm"][0] == pytest.approx(0.001)
+    assert obs["holding_duration_norm"][0] == pytest.approx(0.25)
+    space = build_base_observation_space(cfg, window_size=32)
+    assert "holding_duration_norm" in space.spaces
+    assert "steps_remaining_norm" not in space.spaces
+
+
+def test_live_stationary_agent_state_rejects_invalid_duration_scale():
+    df = _make_df()
+    cfg = {
+        "feature_columns": ["feat_0"],
+        "include_price_window": False,
+        "agent_state_contract": "live_stationary_v2",
+        "holding_duration_scale_bars": 0,
+    }
+    with pytest.raises(ValueError, match="holding_duration_scale_bars"):
+        Plugin(cfg).make_observation(
+            data=df, step=40, bridge_state=_bridge_state(step=40), config=cfg
+        )
 
 
 def test_binary_columns_passthrough():

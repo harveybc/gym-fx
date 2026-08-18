@@ -43,6 +43,10 @@ class BTBridge:
         self.equity: float = float(initial_cash)
         self.prev_equity: float = float(initial_cash)
         self.position: int = 0  # -1/0/1
+        self.position_units: float = 0.0
+        self.entry_price: float = 0.0
+        self.holding_bars: int = 0
+        self.position_open_bar_index: Optional[int] = None
         self.price: float = 0.0
         self.bar_index: int = 0
         self.total_bars: int = 0
@@ -72,6 +76,9 @@ class BTBridge:
         # Signed position QUANTITY and live-order count (152). `position`
         # above stays a direction for backwards compatibility.
         self.position_units = 0.0
+        self.entry_price = 0.0
+        self.holding_bars = 0
+        self.position_open_bar_index = None
         self.open_order_count = 0
         self.force_flat_request = False
         self.price = 0.0
@@ -388,20 +395,37 @@ class BTBridgeStrategy(bt.Strategy):
     def _publish_obs(self, *, signal: bool = True) -> None:
         broker = self.broker
         pos = self.position.size
+        bar_index = int(len(self.data))
+        previous_direction = int(self.bridge.position)
+        current_direction = int(1 if pos > 0 else (-1 if pos < 0 else 0))
         self.bridge.prev_equity = self.bridge.equity
         self.bridge.equity = float(broker.getvalue())
-        self.bridge.position = int(1 if pos > 0 else (-1 if pos < 0 else 0))
+        self.bridge.position = current_direction
         # AUD-F1-20260806-152: `position` is a DIRECTION. Downstream
         # accounting (handover close costs) needs the signed QUANTITY
         # and the live-order count, so publish both explicitly.
         self.bridge.position_units = float(pos)
+        if current_direction == 0:
+            self.bridge.entry_price = 0.0
+            self.bridge.holding_bars = 0
+            self.bridge.position_open_bar_index = None
+        else:
+            if (
+                previous_direction != current_direction
+                or self.bridge.position_open_bar_index is None
+            ):
+                self.bridge.position_open_bar_index = bar_index
+            self.bridge.entry_price = float(self.position.price)
+            self.bridge.holding_bars = max(
+                0, bar_index - int(self.bridge.position_open_bar_index)
+            )
         try:
             self.bridge.open_order_count = len(
                 self.broker.get_orders_open() or [])
         except Exception:
             self.bridge.open_order_count = None
         self.bridge.price = float(self.data.close[0])
-        self.bridge.bar_index = int(len(self.data))
+        self.bridge.bar_index = bar_index
         self.bridge.last_trade_cost = float(self._order_cost_accum)
         if signal:
             self.bridge.obs_ready.set()

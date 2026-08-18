@@ -38,6 +38,8 @@ class Plugin:
         "feature_scaling_window": 256,
         "include_price_window": True,
         "include_agent_state": True,
+        "agent_state_contract": "legacy_episode_v1",
+        "holding_duration_scale_bars": 42,
         "feature_clip": 10.0,
     }
 
@@ -48,6 +50,7 @@ class Plugin:
         "feature_scaling_window",
         "include_price_window",
         "include_agent_state",
+        "agent_state_contract",
     ]
 
     def __init__(self, config: Dict[str, Any] | None = None):
@@ -234,21 +237,60 @@ class Plugin:
             bar_index = int(bridge_state.get("bar_index", 0))
             total_bars = int(bridge_state.get("total_bars", 1) or 1)
 
-            pos_size = float(config.get("position_size", 1.0))
-            ref_price = (
-                float(obs["prices"][-1])
-                if include_price and obs["prices"].size
-                else price
-            )
-            unrealized_pnl = position * (price - ref_price) * pos_size
+            state_contract = str(config.get(
+                "agent_state_contract",
+                self.params["agent_state_contract"],
+            )).strip().lower()
+            if state_contract not in {
+                "legacy_episode_v1", "live_stationary_v2"
+            }:
+                raise ValueError(
+                    "agent_state_contract must be legacy_episode_v1 or "
+                    f"live_stationary_v2; got {state_contract!r}"
+                )
+
+            if state_contract == "live_stationary_v2":
+                position_units = float(bridge_state.get(
+                    "position_units",
+                    position * float(config.get("position_size", 1.0)),
+                ) or 0.0)
+                entry_price = float(bridge_state.get("entry_price", 0.0) or 0.0)
+                unrealized_pnl = (
+                    position_units * (price - entry_price)
+                    if position and entry_price > 0.0
+                    else 0.0
+                )
+            else:
+                pos_size = float(config.get("position_size", 1.0))
+                ref_price = (
+                    float(obs["prices"][-1])
+                    if include_price and obs["prices"].size
+                    else price
+                )
+                unrealized_pnl = position * (price - ref_price) * pos_size
 
             equity_norm = (equity - initial_cash) / initial_cash if initial_cash else 0.0
             pnl_norm = unrealized_pnl / initial_cash if initial_cash else 0.0
-            remaining = max(0, total_bars - bar_index) / max(1, total_bars)
 
             obs["position"] = np.array([float(position)], dtype=np.float32)
             obs["equity_norm"] = np.array([float(equity_norm)], dtype=np.float32)
             obs["unrealized_pnl_norm"] = np.array([float(pnl_norm)], dtype=np.float32)
-            obs["steps_remaining_norm"] = np.array([float(remaining)], dtype=np.float32)
+            if state_contract == "live_stationary_v2":
+                scale = int(config.get(
+                    "holding_duration_scale_bars",
+                    self.params["holding_duration_scale_bars"],
+                ))
+                if scale < 1:
+                    raise ValueError("holding_duration_scale_bars must be >= 1")
+                holding_bars = max(0, int(bridge_state.get("holding_bars", 0) or 0))
+                duration = min(1.0, holding_bars / scale)
+                obs["holding_duration_norm"] = np.array(
+                    [float(duration)], dtype=np.float32
+                )
+            else:
+                remaining = max(0, total_bars - bar_index) / max(1, total_bars)
+                obs["steps_remaining_norm"] = np.array(
+                    [float(remaining)], dtype=np.float32
+                )
 
         return obs
