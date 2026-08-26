@@ -278,18 +278,22 @@ def test_post_entry_bars_fill_at_level_not_open(tmp_path):
 
 
 def test_reversal_while_children_pending_no_stale_fill(tmp_path):
-    # reverse on the bar right after entry; the old children must NEVER
-    # fill against the new short position
+    # a flip on the entry-FILL bar DEFERS one bar (declared; Submitted
+    # children cannot be canceled); a persisting flip then reverses and
+    # the old children must NEVER fill against the new short position
     closes = [100.0] * 8 + [96.0] + [96.0] * 8
     lows = [c * 0.9995 for c in closes]
     lows[8] = 94.0     # would touch the OLD long SL if it survived
     env = _env(tmp_path, closes, lows=lows)
-    _infos, events = _drive(env, [1.0, -1.0] + [0.0] * 12)
+    _infos, events = _drive(env, [1.0, -1.0, -1.0] + [0.0] * 12)
     reasons = [e["reason"] for e in events]
     assert "reversal_close" in reasons
     assert env.bridge.execution_diagnostics.get(
+        "reversal_deferred_entry_bar", 0) >= 1
+    assert env.bridge.execution_diagnostics.get(
         "envelope_residual_sweeps", 0) == 0
     assert not hasattr(env.bridge, "envelope_run_failure")
+    assert env.bridge.position_units < 0   # clean short, no doubling
 
 
 def test_zero_unprotected_bars_and_broker_refs(tmp_path):
@@ -448,3 +452,22 @@ def test_deterministic_replay_equality(tmp_path):
     # ref-stripped event stream must replay identically
     assert eq1 == eq2
     assert strip(ev1) == strip(ev2)
+
+
+def test_reversal_on_entry_fill_bar_defers_one_bar(tmp_path):
+    # 329-family regression (bar-2707 trace): flipping on the very bar
+    # the entry filled must DEFER — Submitted children cannot be
+    # canceled and a live old stop would double-fire.
+    closes = [100.0] * 8 + [96.0] + [96.0] * 8
+    lows = [c * 0.9995 for c in closes]
+    lows[8] = 94.0        # old long SL level touched later
+    env = _env(tmp_path, closes, lows=lows)
+    # decision long at step0 (fills bar2); flip short ON the fill bar
+    _infos, events = _drive(env, [1.0, -1.0, -1.0] + [0.0] * 12)
+    assert env.bridge.execution_diagnostics.get(
+        "reversal_deferred_entry_bar", 0) >= 1
+    assert env.bridge.execution_diagnostics.get(
+        "envelope_residual_sweeps", 0) == 0
+    assert not hasattr(env.bridge, "envelope_run_failure")
+    # after the deferral the reversal executes and the book is SHORT
+    assert env.bridge.position_units < 0

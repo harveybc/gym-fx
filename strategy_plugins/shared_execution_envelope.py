@@ -58,7 +58,8 @@ class Plugin:
         self._children = []          # live protective orders
         self._entry_anchor = None    # fill price of the anchoring entry
         self._entry_bar_check = None  # (bar_index, dir, sl, tp, units)
-        self._parent = None           # in-flight parent order id
+        self._parent = None           # in-flight parent order ref
+        self._entry_fill_bar = None   # bar of the last parent fill
 
     def set_params(self, **kwargs) -> None:
         """Bundle-loader contract: absorb known envelope keys; the
@@ -206,6 +207,7 @@ class Plugin:
         self._entry_bar_check = None
         self._parent = None
         self._relevel_todo = None
+        self._entry_fill_bar = None
 
     def apply_action(self, s, action: int, config: Dict[str, Any]) -> None:
         p = self._resolve(config)
@@ -306,6 +308,17 @@ class Plugin:
             return
 
         if pos != 0 and (pos > 0) != (target_dir > 0):
+            if self._entry_fill_bar == bar:
+                # DECLARED: a flip signal on the entry-FILL bar defers
+                # one bar — the freshly submitted children are still
+                # broker-Submitted and a cancel would silently no-op
+                # (third backtrader constraint, proven by the bar-2707
+                # double-stop trace), leaving a live stop against the
+                # reversed position.
+                diag = s.bridge.execution_diagnostics
+                diag["reversal_deferred_entry_bar"] = diag.get(
+                    "reversal_deferred_entry_bar", 0) + 1
+                return
             # reversal: cancel old children and close (apply context —
             # cancels are honored here), THEN the fresh atomic bracket.
             self._cancel_children(s)
@@ -370,6 +383,7 @@ class Plugin:
         self._pending_entry = None
         self._parent = None
         self._entry_anchor = exec_price
+        self._entry_fill_bar = bar
         # N1: re-anchor geometry to the ACTUAL parent fill; the resting
         # children (decision-anchored) are re-leveled on the next apply
         # if the fill moved the anchor. For the entry bar itself the
