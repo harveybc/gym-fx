@@ -262,20 +262,15 @@ class Plugin:
                 s.sell(size=units)
             return
 
-        # same direction: rebalance units toward the new target; the
-        # ORIGINAL envelope levels remain anchored (declared) and the
-        # protective children are RESIZED to the new position so an
-        # envelope exit always closes exactly what is held (the first
-        # v2 run showed stale child sizes over-closing into dust).
-        target_signed = units * (1.0 if pos > 0 else -1.0)
-        delta = target_signed - pos
-        if abs(delta) > float(p["min_units"]):
-            reb = s.buy(size=delta) if delta > 0 else s.sell(size=-delta)
-            # children are resized ON THE FILL of this order (by then
-            # the old children are broker-Accepted and cancellable; a
-            # same-cycle cancel of Submitted children silently no-ops —
-            # proven by the double-stop dust bug in the first v2 run)
-            self._pending_rebalance[id(reb)] = abs(target_signed)
+        # same direction: ENTRY-ANCHORED sizing (declared). The
+        # position was sized from equity and price AT ENTRY and is HELD
+        # unchanged; re-sizing happens only at the next entry (after an
+        # envelope fire, a policy close or a reversal). Equity-tracking
+        # per-bar rebalancing is deliberately absent: it re-sizes every
+        # bar (equity moves every bar), keeps the protective children
+        # perpetually one bar stale and manufactures churn — the second
+        # v2 run measured hundreds of residual sweeps under it.
+        return
 
     def notify_order(self, s, order, config: Dict[str, Any]) -> None:
         import backtrader as bt

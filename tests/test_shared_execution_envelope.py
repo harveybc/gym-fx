@@ -203,14 +203,17 @@ def test_rejections_are_counted_not_silent(tmp_path):
             "envelope_order_rejections", 0) >= 1
 
 
-def test_rebalance_resizes_children_no_dust(tmp_path):
-    # BUG REPRO: stale child sizes over-closed into dust positions
+def test_same_direction_target_changes_hold_entry_anchored(tmp_path):
+    # DECLARED: entry-anchored sizing — same-direction fraction changes
+    # do NOT re-size the held position (no per-bar churn, no stale
+    # children); after the envelope fires the book is exactly FLAT.
     closes = [100.0] * 10 + [96.0] + [96.0] * 8
     lows = [c * 0.9995 for c in closes]
-    lows[10] = 94.0                       # SL 95 touched after rebalance
+    lows[10] = 94.0
     env = _env(tmp_path, closes, lows=lows)
-    # enter at 0.8, rebalance down to 0.5, then SL fires
     _infos, events = _drive(env, [0.8, 0.5, 0.5] + [0.0] * 12)
+    # units stay at the ENTRY size (0.8 of equity) until the SL fires
     assert any(e["reason"] == "envelope_close_sl" for e in events)
-    # after the envelope close the book is FLAT, not a dust reversal
     assert abs(env.bridge.position_units) < 1e-6
+    assert env.bridge.execution_diagnostics.get(
+        "envelope_residual_sweeps", 0) == 0
