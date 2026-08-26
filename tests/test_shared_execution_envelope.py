@@ -157,7 +157,8 @@ def test_final_bar_open_position_is_data_end_case(tmp_path):
     infos, events = _drive(env, [1.0] + [0.0] * 20)
     # run ended by data, position still open, no envelope/policy close:
     assert infos[-1]["termination_cause"] == "data_end"
-    assert not events
+    # entry_fill audit events are expected; no CLOSE event of any kind:
+    assert all(e["reason"] == "entry_fill" for e in events)
     assert env.bridge.position != 0   # driver must record data_end_liquidation
 
 
