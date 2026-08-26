@@ -131,6 +131,11 @@ class BTBridgeStrategy(bt.Strategy):
     params = (
         ("bridge", None),
         ("position_size", 1.0),
+        # Screen B / doc 40 B3 (2026-08-25): when true, the ORDER SIZE is
+        # position_size * min(1, |raw_action|) and same-direction targets
+        # rebalance to the new fraction. Default False preserves the
+        # historical fixed-size path bit-for-bit.
+        ("fractional_position_sizing", False),
         ("min_equity", 100.0),
         ("strategy_plugin", None),
         ("config", None),
@@ -350,6 +355,10 @@ class BTBridgeStrategy(bt.Strategy):
 
         current_size = self.position.size  # backtrader position size
         size = float(self.p.position_size)
+        fractional = bool(self.p.fractional_position_sizing)
+        if fractional:
+            frac = min(1.0, abs(float(self.bridge.raw_action_slot)))
+            size = float(self.p.position_size) * frac
 
         target_dir = {0: None, 1: +1, 2: -1}.get(action)
         if target_dir is None:
@@ -367,6 +376,27 @@ class BTBridgeStrategy(bt.Strategy):
             self.bridge.execution_diagnostics.get("entry_actions_seen", 0) + 1
         )
 
+        if fractional and size <= 0.0:
+            # fraction 0 with a directional signal = target flat
+            if current_size != 0:
+                self.close()
+                self.bridge.execution_diagnostics["fractional_flat_orders"] = (
+                    self.bridge.execution_diagnostics.get(
+                        "fractional_flat_orders", 0) + 1)
+            return
+        if fractional and current_size != 0 and (
+                (target_dir == +1) == (current_size > 0)):
+            # same direction: rebalance to the new target fraction
+            delta = size - abs(current_size)
+            if abs(delta) > 1e-12:
+                if (delta > 0) == (current_size > 0):
+                    self.buy(size=abs(delta)) if current_size > 0 else                         self.sell(size=abs(delta))
+                else:
+                    self.sell(size=abs(delta)) if current_size > 0 else                         self.buy(size=abs(delta))
+                self.bridge.execution_diagnostics["fractional_rebalance_orders"] = (
+                    self.bridge.execution_diagnostics.get(
+                        "fractional_rebalance_orders", 0) + 1)
+            return
         if target_dir == +1:
             if current_size < 0:
                 self.close()
@@ -458,6 +488,8 @@ def build_cerebro(
         config=config or {},
         solvency_mode=(config or {}).get("solvency_mode",
                                          "normal_realistic"),
+        fractional_position_sizing=bool(
+            (config or {}).get("fractional_position_sizing", False)),
         recap_target_equity=(config or {}).get("recap_target_equity"),
     )
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
