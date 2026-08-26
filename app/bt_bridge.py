@@ -386,13 +386,16 @@ class BTBridgeStrategy(bt.Strategy):
             return
         if fractional and current_size != 0 and (
                 (target_dir == +1) == (current_size > 0)):
-            # same direction: rebalance to the new target fraction
-            delta = size - abs(current_size)
-            if abs(delta) > 1e-12:
-                if (delta > 0) == (current_size > 0):
-                    self.buy(size=abs(delta)) if current_size > 0 else                         self.sell(size=abs(delta))
+            # same direction: rebalance to the new SIGNED target size.
+            # (The first Screen B run exposed that branch-on-|size|
+            # logic inverted the orders for SHORT positions.)
+            target_signed = size * (1.0 if current_size > 0 else -1.0)
+            delta_signed = target_signed - current_size
+            if abs(delta_signed) > 1e-12:
+                if delta_signed > 0:
+                    self.buy(size=delta_signed)
                 else:
-                    self.sell(size=abs(delta)) if current_size > 0 else                         self.buy(size=abs(delta))
+                    self.sell(size=-delta_signed)
                 self.bridge.execution_diagnostics["fractional_rebalance_orders"] = (
                     self.bridge.execution_diagnostics.get(
                         "fractional_rebalance_orders", 0) + 1)
