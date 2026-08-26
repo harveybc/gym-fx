@@ -179,3 +179,38 @@ def test_leverage_cap_binds(tmp_path):
     _drive(env, [5.0] + [0.0] * 6)     # |raw| far above 1
     units = abs(env.bridge.position_units)
     assert units <= 10000.0 / 100.0 * 1.0001   # capped at equity/price
+
+
+def test_full_exposure_entry_fills_with_commission(tmp_path):
+    # BUG REPRO (first v2 run): raw=1.0 with commission due was
+    # margin-rejected silently -> zero-trade arm
+    closes = [100.0] * 20
+    env = _env(tmp_path, closes, cash=10000.0, commission=0.001)
+    _drive(env, [1.0] + [0.0] * 6)
+    assert abs(env.bridge.position_units) > 90.0  # ~99.8 units filled
+    assert env.bridge.execution_diagnostics.get(
+        "envelope_order_rejections", 0) == 0
+
+
+def test_rejections_are_counted_not_silent(tmp_path):
+    closes = [100.0] * 20
+    env = _env(tmp_path, closes, cash=10000.0, commission=0.001)
+    # force a rejection: headroom zero via envelope override
+    env.config["execution_envelope"]["entry_cost_headroom"] = 0.0
+    _drive(env, [1.0] + [0.0] * 6)
+    if abs(env.bridge.position_units) < 1e-9:
+        assert env.bridge.execution_diagnostics.get(
+            "envelope_order_rejections", 0) >= 1
+
+
+def test_rebalance_resizes_children_no_dust(tmp_path):
+    # BUG REPRO: stale child sizes over-closed into dust positions
+    closes = [100.0] * 10 + [96.0] + [96.0] * 8
+    lows = [c * 0.9995 for c in closes]
+    lows[10] = 94.0                       # SL 95 touched after rebalance
+    env = _env(tmp_path, closes, lows=lows)
+    # enter at 0.8, rebalance down to 0.5, then SL fires
+    _infos, events = _drive(env, [0.8, 0.5, 0.5] + [0.0] * 12)
+    assert any(e["reason"] == "envelope_close_sl" for e in events)
+    # after the envelope close the book is FLAT, not a dust reversal
+    assert abs(env.bridge.position_units) < 1e-6
