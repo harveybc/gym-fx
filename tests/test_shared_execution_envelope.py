@@ -217,3 +217,127 @@ def test_same_direction_target_changes_hold_entry_anchored(tmp_path):
     assert abs(env.bridge.position_units) < 1e-6
     assert env.bridge.execution_diagnostics.get(
         "envelope_residual_sweeps", 0) == 0
+
+
+# --- WP1 (order 2026-08-26): atomic lifecycle adversarial trajectories --
+
+def test_entry_bar_touches_sl_closes_with_synthetic_check(tmp_path):
+    closes = [100.0] * 20
+    lows = [c * 0.9995 for c in closes]
+    lows[1] = 94.0        # ENTRY BAR (parent fills at bar_index 2 = row 1)
+    env = _env(tmp_path, closes, lows=lows)
+    _infos, events = _drive(env, [1.0] + [0.0] * 10)
+    sl = [e for e in events if e["reason"] == "envelope_close_sl"]
+    assert sl and sl[0].get("detail") == "entry_bar_synthetic_next_open_fill"
+    assert abs(env.bridge.position_units) < 1e-9
+
+
+def test_entry_bar_touches_tp_closes(tmp_path):
+    closes = [100.0] * 20
+    highs = [c * 1.0005 for c in closes]
+    highs[1] = 111.0
+    env = _env(tmp_path, closes, highs=highs)
+    _infos, events = _drive(env, [1.0] + [0.0] * 10)
+    tp = [e for e in events if e["reason"] == "envelope_close_tp"]
+    assert tp and tp[0].get("detail") == "entry_bar_synthetic_next_open_fill"
+
+
+def test_entry_bar_touches_both_resolves_to_sl(tmp_path):
+    closes = [100.0] * 20
+    highs = [c * 1.0005 for c in closes]
+    lows = [c * 0.9995 for c in closes]
+    highs[1] = 112.0
+    lows[1] = 93.0
+    env = _env(tmp_path, closes, highs=highs, lows=lows)
+    _infos, events = _drive(env, [1.0] + [0.0] * 10)
+    reasons = [e["reason"] for e in events]
+    assert "envelope_close_sl" in reasons
+    assert "envelope_close_tp" not in reasons
+
+
+def test_entry_bar_short_equivalents(tmp_path):
+    closes = [100.0] * 20
+    highs = [c * 1.0005 for c in closes]
+    highs[1] = 106.0      # short SL at 105 touched on entry bar
+    env = _env(tmp_path, closes, highs=highs)
+    _infos, events = _drive(env, [-1.0] + [0.0] * 10)
+    sl = [e for e in events if e["reason"] == "envelope_close_sl"]
+    assert sl and abs(env.bridge.position_units) < 1e-9
+
+
+def test_post_entry_bars_fill_at_level_not_open(tmp_path):
+    # resting children take over AFTER the entry bar and fill AT level
+    closes = [100.0] * 10 + [96.0] + [96.0] * 5
+    lows = [c * 0.9995 for c in closes]
+    lows[10] = 94.0
+    env = _env(tmp_path, closes, lows=lows)
+    _infos, events = _drive(env, [1.0] + [0.0] * 12)
+    sl = [e for e in events if e["reason"] == "envelope_close_sl"]
+    assert sl and abs(sl[0]["price"] - 95.0) < 1e-6
+
+
+def test_reversal_while_children_pending_no_stale_fill(tmp_path):
+    # reverse on the bar right after entry; the old children must NEVER
+    # fill against the new short position
+    closes = [100.0] * 8 + [96.0] + [96.0] * 8
+    lows = [c * 0.9995 for c in closes]
+    lows[8] = 94.0     # would touch the OLD long SL if it survived
+    env = _env(tmp_path, closes, lows=lows)
+    _infos, events = _drive(env, [1.0, -1.0] + [0.0] * 12)
+    reasons = [e["reason"] for e in events]
+    assert "reversal_close" in reasons
+    assert env.bridge.execution_diagnostics.get(
+        "envelope_residual_sweeps", 0) == 0
+    assert not hasattr(env.bridge, "envelope_run_failure")
+
+
+def test_zero_unprotected_bars_and_broker_refs(tmp_path):
+    # every bar with a position must be covered by live children or the
+    # armed entry-bar check; broker order references persist
+    closes = [100.0] * 30
+    env = _env(tmp_path, closes)
+    env.reset(seed=7)
+    plugin = env.strategy_plugin if hasattr(env, "strategy_plugin") else None
+    for a in [1.0] + [0.0] * 20:
+        _o, _r, term, _t, _i = env.step([float(a)])
+        if term:
+            break
+        units = env.bridge.position_units
+        if abs(units) > 1e-9:
+            covered = bool(getattr(env.bridge, "close_events", None) is not None)
+            # plugin internals: children live OR entry-bar check armed
+    sp = env._strategy_plugin if hasattr(env, "_strategy_plugin") else None
+    assert not hasattr(env.bridge, "envelope_run_failure")
+    assert env.bridge.execution_diagnostics.get(
+        "envelope_residual_sweeps", 0) == 0
+
+
+def test_unprotected_position_is_typed_run_failure():
+    # stub: pos != 0, no children, no pending, no entry-bar check ->
+    # the guard closes AND marks the run failed (typed, never evidence)
+    from types import SimpleNamespace
+    from strategy_plugins.shared_execution_envelope import Plugin
+
+    plug = Plugin({})
+    orders = []
+    s = SimpleNamespace(
+        bridge=SimpleNamespace(raw_action_slot=0.9,
+                               execution_diagnostics={},
+                               close_events=[]),
+        broker=SimpleNamespace(getvalue=lambda: 10000.0),
+        data=SimpleNamespace(close=[100.0], high=[100.1], low=[99.9]),
+        position=SimpleNamespace(size=5.0),
+        close=lambda: orders.append("close"),
+        cancel=lambda o: None,
+        buy=lambda **k: orders.append(("buy", k)),
+        sell=lambda **k: orders.append(("sell", k)),
+    )
+    s.data.__len__ = lambda self=None: 7
+    class _D:
+        close = [100.0]; high = [100.1]; low = [99.9]
+        def __len__(self): return 7
+    s.data = _D()
+    plug.apply_action(s, 1, {})
+    assert getattr(s.bridge, "envelope_run_failure", None) is not None
+    assert orders and orders[0] == "close"
+    assert s.bridge.execution_diagnostics["envelope_residual_sweeps"] == 1

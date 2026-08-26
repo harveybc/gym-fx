@@ -57,9 +57,8 @@ class Plugin:
         self._pending_entry = None   # set at entry submit, consumed at fill
         self._children = []          # live protective orders
         self._entry_anchor = None    # fill price of the anchoring entry
-        self._pending_rebalance = {}  # id(order) -> target units
-        self._arm_todo = None        # (anchor_price, units, dir, params)
-        self._resize_todo = None     # target units for child resize
+        self._entry_bar_check = None  # (bar_index, dir, sl, tp, units)
+        self._parent = None           # in-flight parent order id
 
     def set_params(self, **kwargs) -> None:
         """Bundle-loader contract: absorb known envelope keys; the
@@ -84,6 +83,36 @@ class Plugin:
         if not hasattr(s.bridge, "close_events"):
             s.bridge.close_events = []
         return s.bridge.close_events
+
+    def _submit_bracket(self, s, p, direction: int, units: float,
+                        decision_price: float) -> None:
+        """ONE logical entry lifecycle: parent (transmit=False), STOP
+        child first, LIMIT child last (transmit=True), children active
+        from the parent fill. Geometry anchors at the DECISION price
+        (the parent fills at the next open; the entry-bar synthetic
+        check covers that bar). Stop submitted first = collision rule."""
+        import backtrader as bt
+        sl_d, tp_d = self._distances(s, p, decision_price)
+        if direction > 0:
+            sl = decision_price - sl_d
+            tp = decision_price + tp_d
+            parent = s.buy(size=units, transmit=False)
+            stop = s.sell(exectype=bt.Order.Stop, price=sl, size=units,
+                          parent=parent, transmit=False)
+            limit = s.sell(exectype=bt.Order.Limit, price=tp,
+                           size=units, parent=parent, transmit=True)
+        else:
+            sl = decision_price + sl_d
+            tp = decision_price - tp_d
+            parent = s.sell(size=units, transmit=False)
+            stop = s.buy(exectype=bt.Order.Stop, price=sl, size=units,
+                         parent=parent, transmit=False)
+            limit = s.buy(exectype=bt.Order.Limit, price=tp,
+                          size=units, parent=parent, transmit=True)
+        self._children = [stop, limit]
+        self._parent = int(parent.ref)
+        self._pending_entry = {"dir": direction, "units": units,
+                               "params": p, "sl": sl, "tp": tp}
 
     def _submit_children(self, s, p, anchor: float, units: float,
                          direction: int) -> None:
@@ -158,9 +187,8 @@ class Plugin:
         self._pending_entry = None
         self._children = []
         self._entry_anchor = None
-        self._pending_rebalance = {}
-        self._arm_todo = None
-        self._resize_todo = None
+        self._entry_bar_check = None
+        self._parent = None
 
     def apply_action(self, s, action: int, config: Dict[str, Any]) -> None:
         p = self._resolve(config)
@@ -170,27 +198,39 @@ class Plugin:
         pos = float(s.position.size)
         bar = int(len(s.data))
 
-        # Deferred order management (backtrader silently ignores
-        # cancels — and in some flows submissions — issued from inside
-        # notify_order; PROVEN by two micro-repros 2026-08-25). All
-        # order mutations therefore happen HERE. Declared consequence:
-        # protection arms at the bar AFTER the entry fill, and a resize
-        # takes effect one bar after the rebalance fill.
-        if self._arm_todo is not None:
-            anchor, a_units, a_dir, a_params = self._arm_todo
-            self._arm_todo = None
-            self._entry_anchor = anchor
-            self._submit_children(s, a_params, anchor, a_units, a_dir)
-        if self._resize_todo is not None:
-            new_units = self._resize_todo
-            self._resize_todo = None
-            self._resize_children(s, new_units)
+        # WP1 (finding 324): protection is ATOMIC — parent and both
+        # children are one bracket, children active from the parent
+        # fill. Backtrader structurally cannot evaluate bracket children
+        # against the ENTRY bar itself (proven by micro-repros incl.
+        # cheat-on-open), so the entry bar is covered SYNTHETICALLY
+        # here: its OHL is checked against the levels; a touch closes at
+        # the NEXT bar's open (conservative fill, declared) under the
+        # stop_first_pessimistic collision rule. Later bars fill AT the
+        # level via the resting children. Zero unprotected bars.
+        if self._entry_bar_check is not None and pos != 0:
+            eb_bar, eb_dir, eb_sl, eb_tp, _u = self._entry_bar_check
+            self._entry_bar_check = None
+            high = float(s.data.high[0])
+            low = float(s.data.low[0])
+            hit_sl = low <= eb_sl if eb_dir > 0 else high >= eb_sl
+            hit_tp = high >= eb_tp if eb_dir > 0 else low <= eb_tp
+            if hit_sl or hit_tp:
+                reason = ("envelope_close_sl" if hit_sl
+                          else "envelope_close_tp")  # sl wins collisions
+                self._cancel_children(s)
+                s.close()
+                self._events(s).append({
+                    "bar_index": bar, "reason": reason, "price": price,
+                    "detail": "entry_bar_synthetic_next_open_fill"})
+                self._entry_anchor = None
+                return
         if (pos != 0 and not self._children
                 and self._pending_entry is None
-                and self._arm_todo is None):
-            # residual sweep: a stale-sized envelope fire overshot into
-            # an unprotected remainder — close it, count it, NEVER let
-            # it run naked (guard, not a normal path)
+                and self._entry_bar_check is None):
+            # TYPED RUN FAILURE (order WP1): an unprotected open
+            # position is never accepted evidence.
+            s.bridge.envelope_run_failure = (
+                f"unprotected_position_bar_{bar}")
             s.close()
             self._events(s).append({"bar_index": bar,
                                     "reason": "envelope_residual_sweep",
@@ -230,36 +270,25 @@ class Plugin:
             return
 
         if pos != 0 and (pos > 0) != (target_dir > 0):
-            # reversal: close now, re-enter with a fresh envelope
+            # reversal: cancel old children and close (apply context —
+            # cancels are honored here), THEN the fresh atomic bracket.
             self._cancel_children(s)
+            self._entry_bar_check = None
             s.close()
             self._events(s).append({"bar_index": bar,
                                     "reason": "reversal_close",
                                     "price": price})
             self._entry_anchor = None
-            self._pending_entry = {"dir": target_dir, "units": units,
-                                   "params": p}
-            if target_dir > 0:
-                s.buy(size=units)
-            else:
-                s.sell(size=units)
+            self._submit_bracket(s, p, target_dir, units, price)
             return
 
         if pos == 0:
             if self._pending_entry is not None:
-                # an entry is already in flight (fills at the NEXT bar);
-                # DECLARED rule: same-direction targets while pending are
-                # dropped — the next post-fill bar's target applies.
                 if self._pending_entry["dir"] == target_dir:
-                    return
-                # opposite-direction flip while pending: replace intent
+                    return  # declared: same-direction while pending drops
+                self._cancel_children(s)
                 self._pending_entry = None
-            self._pending_entry = {"dir": target_dir, "units": units,
-                                   "params": p}
-            if target_dir > 0:
-                s.buy(size=units)
-            else:
-                s.sell(size=units)
+            self._submit_bracket(s, p, target_dir, units, price)
             return
 
         # same direction: ENTRY-ANCHORED sizing (declared). The
@@ -287,27 +316,29 @@ class Plugin:
             return
         exec_price = float(order.executed.price)
         bar = int(len(s.data))
-        if id(order) in self._pending_rebalance:
-            # defer to the next apply_action (order mutations are
-            # ignored inside notify_order)
-            self._resize_todo = self._pending_rebalance.pop(id(order))
-            return
+
         # protective child filled -> envelope close
-        if order in self._children:
+        if int(order.ref) in {int(c.ref) for c in self._children}:
             reason = ("envelope_close_sl"
                       if order.exectype == bt.Order.Stop
                       else "envelope_close_tp")
             self._events(s).append({"bar_index": bar, "reason": reason,
-                                    "price": exec_price})
+                                    "price": exec_price,
+                                    "order_ref": int(order.ref)})
             self._children = []
             self._entry_anchor = None
             return
         pending = self._pending_entry
-        if pending is None:
+        if pending is None or int(order.ref) != self._parent:
             return
         self._pending_entry = None
-        # defer child submission to the next apply_action; anchor at the
-        # REAL fill price (collision rule lives in _submit_children:
-        # STOP submitted first, LIMIT OCO'd -> stop_first_pessimistic)
-        self._arm_todo = (exec_price, pending["units"], pending["dir"],
-                          pending["params"])
+        self._parent = None
+        self._entry_anchor = exec_price
+        self._events(s).append({
+            "bar_index": bar, "reason": "entry_fill",
+            "price": exec_price, "order_ref": int(order.ref),
+            "children_refs": [int(c.ref) for c in self._children]})
+        # the children are ALREADY live (atomic bracket); arm the
+        # synthetic entry-bar check for THIS bar's OHL
+        self._entry_bar_check = (bar, pending["dir"], pending["sl"],
+                                 pending["tp"], pending["units"])
