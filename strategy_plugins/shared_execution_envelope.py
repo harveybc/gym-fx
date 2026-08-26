@@ -53,6 +53,13 @@ class Plugin:
         self._children = []          # live protective orders
         self._entry_anchor = None    # fill price of the anchoring entry
 
+    def set_params(self, **kwargs) -> None:
+        """Bundle-loader contract: absorb known envelope keys; the
+        nested execution_envelope block (resolved per call) wins."""
+        for k, v in kwargs.items():
+            if k in self.plugin_params and v is not None:
+                self.params[k] = v
+
     # -- helpers -----------------------------------------------------------
     def _resolve(self, config: Dict[str, Any]) -> Dict[str, Any]:
         merged = dict(self.params)
