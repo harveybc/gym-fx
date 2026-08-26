@@ -93,3 +93,20 @@ def test_hold_never_orders():
     for fractional in (False, True):
         r = _Recorder(fractional=fractional, current=0.5, raw=0.9)
         assert r.apply(0) == []
+
+
+def test_fractional_short_rebalance_increase_uses_sell():
+    # BUG REPRODUCTION (first Screen B run): short rebalances were
+    # inverted, accumulating runaway positions in downtrends.
+    r = _Recorder(fractional=True, current=-0.5, raw=-0.8)
+    assert r.apply(2) == [("sell", 0.3)]
+
+
+def test_fractional_short_rebalance_decrease_uses_buy():
+    r = _Recorder(fractional=True, current=-0.8, raw=-0.5)
+    assert r.apply(2) == [("buy", 0.3)]
+
+
+def test_fractional_short_unchanged_no_order():
+    r = _Recorder(fractional=True, current=-0.5, raw=-0.5)
+    assert r.apply(2) == []
