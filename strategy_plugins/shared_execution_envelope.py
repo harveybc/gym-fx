@@ -156,6 +156,22 @@ class Plugin:
                            size=new_units, oco=stop)
         self._children = [o for o in (stop, limit) if o is not None]
 
+    def _settle_position(self, s, fill_price: float) -> None:
+        """Deterministic same-bar settlement: close the ENTIRE position
+        at fill_price by direct broker accounting — position and cash
+        change exactly once, commission charged, no follow-up order."""
+        position = s.broker.getposition(s.data)
+        size = float(position.size)
+        if size == 0.0:
+            return
+        comminfo = s.broker.getcommissioninfo(s.data)
+        commission = float(comminfo.getcommission(abs(size), fill_price))
+        # closing proceeds: long sells at fill, short buys back at fill
+        s.broker.add_cash(size * fill_price - commission)
+        position.update(-size, fill_price)
+        s.bridge.commission_paid += commission
+        s.bridge.trade_count += 1
+
     def _cancel_children(self, s) -> None:
         for order in self._children:
             try:
@@ -189,6 +205,7 @@ class Plugin:
         self._entry_anchor = None
         self._entry_bar_check = None
         self._parent = None
+        self._relevel_todo = None
 
     def apply_action(self, s, action: int, config: Dict[str, Any]) -> None:
         p = self._resolve(config)
@@ -208,22 +225,41 @@ class Plugin:
         # stop_first_pessimistic collision rule. Later bars fill AT the
         # level via the resting children. Zero unprotected bars.
         if self._entry_bar_check is not None and pos != 0:
-            eb_bar, eb_dir, eb_sl, eb_tp, _u = self._entry_bar_check
+            eb_bar, eb_dir, eb_sl, eb_tp, eb_units = self._entry_bar_check
             self._entry_bar_check = None
+            bar_open = float(s.data.open[0])
             high = float(s.data.high[0])
             low = float(s.data.low[0])
             hit_sl = low <= eb_sl if eb_dir > 0 else high >= eb_sl
             hit_tp = high >= eb_tp if eb_dir > 0 else low <= eb_tp
             if hit_sl or hit_tp:
-                reason = ("envelope_close_sl" if hit_sl
-                          else "envelope_close_tp")  # sl wins collisions
+                # N1 (finding 329): settle IN the entry bar at the
+                # EXECUTABLE level — never a next-open order. Stop wins
+                # ambiguous collisions. Gap treatment mirrors real
+                # order semantics: a stop fills at the worse of
+                # (level, open); a limit fills at level or better.
+                if hit_sl:
+                    reason = "envelope_close_sl"
+                    fill = (min(eb_sl, bar_open) if eb_dir > 0
+                            else max(eb_sl, bar_open))
+                else:
+                    reason = "envelope_close_tp"
+                    fill = (max(eb_tp, bar_open) if eb_dir > 0
+                            else min(eb_tp, bar_open))
                 self._cancel_children(s)
-                s.close()
+                self._settle_position(s, fill)
                 self._events(s).append({
-                    "bar_index": bar, "reason": reason, "price": price,
-                    "detail": "entry_bar_synthetic_next_open_fill"})
+                    "bar_index": bar, "reason": reason, "price": fill,
+                    "detail": "entry_bar_settlement_at_level"})
                 self._entry_anchor = None
                 return
+        if getattr(self, "_relevel_todo", None) is not None and pos != 0:
+            rl_dir, rl_sl, rl_tp, rl_units = self._relevel_todo
+            self._relevel_todo = None
+            # replace decision-anchored children with fill-anchored ones
+            self._cancel_children(s)
+            self._submit_children(s, self._resolve(config),
+                                  self._entry_anchor, rl_units, rl_dir)
         if (pos != 0 and not self._children
                 and self._pending_entry is None
                 and self._entry_bar_check is None):
@@ -334,6 +370,20 @@ class Plugin:
         self._pending_entry = None
         self._parent = None
         self._entry_anchor = exec_price
+        # N1: re-anchor geometry to the ACTUAL parent fill; the resting
+        # children (decision-anchored) are re-leveled on the next apply
+        # if the fill moved the anchor. For the entry bar itself the
+        # settlement check below uses fill-anchored levels.
+        p = pending["params"]
+        sl_d, tp_d = self._distances(s, p, exec_price)
+        if pending["dir"] > 0:
+            pending["sl"] = exec_price - sl_d
+            pending["tp"] = exec_price + tp_d
+        else:
+            pending["sl"] = exec_price + sl_d
+            pending["tp"] = exec_price - tp_d
+        self._relevel_todo = (pending["dir"], pending["sl"],
+                              pending["tp"], pending["units"])
         self._events(s).append({
             "bar_index": bar, "reason": "entry_fill",
             "price": exec_price, "order_ref": int(order.ref),

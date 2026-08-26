@@ -229,7 +229,7 @@ def test_entry_bar_touches_sl_closes_with_synthetic_check(tmp_path):
     env = _env(tmp_path, closes, lows=lows)
     _infos, events = _drive(env, [1.0] + [0.0] * 10)
     sl = [e for e in events if e["reason"] == "envelope_close_sl"]
-    assert sl and sl[0].get("detail") == "entry_bar_synthetic_next_open_fill"
+    assert sl and sl[0].get("detail") == "entry_bar_settlement_at_level"
     assert abs(env.bridge.position_units) < 1e-9
 
 
@@ -240,7 +240,7 @@ def test_entry_bar_touches_tp_closes(tmp_path):
     env = _env(tmp_path, closes, highs=highs)
     _infos, events = _drive(env, [1.0] + [0.0] * 10)
     tp = [e for e in events if e["reason"] == "envelope_close_tp"]
-    assert tp and tp[0].get("detail") == "entry_bar_synthetic_next_open_fill"
+    assert tp and tp[0].get("detail") == "entry_bar_settlement_at_level"
 
 
 def test_entry_bar_touches_both_resolves_to_sl(tmp_path):
@@ -342,3 +342,109 @@ def test_unprotected_position_is_typed_run_failure():
     assert getattr(s.bridge, "envelope_run_failure", None) is not None
     assert orders and orders[0] == "close"
     assert s.bridge.execution_diagnostics["envelope_residual_sweeps"] == 1
+
+
+# --- N1 (finding 329): same-bar settlement pricing fixtures -------------
+
+def _entry_bar_env(tmp_path, *, lows=None, highs=None, opens=None,
+                   closes_override=None):
+    closes = closes_override or [100.0] * 20
+    return _env(tmp_path, closes, lows=lows, highs=highs, opens=opens)
+
+
+def test_settled_sl_fill_is_at_level_not_next_open(tmp_path):
+    # stop touched on entry bar; NEXT open gaps UP favorably — the
+    # already-settled fill must remain at the level (95), not improve
+    closes = [100.0] * 20
+    lows = [c * 0.9995 for c in closes]
+    lows[1] = 94.0
+    opens = list(closes)
+    opens[2] = 99.0     # favorable next open for a long exit
+    env = _env(tmp_path, closes, lows=lows, opens=opens)
+    _infos, events = _drive(env, [1.0] + [0.0] * 10)
+    sl = [e for e in events if e["reason"] == "envelope_close_sl"]
+    assert sl and abs(sl[0]["price"] - 95.0) < 1e-9
+    assert sl[0]["detail"] == "entry_bar_settlement_at_level"
+
+
+def test_entry_bar_adverse_gap_is_structurally_absorbed_by_anchor(tmp_path):
+    """With FILL-anchored geometry the stop level derives from the entry
+    bar's open, so 'open beyond the stop' cannot occur on the entry bar
+    itself; adverse gaps are a LATER-bar phenomenon and are covered by
+    the resting-children gap test (fill at open, worse than level)."""
+    closes = [100.0] * 20
+    opens = list(closes)
+    opens[1] = 93.0                       # deep adverse open
+    lows = [c * 0.9995 for c in closes]
+    lows[1] = 92.5                        # above 93*0.95: no touch
+    env = _env(tmp_path, closes, opens=opens, lows=lows)
+    _infos, events = _drive(env, [1.0] + [0.0] * 10)
+    assert not [e for e in events if e["reason"] == "envelope_close_sl"]
+    assert abs(env.bridge.position_units) > 0  # position survives
+
+
+def test_geometry_anchors_at_parent_fill_not_decision_close(tmp_path):
+    # decision close 100, entry bar opens at 90: SL must be 90*0.95=85.5
+    # (fill-anchored), NOT 95 (decision-anchored)
+    closes = [100.0] * 20
+    opens = list(closes)
+    opens[1] = 90.0
+    lows = [c * 0.9995 for c in closes]
+    lows[1] = 86.0      # touches 85.5? no: 86 > 85.5 -> NO settle
+    env = _env(tmp_path, closes, opens=opens, lows=lows)
+    _infos, events = _drive(env, [1.0] + [0.0] * 10)
+    assert not [e for e in events if e["reason"] == "envelope_close_sl"]
+    lows2 = [c * 0.9995 for c in closes]
+    lows2[1] = 85.0     # 85 < 85.5 -> settles at level 85.5
+    env2 = _env(tmp_path, closes, opens=opens, lows=lows2)
+    _infos2, events2 = _drive(env2, [1.0] + [0.0] * 10)
+    sl2 = [e for e in events2 if e["reason"] == "envelope_close_sl"]
+    assert sl2 and abs(sl2[0]["price"] - 85.5) < 1e-9
+
+
+def test_short_settled_tp_fill_at_level_or_better(tmp_path):
+    closes = [100.0] * 20
+    lows = [c * 0.9995 for c in closes]
+    lows[1] = 89.0      # short TP at 90 touched on entry bar
+    env = _env(tmp_path, closes, lows=lows)
+    _infos, events = _drive(env, [-1.0] + [0.0] * 10)
+    tp = [e for e in events if e["reason"] == "envelope_close_tp"]
+    assert tp and abs(tp[0]["price"] - 90.0) < 1e-9
+
+
+def test_no_double_close_and_exact_cash_accounting(tmp_path):
+    # settle then verify: exactly one close event, position flat, cash
+    # consistent with size*(fill-entry) - commissions (formula check)
+    closes = [100.0] * 20
+    lows = [c * 0.9995 for c in closes]
+    lows[1] = 94.0
+    env = _env(tmp_path, closes, lows=lows, commission=0.001)
+    _infos, events = _drive(env, [1.0] + [0.0] * 10)
+    closes_ev = [e for e in events if e["reason"].startswith("envelope")]
+    assert len(closes_ev) == 1
+    assert abs(env.bridge.position_units) < 1e-9
+    eq = env.bridge.equity
+    # entry ~99.6 units at 100 open (headroom 0.2% + commission),
+    # exit at 95: loss = units*5 + 2 commissions
+    units = 10000.0 * (1 - 0.002) / 100.0
+    expected = 10000.0 - units * 5.0 - 0.001 * units * (100.0 + 95.0)
+    assert abs(eq - expected) < 1.0, (eq, expected)
+
+
+def test_deterministic_replay_equality(tmp_path):
+    closes = list(__import__("numpy").linspace(100, 90, 30))
+    seq = [1.0, 0.0, -1.0, 0.0, 1.0] + [0.0] * 20
+    def run():
+        env = _env(tmp_path, closes)
+        infos, events = _drive(env, seq)
+        return [round(i["economic_equity"], 9) for i in infos], events
+    def strip(evts):
+        return [{k: v for k, v in e.items()
+                 if k not in ("order_ref", "children_refs")}
+                for e in evts]
+    eq1, ev1 = run()
+    eq2, ev2 = run()
+    # broker order refs are a PROCESS-GLOBAL counter; economics and the
+    # ref-stripped event stream must replay identically
+    assert eq1 == eq2
+    assert strip(ev1) == strip(ev2)
