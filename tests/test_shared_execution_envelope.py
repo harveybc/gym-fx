@@ -1,0 +1,181 @@
+"""Adversarial tests for the shared execution envelope (order C2/C3):
+long, short, gap-through, same-bar SL+TP collision, reversal, final-bar
+open position, policy close, portfolio-fraction sizing (scale
+invariance, no lookahead, leverage cap). Real env + real backtrader."""
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+
+from app.env import GymFxEnv
+from broker_plugins.default_broker import Plugin as Broker
+from data_feed_plugins.default_data_feed import Plugin as DataFeed
+from metrics_plugins.default_metrics import Plugin as Metrics
+from preprocessor_plugins.feature_window_preprocessor import (
+    Plugin as Preprocessor)
+from reward_plugins.pnl_reward import Plugin as Reward
+from strategy_plugins.shared_execution_envelope import Plugin as Envelope
+
+
+def _csv(tmp_path, closes, highs=None, lows=None, opens=None,
+         name="bars.csv"):
+    n = len(closes)
+    closes = np.asarray(closes, dtype=float)
+    frame = pd.DataFrame({
+        "DATE_TIME": pd.date_range("2024-01-01", periods=n, freq="4h"),
+        "OPEN": np.asarray(opens, float) if opens is not None else closes,
+        "HIGH": np.asarray(highs, float) if highs is not None
+        else closes * 1.0005,
+        "LOW": np.asarray(lows, float) if lows is not None
+        else closes * 0.9995,
+        "CLOSE": closes, "VOLUME": 1000.0,
+        "feat": np.linspace(0.0, 1.0, n),
+    })
+    path = tmp_path / name
+    frame.to_csv(path, index=False)
+    return path
+
+
+def _env(tmp_path, closes, sl=0.05, tp=0.10, cash=10000.0, **kw):
+    config = {
+        "input_data_file": str(_csv(tmp_path, closes,
+                                    kw.pop("highs", None),
+                                    kw.pop("lows", None),
+                                    kw.pop("opens", None))),
+        "date_column": "DATE_TIME", "price_column": "CLOSE",
+        "feature_columns": ["feat"], "feature_binary_columns": [],
+        "window_size": 4, "initial_cash": cash, "position_size": 1.0,
+        "min_equity": 0.0, "env_mode": "training",
+        "commission": 0.0, "leverage": 1.0,
+        "action_space_mode": "continuous",
+        "continuous_action_threshold": 0.0,
+        "execution_envelope": {"envelope_mode": "fixed_fraction",
+                               "sl_fraction": sl, "tp_fraction": tp,
+                               "leverage_cap": 1.0},
+    }
+    config.update(kw)
+    env = GymFxEnv(config, DataFeed(config), Broker(config),
+                   Envelope(config), Preprocessor(config),
+                   Reward(config), Metrics(config))
+    return env
+
+
+def _drive(env, actions, seed=7):
+    env.reset(seed=seed)
+    infos = []
+    for a in actions:
+        _o, _r, term, _tr, info = env.step([float(a)])
+        infos.append(info)
+        if term:
+            break
+    events = list(getattr(env.bridge, "close_events", []))
+    return infos, events
+
+
+def test_long_stop_fills_at_stop_and_records_envelope_sl(tmp_path):
+    # flat 100s, then a bar that dips through the 5% stop (95) only
+    closes = [100.0] * 10 + [96.0] + [96.0] * 5
+    lows = [c * 0.9995 for c in closes]
+    lows[10] = 94.0                      # touches 95 intrabar
+    env = _env(tmp_path, closes, lows=lows)
+    _infos, events = _drive(env, [1.0] + [0.0] * 12)
+    sl = [e for e in events if e["reason"] == "envelope_close_sl"]
+    assert sl, events
+    assert abs(sl[0]["price"] - 95.0) < 1e-6   # filled AT the stop level
+
+
+def test_long_take_profit_records_envelope_tp(tmp_path):
+    closes = [100.0] * 10 + [109.0] + [109.0] * 5
+    highs = [c * 1.0005 for c in closes]
+    highs[10] = 111.0                    # touches 110 intrabar
+    env = _env(tmp_path, closes, highs=highs)
+    _infos, events = _drive(env, [1.0] + [0.0] * 12)
+    tp = [e for e in events if e["reason"] == "envelope_close_tp"]
+    assert tp, events
+    assert abs(tp[0]["price"] - 110.0) < 1e-6
+
+
+def test_short_stop_and_target_mirror(tmp_path):
+    closes = [100.0] * 10 + [104.0] + [104.0] * 5
+    highs = [c * 1.0005 for c in closes]
+    highs[10] = 106.0                    # short stop at 105 touched
+    env = _env(tmp_path, closes, highs=highs)
+    _infos, events = _drive(env, [-1.0] + [0.0] * 12)
+    sl = [e for e in events if e["reason"] == "envelope_close_sl"]
+    assert sl and abs(sl[0]["price"] - 105.0) < 1e-6
+
+
+def test_gap_through_stop_fills_at_open_not_stop(tmp_path):
+    closes = [100.0] * 10 + [90.0] + [90.0] * 5
+    opens = list(closes)
+    opens[10] = 90.0                     # gaps BELOW the 95 stop
+    lows = [c * 0.9995 for c in closes]
+    lows[10] = 89.5
+    env = _env(tmp_path, closes, opens=opens, lows=lows)
+    _infos, events = _drive(env, [1.0] + [0.0] * 12)
+    sl = [e for e in events if e["reason"] == "envelope_close_sl"]
+    assert sl, events
+    assert sl[0]["price"] <= 90.0 + 1e-6   # gap fill at/below open
+
+
+def test_same_bar_sl_and_tp_collision_resolves_to_stop(tmp_path):
+    # one violent bar spans BOTH the 95 stop and the 110 target
+    closes = [100.0] * 10 + [100.0] + [100.0] * 5
+    highs = [c * 1.0005 for c in closes]
+    lows = [c * 0.9995 for c in closes]
+    highs[10] = 112.0
+    lows[10] = 93.0
+    env = _env(tmp_path, closes, highs=highs, lows=lows)
+    _infos, events = _drive(env, [1.0] + [0.0] * 12)
+    reasons = [e["reason"] for e in events]
+    assert "envelope_close_sl" in reasons, events   # pessimistic rule
+    assert "envelope_close_tp" not in reasons
+
+
+def test_reversal_closes_then_reenters_with_new_envelope(tmp_path):
+    closes = [100.0] * 20
+    env = _env(tmp_path, closes)
+    _infos, events = _drive(env, [1.0, 0.0, 0.0, -1.0] + [0.0] * 10)
+    reasons = [e["reason"] for e in events]
+    assert "reversal_close" in reasons
+    assert env.bridge.position < 0 or any(
+        e["reason"] == "envelope_close_sl" for e in events)
+
+
+def test_policy_close_taxonomy(tmp_path):
+    closes = [100.0] * 20
+    env = _env(tmp_path, closes,
+               continuous_action_contract="target_exposure_hysteresis_v2")
+    _infos, events = _drive(env, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    # neutral action with open exposure under the v2 contract = close
+    assert any(e["reason"] == "policy_close" for e in events), events
+
+
+def test_final_bar_open_position_is_data_end_case(tmp_path):
+    closes = [100.0] * 12
+    env = _env(tmp_path, closes)
+    infos, events = _drive(env, [1.0] + [0.0] * 20)
+    # run ended by data, position still open, no envelope/policy close:
+    assert infos[-1]["termination_cause"] == "data_end"
+    assert not events
+    assert env.bridge.position != 0   # driver must record data_end_liquidation
+
+
+def test_portfolio_fraction_sizing_and_scale_invariance(tmp_path):
+    closes = [100.0] * 20
+    env1 = _env(tmp_path, closes, cash=10000.0)
+    _drive(env1, [0.5] + [0.0] * 6)
+    units1 = abs(env1.bridge.position_units)
+    env2 = _env(tmp_path, closes, cash=20000.0)
+    _drive(env2, [0.5] + [0.0] * 6)
+    units2 = abs(env2.bridge.position_units)
+    assert abs(units1 - 0.5 * 10000.0 / 100.0) < 0.02 * units1
+    assert abs(units2 - 2.0 * units1) < 0.02 * units2  # scale invariant
+
+
+def test_leverage_cap_binds(tmp_path):
+    closes = [100.0] * 20
+    env = _env(tmp_path, closes, cash=10000.0)
+    _drive(env, [5.0] + [0.0] * 6)     # |raw| far above 1
+    units = abs(env.bridge.position_units)
+    assert units <= 10000.0 / 100.0 * 1.0001   # capped at equity/price
