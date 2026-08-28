@@ -236,3 +236,115 @@ def test_duplicate_event_id_never_counts_twice(tmp_path):
         "duplicate_close_events_ignored"] == 1
     summary = env.summary()
     assert summary["duplicate_close_events_ignored"] == 1
+
+
+def _bridge(tmp_path):
+    env = _env(tmp_path, [100.0] * 14)
+    env.reset(seed=7)
+    return env, env.bridge
+
+
+def _valid_kwargs(**overrides):
+    kwargs = dict(source="bt_trade_closed", event_id="bt_ep1_ref9",
+                  bar_index=5, reason="test close", side="long",
+                  size=2.0, entry_price=100.0, exit_price=101.0,
+                  gross_pnl=2.0, costs=0.5, net_pnl=1.5)
+    kwargs.update(overrides)
+    return kwargs
+
+
+def test_conflicting_replay_is_a_typed_refusal(tmp_path):
+    """Final hardening finding 1: exact replay is idempotent;
+    the same identity with ANY payload difference fails closed."""
+    from app.bt_bridge import TradeCloseConflictError
+    _env_obj, bridge = _bridge(tmp_path)
+    bridge.record_trade_close(**_valid_kwargs())
+    # exact canonical replay: idempotent
+    assert bridge.record_trade_close(**_valid_kwargs()) == 1
+    assert len(bridge.closed_trade_stream) == 1
+    for conflict in (
+            {"net_pnl": 1.4, "gross_pnl": 1.9},   # different PnL
+            {"source": "envelope_direct_settlement"},
+            {"reason": "another reason"},
+            {"exit_price": 102.0, "gross_pnl": 4.0,
+             "net_pnl": 3.5}):
+        with pytest.raises(TradeCloseConflictError,
+                           match="conflicting replay"):
+            bridge.record_trade_close(**_valid_kwargs(**conflict))
+    assert len(bridge.closed_trade_stream) == 1  # nothing leaked
+
+
+def test_malformed_economics_refuse(tmp_path):
+    """Final hardening finding 2: missing, boolean, string, NaN,
+    infinite, nonpositive and identity-violating economics REFUSE
+    rather than normalize."""
+    from app.bt_bridge import TradeCloseValidationError
+    _env_obj, bridge = _bridge(tmp_path)
+    bad_cases = (
+        {"net_pnl": None},
+        {"net_pnl": float("nan"), "gross_pnl": float("nan")},
+        {"gross_pnl": float("inf")},
+        {"size": True},
+        {"size": -1.0},
+        {"size": 0.0},
+        {"entry_price": "100"},
+        {"entry_price": 0.0},
+        {"exit_price": -5.0},
+        {"costs": -0.1},
+        {"side": "buy"},
+        {"side": ""},
+        {"reason": None},
+        {"event_id": ""},
+        # PnL identity violated: net != gross - costs
+        {"net_pnl": 0.9},
+    )
+    for bad in bad_cases:
+        with pytest.raises(TradeCloseValidationError):
+            bridge.record_trade_close(**_valid_kwargs(**bad))
+    assert len(bridge.closed_trade_stream) == 0
+
+
+def test_two_legitimate_same_bar_closures_both_count(tmp_path):
+    """Distinct position lineages closing on the SAME bar are two
+    distinct identities — never collapsed (finding 1)."""
+    _env_obj, bridge = _bridge(tmp_path)
+    bridge.record_trade_close(**_valid_kwargs(
+        event_id="direct_ep1_open5_bar9", bar_index=9,
+        source="envelope_direct_settlement",
+        reason="entry_bar_settlement_at_level",
+        gross_pnl=-2.0, costs=0.5, net_pnl=-2.5))
+    bridge.record_trade_close(**_valid_kwargs(
+        event_id="direct_ep1_open9_bar9", bar_index=9,
+        source="envelope_direct_settlement",
+        reason="entry_bar_settlement_at_level",
+        gross_pnl=-1.0, costs=0.2, net_pnl=-1.2))
+    assert len(bridge.closed_trade_stream) == 2
+    assert bridge.trade_count == 2
+
+
+def test_no_zero_by_fallback_derivations_in_summary():
+    source = (Path(__file__).resolve().parents[1]
+              / "app/env.py").read_text()
+    # no zero-by-fallback derivation over stream events anywhere
+    assert '("net_pnl") or 0.0' not in source
+    assert '("costs") or 0.0' not in source
+    assert 'e["net_pnl"]' in source and 'e["costs"]' in source
+
+
+def test_episode_reset_advances_identity_scope(tmp_path):
+    """Identities are episode-scoped: after a reset the same lineage
+    string cannot collide with the previous episode's events."""
+    env = _env(tmp_path, [100.0] * 14)
+    env.reset(seed=7)
+    bridge = env.bridge
+    first_episode = bridge.episode_seq
+    # a same-instance restart advances the episode scope
+    bridge.reset(initial_cash=10000.0, total_bars=14)
+    assert bridge.episode_seq == first_episode + 1
+    assert bridge.closed_trade_stream == []
+    assert bridge._close_event_index == {}
+    # an env-level reset constructs a FRESH bridge with its own empty
+    # stream and index — cross-episode collision is impossible by
+    # construction
+    env.reset(seed=11)
+    assert env.bridge.closed_trade_stream == []

@@ -179,9 +179,16 @@ class Plugin:
         # authoritative stream (side/size/entry/exit/gross/costs/net),
         # idempotent per settlement bar.
         bar = int(getattr(s.bridge, "bar_index", 0))
+        # deterministic identity: episode + position lineage (the bar
+        # the position opened) + settlement bar — two legitimate
+        # closures sharing a bar have distinct lineages, a retried
+        # callback recomputes the same identity (final hardening)
+        open_bar = getattr(s.bridge, "position_open_bar_index", None)
         s.bridge.record_trade_close(
             source="envelope_direct_settlement",
-            event_id=f"direct_{bar}",
+            event_id=(f"direct_ep{s.bridge.episode_seq}"
+                      f"_open{open_bar if open_bar is not None else bar}"
+                      f"_bar{bar}"),
             bar_index=bar,
             reason="entry_bar_settlement_at_level",
             side="long" if size > 0 else "short",

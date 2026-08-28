@@ -1006,12 +1006,12 @@ class GymFxEnv(gym.Env):
         for legacy_key in ("trades_total", "trades_won",
                            "trades_lost", "avg_trade_pnl"):
             summary[f"analyzer_{legacy_key}_diagnostic"] =                 summary.pop(legacy_key, None)
-        won = sum(1 for e in stream
-                  if (e.get("net_pnl") or 0.0) > 0.0)
-        lost = sum(1 for e in stream
-                   if (e.get("net_pnl") or 0.0) < 0.0)
-        breakeven = sum(1 for e in stream
-                        if (e.get("net_pnl") or 0.0) == 0.0)
+        # final hardening 2026-08-28: events are STRICTLY validated
+        # at append time, so fields are accessed directly — a missing
+        # field is a loud bug, never a silent breakeven/zero
+        won = sum(1 for e in stream if e["net_pnl"] > 0.0)
+        lost = sum(1 for e in stream if e["net_pnl"] < 0.0)
+        breakeven = sum(1 for e in stream if e["net_pnl"] == 0.0)
         by_source: Dict[str, int] = {}
         by_reason: Dict[str, int] = {}
         for event in stream:
@@ -1027,7 +1027,7 @@ class GymFxEnv(gym.Env):
         if sum(by_source.values()) != len(stream) or                 sum(by_reason.values()) != len(stream):
             raise RuntimeError(
                 "trade source/reason counts do not sum to the total")
-        net_values = [float(e.get("net_pnl") or 0.0) for e in stream]
+        net_values = [e["net_pnl"] for e in stream]
         summary["trade_stats_authority"] = "closed_trade_stream_v2"
         summary["trades_total"] = len(stream)
         summary["trades_won"] = won
@@ -1036,7 +1036,7 @@ class GymFxEnv(gym.Env):
         summary["avg_trade_pnl"] = (
             sum(net_values) / len(net_values) if net_values else None)
         summary["trade_costs_total"] = sum(
-            float(e.get("costs") or 0.0) for e in stream)
+            e["costs"] for e in stream)
         summary["closed_trades_by_source"] = by_source
         summary["close_reason_counts"] = by_reason
         summary["open_position_at_end"] = bool(

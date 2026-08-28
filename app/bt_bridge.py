@@ -27,6 +27,14 @@ from typing import Any, Dict, Optional
 import backtrader as bt
 
 
+class TradeCloseValidationError(ValueError):
+    """A close event with missing/malformed economics REFUSES."""
+
+
+class TradeCloseConflictError(RuntimeError):
+    """Same event identity, different economics — fail closed."""
+
+
 class BTBridge:
     """Shared mutable state between the env (main thread) and cerebro (worker)."""
 
@@ -60,6 +68,8 @@ class BTBridge:
         # stream, so the per-step counter and the summary total can
         # never disagree by construction.
         self.closed_trade_stream: list = []
+        self._close_event_index: dict = {}
+        self.episode_seq: int = 0
         self.commission_paid: float = 0.0
         self.last_trade_cost: float = 0.0
         self.execution_diagnostics: Dict[str, int] = {}
@@ -77,34 +87,88 @@ class BTBridge:
                            size=None, entry_price=None,
                            exit_price=None, gross_pnl=None,
                            costs=None, net_pnl=None) -> int:
-        """Append ONE economically complete closure event to the
-        authoritative stream and DERIVE trade_count from it (steps-1-2
-        correction order 2026-08-28: closure identity, side, size,
-        entry/exit, gross PnL, costs, net PnL, source, reason).
+        """Append ONE STRICTLY VALIDATED, economically complete
+        closure event (final hardening order 2026-08-28):
 
-        IDEMPOTENT by event identity: a duplicate callback or retry
-        for the same closure is ignored and counted in diagnostics —
-        one economic closure can never count twice (finding 6)."""
-        event_id = str(event_id)
-        if any(e["event_id"] == event_id
-               for e in self.closed_trade_stream):
-            diag = self.execution_diagnostics
-            diag["duplicate_close_events_ignored"] = diag.get(
-                "duplicate_close_events_ignored", 0) + 1
-            return self.trade_count
-        self.closed_trade_stream.append({
-            "event_id": event_id,
-            "source": str(source),
-            "bar_index": bar_index,
-            "reason": reason,
-            "side": side,
-            "size": size,
-            "entry_price": entry_price,
-            "exit_price": exit_price,
-            "gross_pnl": gross_pnl,
-            "costs": costs,
-            "net_pnl": net_pnl,
-        })
+        * every field validated BEFORE appending — missing, boolean,
+          string, NaN or infinite economics REFUSE (never normalized);
+        * size and prices strictly positive; costs nonnegative;
+        * the PnL identity net == gross - costs holds within an
+          explicit tolerance;
+        * EXACT canonical replay of an existing event id is
+          idempotent; the same id with ANY payload difference raises a
+          typed conflict — an identity collision or a corrected
+          callback can never silently preserve false economics;
+        * the event map is indexed (no O(n) scan)."""
+        import math
+
+        def _finite(name, value, *, positive=False,
+                    nonnegative=False):
+            if isinstance(value, bool) or not isinstance(
+                    value, (int, float)):
+                raise TradeCloseValidationError(
+                    f"{name}: {value!r} is not a finite real number")
+            value = float(value)
+            if not math.isfinite(value):
+                raise TradeCloseValidationError(
+                    f"{name}: non-finite value {value!r}")
+            if positive and value <= 0.0:
+                raise TradeCloseValidationError(
+                    f"{name}: must be strictly positive, got {value}")
+            if nonnegative and value < 0.0:
+                raise TradeCloseValidationError(
+                    f"{name}: must be nonnegative, got {value}")
+            return value
+
+        def _typed_str(name, value, allowed=None):
+            if not isinstance(value, str) or not value.strip():
+                raise TradeCloseValidationError(
+                    f"{name}: nonempty string required, got {value!r}")
+            if allowed and value not in allowed:
+                raise TradeCloseValidationError(
+                    f"{name}: {value!r} not in {sorted(allowed)}")
+            return value
+
+        event = {
+            "event_id": _typed_str("event_id", event_id),
+            "source": _typed_str("source", source),
+            "bar_index": int(_finite("bar_index", bar_index,
+                                     nonnegative=True)),
+            "reason": _typed_str("reason", reason),
+            "side": _typed_str("side", side,
+                               allowed={"long", "short"}),
+            "size": _finite("size", size, positive=True),
+            "entry_price": _finite("entry_price", entry_price,
+                                   positive=True),
+            "exit_price": _finite("exit_price", exit_price,
+                                  positive=True),
+            "gross_pnl": _finite("gross_pnl", gross_pnl),
+            "costs": _finite("costs", costs, nonnegative=True),
+            "net_pnl": _finite("net_pnl", net_pnl),
+        }
+        tolerance = 1e-6 + 1e-9 * abs(event["gross_pnl"])
+        if abs(event["net_pnl"]
+               - (event["gross_pnl"] - event["costs"])) > tolerance:
+            raise TradeCloseValidationError(
+                f"PnL identity violated: net {event['net_pnl']} != "
+                f"gross {event['gross_pnl']} - costs "
+                f"{event['costs']} (tolerance {tolerance})")
+        existing = self._close_event_index.get(event["event_id"])
+        if existing is not None:
+            if existing == event:
+                diag = self.execution_diagnostics
+                diag["duplicate_close_events_ignored"] = diag.get(
+                    "duplicate_close_events_ignored", 0) + 1
+                return self.trade_count
+            differing = sorted(
+                k for k in event if existing.get(k) != event[k])
+            raise TradeCloseConflictError(
+                f"conflicting replay of close event "
+                f"{event['event_id']!r}: fields {differing} differ "
+                "from the recorded economics — fail closed, never "
+                "silently keep either version")
+        self._close_event_index[event["event_id"]] = event
+        self.closed_trade_stream.append(event)
         self.trade_count = len(self.closed_trade_stream)
         return self.trade_count
 
@@ -131,6 +195,8 @@ class BTBridge:
         self.total_bars = int(total_bars)
         self.trade_count = 0
         self.closed_trade_stream = []
+        self._close_event_index = {}
+        self.episode_seq += 1
         self.commission_paid = 0.0
         self.last_trade_cost = 0.0
         self.recapitalization_debt = 0.0
@@ -241,16 +307,29 @@ class BTBridgeStrategy(bt.Strategy):
             gross = float(getattr(trade, "pnl", 0.0) or 0.0)
             net = float(getattr(trade, "pnlcomm", gross) or gross)
             entry = float(getattr(trade, "price", 0.0) or 0.0)
+            exit_price = float(self.bridge.price or 0.0)
             long_side = bool(getattr(trade, "long", True))
+            # size: the bridge's signed quantity is synced per bar and
+            # still carries the PRE-close units when the closing order
+            # executes; when the geometry allows, the exact fill size
+            # gross/(exit-entry) takes precedence
+            size = abs(float(self.bridge.position_units or 0.0))
+            if abs(exit_price - entry) > 1e-9:
+                derived = abs(gross / (exit_price - entry))
+                if derived > 0.0:
+                    size = derived
+            # deterministic identity: episode + backtrader trade
+            # lineage (ref) — never a bare bar number
             self.bridge.record_trade_close(
                 source="bt_trade_closed",
-                event_id=f"bt_{getattr(trade, 'ref', id(trade))}",
+                event_id=(f"bt_ep{self.bridge.episode_seq}"
+                          f"_ref{getattr(trade, 'ref', id(trade))}"),
                 bar_index=int(self.bridge.bar_index),
                 reason="backtrader trade lifecycle close",
                 side="long" if long_side else "short",
-                size=None,  # bt reports size 0 on closed trades
+                size=size,
                 entry_price=entry,
-                exit_price=float(self.bridge.price or 0.0),
+                exit_price=exit_price,
                 gross_pnl=gross,
                 costs=round(gross - net, 10),
                 net_pnl=net)
