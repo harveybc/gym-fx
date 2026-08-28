@@ -1002,7 +1002,7 @@ class GymFxEnv(gym.Env):
         # disagree by construction. The analyzer's opened-trade count
         # stays as a diagnostic: backtrader's Trade object never sees
         # the envelope's direct settlements and undercounts subsequent
-        # cycles (gamma reconciliation defect, reproduced 2026-08-28).
+        # cycles (fleet reconciliation defect, reproduced 2026-08-28).
         stream = list(getattr(self.bridge, "closed_trade_stream", []))
         summary["analyzer_trades_total"] = summary.get("trades_total")
         summary["trades_total"] = len(stream)

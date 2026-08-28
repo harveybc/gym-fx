@@ -1,4 +1,4 @@
-"""Runtime order 2026-08-28 §2 (gamma reconciliation defect): ONE
+"""Runtime order 2026-08-28 §2 (fleet reconciliation defect): ONE
 authoritative closed-trade event stream on the bridge; per-step
 info["trades"] and summary trades_total DERIVE from it and can never
 disagree. Ordered regressions: zero, one, multiple, last-bar
@@ -33,7 +33,7 @@ def drive(env, actions, seed=7):
 
 
 def assert_coherent(rows, summary):
-    """The invariant the gamma slots violated: the final per-step
+    """The invariant the affected fleet slots violated: the final per-step
     counter equals the summary total exactly (settlement handled by
     the pipeline's bounded terminal path, not here)."""
     final = rows[-1]["trades"] if rows else 0
@@ -62,7 +62,7 @@ def test_one_policy_close(tmp_path):
 
 
 def test_entry_bar_direct_settlement_counts_once(tmp_path):
-    """The literal gamma mechanism: entry-bar SL settlement is a
+    """The literal fleet-defect mechanism: entry-bar SL settlement is a
     direct-accounting close invisible to backtrader's analyzer."""
     closes = [100.0] * 16
     lows = [c * 0.9995 for c in closes]
@@ -94,7 +94,7 @@ def test_multiple_settlement_cycles_never_diverge(tmp_path):
     assert summary["trades_total"] >= 3
     sources = summary["closed_trades_by_source"]
     assert sum(sources.values()) == summary["trades_total"]
-    # the gamma mechanism specifically: at least one DIRECT settlement
+    # the affected-fleet-slot mechanism specifically: at least one DIRECT settlement
     # is present and counted by the same stream as the bt closes
     assert sources.get("envelope_direct_settlement", 0) >= 1
 

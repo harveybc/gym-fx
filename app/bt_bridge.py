@@ -51,7 +51,7 @@ class BTBridge:
         self.bar_index: int = 0
         self.total_bars: int = 0
         self.trade_count: int = 0
-        # Runtime order 2026-08-28 §2 (gamma reconciliation defect):
+        # Runtime order 2026-08-28 §2 (fleet reconciliation defect):
         # the ONE authoritative closed-trade event stream. EVERY path
         # that closes a position appends here — backtrader trade-cycle
         # closes AND the envelope's direct settlements — and
