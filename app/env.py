@@ -995,6 +995,28 @@ class GymFxEnv(gym.Env):
             analyzers=analyzers,
             config=self.config,
         )
+        # Runtime order 2026-08-28 §2: trades_total DERIVES from the
+        # bridge's authoritative closed-trade event stream — the same
+        # stream that feeds the per-step info["trades"] counter — so
+        # the trace cumulative and the summary total can never
+        # disagree by construction. The analyzer's opened-trade count
+        # stays as a diagnostic: backtrader's Trade object never sees
+        # the envelope's direct settlements and undercounts subsequent
+        # cycles (gamma reconciliation defect, reproduced 2026-08-28).
+        stream = list(getattr(self.bridge, "closed_trade_stream", []))
+        summary["analyzer_trades_total"] = summary.get("trades_total")
+        summary["trades_total"] = len(stream)
+        by_source: Dict[str, int] = {}
+        for event in stream:
+            key = str(event.get("source"))
+            by_source[key] = by_source.get(key, 0) + 1
+        summary["closed_trades_by_source"] = by_source
+        summary["open_position_at_end"] = bool(
+            getattr(self.bridge, "position", 0))
+        summary["trade_stream_note"] = (
+            "trades_total counts CLOSED trades from the authoritative "
+            "bridge stream; trades_won/lost/avg remain analyzer-derived "
+            "diagnostics and exclude direct settlements")
         summary["action_diagnostics"] = dict(self._action_diagnostics)
         summary["execution_diagnostics"] = dict(getattr(self.bridge, "execution_diagnostics", {}) or {})
         summary["event_context_diagnostics"] = dict(getattr(self, "_last_event_context_info", {}) or {})

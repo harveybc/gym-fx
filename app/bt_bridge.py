@@ -51,6 +51,15 @@ class BTBridge:
         self.bar_index: int = 0
         self.total_bars: int = 0
         self.trade_count: int = 0
+        # Runtime order 2026-08-28 §2 (gamma reconciliation defect):
+        # the ONE authoritative closed-trade event stream. EVERY path
+        # that closes a position appends here — backtrader trade-cycle
+        # closes AND the envelope's direct settlements — and
+        # trade_count is DERIVED as len(stream), never incremented
+        # independently. summary trades_total derives from the same
+        # stream, so the per-step counter and the summary total can
+        # never disagree by construction.
+        self.closed_trade_stream: list = []
         self.commission_paid: float = 0.0
         self.last_trade_cost: float = 0.0
         self.execution_diagnostics: Dict[str, int] = {}
@@ -62,6 +71,19 @@ class BTBridge:
         self.recapitalization_count: int = 0
         self.would_margin_call_events: list = []
         self.termination_cause: Optional[str] = None
+
+    def record_trade_close(self, *, source: str, bar_index=None,
+                           price=None, reason=None) -> int:
+        """Append one closure event to the authoritative stream and
+        DERIVE trade_count from it (runtime order 2026-08-28 §2)."""
+        self.closed_trade_stream.append({
+            "source": str(source),
+            "bar_index": bar_index,
+            "price": price,
+            "reason": reason,
+        })
+        self.trade_count = len(self.closed_trade_stream)
+        return self.trade_count
 
     def reset(self, initial_cash: float, total_bars: int) -> None:
         self.action_ready.clear()
@@ -85,6 +107,7 @@ class BTBridge:
         self.bar_index = 0
         self.total_bars = int(total_bars)
         self.trade_count = 0
+        self.closed_trade_stream = []
         self.commission_paid = 0.0
         self.last_trade_cost = 0.0
         self.recapitalization_debt = 0.0
@@ -174,6 +197,7 @@ class BTBridgeStrategy(bt.Strategy):
     # --- backtrader lifecycle --------------------------------------------------
     def start(self) -> None:
         self.bridge.commission_paid = 0.0
+        self.bridge.closed_trade_stream = []
         self.bridge.trade_count = 0
 
     def notify_order(self, order: bt.Order) -> None:
@@ -191,7 +215,11 @@ class BTBridgeStrategy(bt.Strategy):
 
     def notify_trade(self, trade: bt.Trade) -> None:
         if trade.isclosed:
-            self.bridge.trade_count += 1
+            self.bridge.record_trade_close(
+                source="bt_trade_closed",
+                bar_index=int(self.bridge.bar_index),
+                price=float(self.bridge.price or 0.0),
+                reason="backtrader trade lifecycle close")
 
     def next(self) -> None:
         # If the env requested stop, exit the run as quickly as possible.

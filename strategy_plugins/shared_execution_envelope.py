@@ -171,7 +171,15 @@ class Plugin:
         s.broker.add_cash(size * fill_price - commission)
         position.update(-size, fill_price)
         s.bridge.commission_paid += commission
-        s.bridge.trade_count += 1
+        # Runtime order 2026-08-28 §2: a direct settlement is a real
+        # closure that backtrader's trade lifecycle never sees — it is
+        # recorded in the ONE authoritative stream, from which both
+        # trade_count and summary trades_total derive.
+        s.bridge.record_trade_close(
+            source="envelope_direct_settlement",
+            bar_index=int(getattr(s.bridge, "bar_index", 0)),
+            price=float(fill_price),
+            reason="entry_bar_settlement_at_level")
 
     def _cancel_children(self, s) -> None:
         for order in self._children:
