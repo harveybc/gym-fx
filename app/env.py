@@ -995,28 +995,56 @@ class GymFxEnv(gym.Env):
             analyzers=analyzers,
             config=self.config,
         )
-        # Runtime order 2026-08-28 §2: trades_total DERIVES from the
-        # bridge's authoritative closed-trade event stream — the same
-        # stream that feeds the per-step info["trades"] counter — so
-        # the trace cumulative and the summary total can never
-        # disagree by construction. The analyzer's opened-trade count
-        # stays as a diagnostic: backtrader's Trade object never sees
-        # the envelope's direct settlements and undercounts subsequent
-        # cycles (fleet reconciliation defect, reproduced 2026-08-28).
+        # Steps-1-2 correction order 2026-08-28 (finding 1): EVERY
+        # authoritative trade statistic derives from the bridge's ONE
+        # economically complete closed-trade stream. Backtrader
+        # analyzer results — the population proven blind to direct
+        # settlements — move wholesale under the explicit
+        # analyzer_*_diagnostic namespace and are never mixed with
+        # authoritative totals again.
         stream = list(getattr(self.bridge, "closed_trade_stream", []))
-        summary["analyzer_trades_total"] = summary.get("trades_total")
-        summary["trades_total"] = len(stream)
+        for legacy_key in ("trades_total", "trades_won",
+                           "trades_lost", "avg_trade_pnl"):
+            summary[f"analyzer_{legacy_key}_diagnostic"] =                 summary.pop(legacy_key, None)
+        won = sum(1 for e in stream
+                  if (e.get("net_pnl") or 0.0) > 0.0)
+        lost = sum(1 for e in stream
+                   if (e.get("net_pnl") or 0.0) < 0.0)
+        breakeven = sum(1 for e in stream
+                        if (e.get("net_pnl") or 0.0) == 0.0)
         by_source: Dict[str, int] = {}
+        by_reason: Dict[str, int] = {}
         for event in stream:
-            key = str(event.get("source"))
-            by_source[key] = by_source.get(key, 0) + 1
+            src = str(event.get("source"))
+            by_source[src] = by_source.get(src, 0) + 1
+            reason = str(event.get("reason"))
+            by_reason[reason] = by_reason.get(reason, 0) + 1
+        # conservation identities are ASSERTED, not hoped (finding 1)
+        if won + lost + breakeven != len(stream):
+            raise RuntimeError(
+                "trade-stat conservation violated: "
+                f"{won}+{lost}+{breakeven} != {len(stream)}")
+        if sum(by_source.values()) != len(stream) or                 sum(by_reason.values()) != len(stream):
+            raise RuntimeError(
+                "trade source/reason counts do not sum to the total")
+        net_values = [float(e.get("net_pnl") or 0.0) for e in stream]
+        summary["trade_stats_authority"] = "closed_trade_stream_v2"
+        summary["trades_total"] = len(stream)
+        summary["trades_won"] = won
+        summary["trades_lost"] = lost
+        summary["trades_breakeven"] = breakeven
+        summary["avg_trade_pnl"] = (
+            sum(net_values) / len(net_values) if net_values else None)
+        summary["trade_costs_total"] = sum(
+            float(e.get("costs") or 0.0) for e in stream)
         summary["closed_trades_by_source"] = by_source
+        summary["close_reason_counts"] = by_reason
         summary["open_position_at_end"] = bool(
             getattr(self.bridge, "position", 0))
-        summary["trade_stream_note"] = (
-            "trades_total counts CLOSED trades from the authoritative "
-            "bridge stream; trades_won/lost/avg remain analyzer-derived "
-            "diagnostics and exclude direct settlements")
+        summary["duplicate_close_events_ignored"] = (
+            self.bridge.execution_diagnostics.get(
+                "duplicate_close_events_ignored", 0)
+            if self.bridge else 0)
         summary["action_diagnostics"] = dict(self._action_diagnostics)
         summary["execution_diagnostics"] = dict(getattr(self.bridge, "execution_diagnostics", {}) or {})
         summary["event_context_diagnostics"] = dict(getattr(self, "_last_event_context_info", {}) or {})

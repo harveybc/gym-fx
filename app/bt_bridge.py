@@ -72,15 +72,38 @@ class BTBridge:
         self.would_margin_call_events: list = []
         self.termination_cause: Optional[str] = None
 
-    def record_trade_close(self, *, source: str, bar_index=None,
-                           price=None, reason=None) -> int:
-        """Append one closure event to the authoritative stream and
-        DERIVE trade_count from it (runtime order 2026-08-28 §2)."""
+    def record_trade_close(self, *, source: str, event_id: str,
+                           bar_index=None, reason=None, side=None,
+                           size=None, entry_price=None,
+                           exit_price=None, gross_pnl=None,
+                           costs=None, net_pnl=None) -> int:
+        """Append ONE economically complete closure event to the
+        authoritative stream and DERIVE trade_count from it (steps-1-2
+        correction order 2026-08-28: closure identity, side, size,
+        entry/exit, gross PnL, costs, net PnL, source, reason).
+
+        IDEMPOTENT by event identity: a duplicate callback or retry
+        for the same closure is ignored and counted in diagnostics —
+        one economic closure can never count twice (finding 6)."""
+        event_id = str(event_id)
+        if any(e["event_id"] == event_id
+               for e in self.closed_trade_stream):
+            diag = self.execution_diagnostics
+            diag["duplicate_close_events_ignored"] = diag.get(
+                "duplicate_close_events_ignored", 0) + 1
+            return self.trade_count
         self.closed_trade_stream.append({
+            "event_id": event_id,
             "source": str(source),
             "bar_index": bar_index,
-            "price": price,
             "reason": reason,
+            "side": side,
+            "size": size,
+            "entry_price": entry_price,
+            "exit_price": exit_price,
+            "gross_pnl": gross_pnl,
+            "costs": costs,
+            "net_pnl": net_pnl,
         })
         self.trade_count = len(self.closed_trade_stream)
         return self.trade_count
@@ -215,11 +238,22 @@ class BTBridgeStrategy(bt.Strategy):
 
     def notify_trade(self, trade: bt.Trade) -> None:
         if trade.isclosed:
+            gross = float(getattr(trade, "pnl", 0.0) or 0.0)
+            net = float(getattr(trade, "pnlcomm", gross) or gross)
+            entry = float(getattr(trade, "price", 0.0) or 0.0)
+            long_side = bool(getattr(trade, "long", True))
             self.bridge.record_trade_close(
                 source="bt_trade_closed",
+                event_id=f"bt_{getattr(trade, 'ref', id(trade))}",
                 bar_index=int(self.bridge.bar_index),
-                price=float(self.bridge.price or 0.0),
-                reason="backtrader trade lifecycle close")
+                reason="backtrader trade lifecycle close",
+                side="long" if long_side else "short",
+                size=None,  # bt reports size 0 on closed trades
+                entry_price=entry,
+                exit_price=float(self.bridge.price or 0.0),
+                gross_pnl=gross,
+                costs=round(gross - net, 10),
+                net_pnl=net)
 
     def next(self) -> None:
         # If the env requested stop, exit the run as quickly as possible.

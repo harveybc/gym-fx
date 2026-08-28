@@ -168,18 +168,29 @@ class Plugin:
         comminfo = s.broker.getcommissioninfo(s.data)
         commission = float(comminfo.getcommission(abs(size), fill_price))
         # closing proceeds: long sells at fill, short buys back at fill
+        entry_price = float(getattr(position, "price", 0.0) or 0.0)
+        gross = float(size) * (float(fill_price) - entry_price)
         s.broker.add_cash(size * fill_price - commission)
         position.update(-size, fill_price)
         s.bridge.commission_paid += commission
-        # Runtime order 2026-08-28 §2: a direct settlement is a real
-        # closure that backtrader's trade lifecycle never sees — it is
-        # recorded in the ONE authoritative stream, from which both
-        # trade_count and summary trades_total derive.
+        # Steps-1-2 correction order 2026-08-28: a direct settlement
+        # is a real closure that backtrader's trade lifecycle never
+        # sees — recorded ECONOMICALLY COMPLETE in the ONE
+        # authoritative stream (side/size/entry/exit/gross/costs/net),
+        # idempotent per settlement bar.
+        bar = int(getattr(s.bridge, "bar_index", 0))
         s.bridge.record_trade_close(
             source="envelope_direct_settlement",
-            bar_index=int(getattr(s.bridge, "bar_index", 0)),
-            price=float(fill_price),
-            reason="entry_bar_settlement_at_level")
+            event_id=f"direct_{bar}",
+            bar_index=bar,
+            reason="entry_bar_settlement_at_level",
+            side="long" if size > 0 else "short",
+            size=abs(float(size)),
+            entry_price=entry_price,
+            exit_price=float(fill_price),
+            gross_pnl=gross,
+            costs=float(commission),
+            net_pnl=gross - float(commission))
 
     def _cancel_children(self, s) -> None:
         for order in self._children:

@@ -74,8 +74,11 @@ def test_entry_bar_direct_settlement_counts_once(tmp_path):
     assert summary["trades_total"] >= 1
     sources = summary["closed_trades_by_source"]
     assert sum(sources.values()) == summary["trades_total"]
-    # the analyzer diagnostic is PRESERVED, not silently overwritten
-    assert "analyzer_trades_total" in summary
+    # the analyzer population is PRESERVED under its explicit
+    # diagnostic namespace (steps-1-2 correction, finding 1)
+    assert "analyzer_trades_total_diagnostic" in summary
+    assert summary["trade_stats_authority"] == \
+        "closed_trade_stream_v2"
 
 
 def test_multiple_settlement_cycles_never_diverge(tmp_path):
@@ -157,3 +160,79 @@ def test_trade_count_is_derived_never_incremented(tmp_path):
                 ).read_text()
     assert "trade_count += 1" not in envelope
     assert "record_trade_close" in envelope
+
+
+def test_direct_settlement_loss_is_classified_lost(tmp_path):
+    """Steps-1-2 correction (finding 1): a direct SL settlement is an
+    economically complete LOST trade in the authoritative stats."""
+    closes = [100.0] * 26
+    lows = [c * 0.9995 for c in closes]
+    for i in range(8, 26):
+        lows[i] = 94.0
+    env = _env(tmp_path, closes, lows=lows)
+    actions = [0.0] * 20
+    for step in (4, 7, 10, 13):
+        actions[step] = 1.0
+    rows, summary = drive(env, actions)
+    assert_coherent(rows, summary)
+    assert summary["trade_stats_authority"] == "closed_trade_stream_v2"
+    assert summary["trades_won"] + summary["trades_lost"] + \
+        summary["trades_breakeven"] == summary["trades_total"]
+    assert summary["trades_lost"] >= 1  # SL settlements lose
+    assert sum(summary["close_reason_counts"].values()) == \
+        summary["trades_total"]
+    events = list(env.bridge.closed_trade_stream)
+    direct = [e for e in events
+              if e["source"] == "envelope_direct_settlement"]
+    assert direct, events
+    for e in direct:
+        assert e["side"] in ("long", "short")
+        assert e["size"] and e["size"] > 0
+        assert e["entry_price"] and e["exit_price"]
+        assert e["net_pnl"] == pytest.approx(
+            e["gross_pnl"] - e["costs"])
+        assert e["net_pnl"] < 0  # stop-loss settlement
+
+
+def test_direct_settlement_win_is_classified_won(tmp_path):
+    """Entry-bar TAKE-PROFIT settlement: a direct settlement that
+    WINS must be counted as won by the authoritative stats — the
+    analyzer never saw these at all."""
+    closes = [100.0] * 26
+    highs = [c * 1.0005 for c in closes]
+    for i in range(8, 26):
+        highs[i] = 111.0     # pierces the 10% take-profit intrabar
+    env = _env(tmp_path, closes, highs=highs)
+    actions = [0.0] * 20
+    for step in (4, 7, 10, 13):
+        actions[step] = 1.0
+    rows, summary = drive(env, actions)
+    assert_coherent(rows, summary)
+    assert summary["trades_won"] >= 1
+    direct = [e for e in env.bridge.closed_trade_stream
+              if e["source"] == "envelope_direct_settlement"]
+    assert direct
+    assert any(e["net_pnl"] > 0 for e in direct)
+    assert summary["trades_won"] + summary["trades_lost"] + \
+        summary["trades_breakeven"] == summary["trades_total"]
+
+
+def test_duplicate_event_id_never_counts_twice(tmp_path):
+    """Finding 6: retried callbacks are idempotent by event id."""
+    env = _env(tmp_path, [100.0] * 14)
+    env.reset(seed=7)
+    bridge = env.bridge
+    first = bridge.record_trade_close(
+        source="bt_trade_closed", event_id="bt_42", bar_index=5,
+        reason="test", side="long", size=1.0, entry_price=100.0,
+        exit_price=101.0, gross_pnl=1.0, costs=0.1, net_pnl=0.9)
+    second = bridge.record_trade_close(
+        source="bt_trade_closed", event_id="bt_42", bar_index=5,
+        reason="test", side="long", size=1.0, entry_price=100.0,
+        exit_price=101.0, gross_pnl=1.0, costs=0.1, net_pnl=0.9)
+    assert first == second == 1
+    assert len(bridge.closed_trade_stream) == 1
+    assert bridge.execution_diagnostics[
+        "duplicate_close_events_ignored"] == 1
+    summary = env.summary()
+    assert summary["duplicate_close_events_ignored"] == 1
