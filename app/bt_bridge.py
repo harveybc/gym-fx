@@ -86,7 +86,8 @@ class BTBridge:
                            bar_index=None, reason=None, side=None,
                            size=None, entry_price=None,
                            exit_price=None, gross_pnl=None,
-                           costs=None, net_pnl=None) -> int:
+                           costs=None, net_pnl=None,
+                           order_ref=None) -> int:
         """Append ONE STRICTLY VALIDATED, economically complete
         closure event (final hardening order 2026-08-28):
 
@@ -149,7 +150,16 @@ class BTBridge:
             "gross_pnl": _finite("gross_pnl", gross_pnl),
             "costs": _finite("costs", costs, nonnegative=True),
             "net_pnl": _finite("net_pnl", net_pnl),
+            # fill-lineage order 2026-08-28: the closing ORDER ref is
+            # a typed first-class field (None only for closures that
+            # never traverse the order path, e.g. direct settlements)
+            "order_ref": (int(order_ref) if order_ref is not None
+                          else None),
         }
+        if event["order_ref"] is not None and event["order_ref"] < 0:
+            raise TradeCloseValidationError(
+                f"order_ref must be a nonnegative int, got "
+                f"{order_ref!r}")
         tolerance = 1e-6 + 1e-9 * abs(event["gross_pnl"])
         if abs(event["net_pnl"]
                - (event["gross_pnl"] - event["costs"])) > tolerance:
@@ -289,6 +299,9 @@ class BTBridgeStrategy(bt.Strategy):
 
     # --- backtrader lifecycle --------------------------------------------------
     def start(self) -> None:
+        # fill-lineage order 2026-08-28: trade history carries the
+        # closing ORDER identity — the PRIMARY join key
+        self.set_tradehistory(True)
         self.bridge.commission_paid = 0.0
         self.bridge.closed_trade_stream = []
         self.bridge.trade_count = 0
@@ -304,6 +317,17 @@ class BTBridgeStrategy(bt.Strategy):
             # observation price. FIFO of recent completed fills; the
             # trade-close callback consumes the ones from ITS bar.
             executed = order.executed
+            # partial-fill semantics (audit finding 5): this broker
+            # model emits ONLY terminal aggregate fills — a Completed
+            # order with residual size is undefined here and refuses
+            remaining = float(getattr(executed, "remsize", 0.0)
+                              or 0.0)
+            if abs(remaining) > 1e-12:
+                raise TradeCloseValidationError(
+                    f"order {getattr(order, 'ref', '?')} Completed "
+                    f"with residual size {remaining} — partial fills "
+                    "are not defined in this simulator (fill-lineage "
+                    "order 2026-08-28)")
             if not hasattr(self, "_completed_fills"):
                 self._completed_fills = []
             self._completed_fills.append({
@@ -329,59 +353,87 @@ class BTBridgeStrategy(bt.Strategy):
             net = float(getattr(trade, "pnlcomm", gross) or gross)
             entry = float(getattr(trade, "price", 0.0) or 0.0)
             long_side = bool(getattr(trade, "long", True))
-            # Fill-truth (finding 5): join the IMMUTABLE completed
-            # closing-order fill — execution price, executed size,
-            # commission, order lineage — by RECONCILIATION: among the
-            # unconsumed completed fills of this notification phase
-            # (same bar, or the adjacent bar for notification skew),
-            # exactly the fill whose derived gross matches
-            # Backtrader's trade PnL is the closing fill; it is then
-            # CONSUMED so two closes in one bar can never share one
-            # fill. No candidate reconciling refuses (stale/missing);
-            # several DISTINCT reconciling candidates refuse
-            # (ambiguous).
+            # Fill-lineage order 2026-08-28: the PRIMARY join key is
+            # the EXPLICIT closing-order identity from the trade's own
+            # history (set_tradehistory); reconciliation of derived
+            # gross vs Backtrader PnL is a CONSISTENCY CHECK, never
+            # the identity. Without lineage, more than one unconsumed
+            # reconciling ORDER identity refuses — even when price and
+            # size are economically identical.
             bar = int(self.bridge.bar_index)
             direction = 1.0 if long_side else -1.0
             pool = getattr(self, "_completed_fills", [])
-            candidates = []
-            for position_index, fill in enumerate(pool):
-                if abs(fill["size"]) <= 0.0:
-                    continue
-                if fill["bar_index"] not in (bar, bar - 1, bar + 1):
-                    continue
+            lineage_ref = None
+            history = list(getattr(trade, "history", []) or [])
+            if history:
+                closing_event = history[-1]
+                event_order = getattr(
+                    getattr(closing_event, "event", None), "order",
+                    None)
+                if event_order is not None:
+                    lineage_ref = int(getattr(event_order, "ref",
+                                              -1))
+
+            def reconciles(fill):
                 fill_gross = direction * abs(fill["size"]) * (
                     float(fill["price"]) - entry)
                 tolerance = 1e-6 + 1e-6 * max(abs(gross),
                                               abs(fill_gross))
-                if abs(fill_gross - gross) <= tolerance:
-                    candidates.append((position_index, fill))
-            if not candidates:
-                raise TradeCloseValidationError(
-                    f"bt trade close at bar {bar} has NO completed "
-                    "closing fill whose derived gross reconciles "
-                    f"with Backtrader pnl {gross:.8f} — stale or "
-                    "missing fill evidence refuses (fill-truth order "
-                    "2026-08-28)")
-            distinct = {(round(float(f["price"]), 10),
-                         round(abs(float(f["size"])), 10))
-                        for _i, f in candidates}
-            if len(distinct) > 1:
-                raise TradeCloseValidationError(
-                    f"bt trade close at bar {bar}: "
-                    f"{len(distinct)} DISTINCT completed fills all "
-                    "reconcile with the trade PnL — ambiguous fill "
-                    "evidence refuses")
-            position_index, fill = candidates[-1]
+                return abs(fill_gross - gross) <= tolerance
+
+            candidates = [
+                (position_index, fill)
+                for position_index, fill in enumerate(pool)
+                if abs(fill["size"]) > 0.0
+                and fill["bar_index"] in (bar - 1, bar, bar + 1)]
+            if lineage_ref is not None:
+                joined = [(i, f) for i, f in candidates
+                          if f["order_ref"] == lineage_ref]
+                if not joined:
+                    raise TradeCloseValidationError(
+                        f"bt trade close at bar {bar}: the trade's "
+                        f"own closing order ref {lineage_ref} has no "
+                        "unconsumed completed fill — stale or missing "
+                        "fill evidence refuses")
+                position_index, fill = joined[-1]
+                if not reconciles(fill):
+                    raise TradeCloseValidationError(
+                        f"bt trade close at bar {bar}: the "
+                        f"lineage-joined fill (order "
+                        f"{lineage_ref}) does not reconcile with "
+                        f"Backtrader pnl {gross:.8f} — inconsistent "
+                        "evidence refuses")
+            else:
+                reconciling = [(i, f) for i, f in candidates
+                               if reconciles(f)]
+                if not reconciling:
+                    raise TradeCloseValidationError(
+                        f"bt trade close at bar {bar} has NO "
+                        "completed closing fill whose derived gross "
+                        f"reconciles with Backtrader pnl {gross:.8f} "
+                        "— stale or missing fill evidence refuses")
+                order_identities = {f["order_ref"]
+                                    for _i, f in reconciling}
+                if len(order_identities) > 1:
+                    raise TradeCloseValidationError(
+                        f"bt trade close at bar {bar}: "
+                        f"{len(order_identities)} distinct ORDER "
+                        "identities reconcile and no explicit trade "
+                        "lineage proves the join — ambiguous order "
+                        "lineage refuses (fill-lineage order "
+                        "2026-08-28)")
+                position_index, fill = reconciling[-1]
             del pool[position_index]  # consumed: never joined twice
             exit_price = float(fill["price"])
             size = abs(float(fill["size"]))
+            closing_order_ref = int(fill["order_ref"])
             self.bridge.record_trade_close(
                 source="bt_trade_closed",
                 event_id=(f"bt_ep{self.bridge.episode_seq}"
                           f"_ref{getattr(trade, 'ref', id(trade))}"),
                 bar_index=bar,
-                reason=(f"backtrader trade lifecycle close "
-                        f"(fill order_ref={fill['order_ref']})"),
+                reason="backtrader trade lifecycle close",
+                order_ref=closing_order_ref,
                 side="long" if long_side else "short",
                 size=size,
                 entry_price=entry,

@@ -415,9 +415,54 @@ def test_fill_evidence_absence_refuses(tmp_path):
     from app.bt_bridge import TradeCloseValidationError
     source = (Path(__file__).resolve().parents[1]
               / "app/bt_bridge.py").read_text()
-    assert "NO completed" in source and "reconciles" in source
+    assert "has NO " in source and "reconciles with Backtrader pnl" in source
+    assert "ambiguous order " in source and "lineage refuses" in source
     assert "consumed: never joined twice" in source
     # the exit price no longer comes from the observation price
     notify_block = source.split("def notify_trade")[1].split(
         "def next")[0]
     assert "bridge.price" not in notify_block
+
+
+def test_same_price_same_size_double_close_and_lineage(tmp_path):
+    """Fill-lineage order 2026-08-28: two closes with IDENTICAL price
+    and size on adjacent bars must join by ORDER identity through the
+    trade's own lineage — never by economic tuple collapse — and both
+    events carry their typed order_ref."""
+    closes = [100.0] * 30
+    env = _env(tmp_path, closes)
+    # long -> flip short -> flip long: two lifecycle closes at the
+    # SAME price (flat series) and the SAME size fraction
+    actions = ([0.4] + [0.0] * 3
+               + [-0.4, -0.4, -0.4] + [0.0] * 2
+               + [0.4, 0.4, 0.4] + [0.0] * 8)
+    rows, summary = drive(env, actions)
+    assert_coherent(rows, summary)
+    events = [e for e in env.bridge.closed_trade_stream
+              if e["source"] == "bt_trade_closed"]
+    assert len(events) >= 2
+    refs = [e["order_ref"] for e in events]
+    assert all(isinstance(r, int) and r >= 0 for r in refs)
+    assert len(set(refs)) == len(refs)  # distinct order identities
+    prices = {round(e["exit_price"], 4) for e in events}
+    sizes = {round(e["size"], 6) for e in events}
+    # the adversarial condition actually held: identical economics
+    assert len(prices) == 1 and len(sizes) <= 2
+
+
+def test_ambiguity_by_order_identity_not_economic_tuple():
+    """Without explicit lineage, two DISTINCT reconciling order
+    identities refuse even when price and size are identical."""
+    source = (Path(__file__).resolve().parents[1]
+              / "app/bt_bridge.py").read_text()
+    assert "order_identities" in source
+    assert "distinct ORDER" in source
+    assert 'f["order_ref"] == lineage_ref' in source  # lineage primary
+    assert "set_tradehistory(True)" in source
+
+
+def test_partial_fills_are_rejected_as_undefined():
+    source = (Path(__file__).resolve().parents[1]
+              / "app/bt_bridge.py").read_text()
+    assert "partial fills" in source
+    assert "remsize" in source
