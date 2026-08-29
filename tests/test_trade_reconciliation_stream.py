@@ -415,8 +415,8 @@ def test_fill_evidence_absence_refuses(tmp_path):
     from app.bt_bridge import TradeCloseValidationError
     source = (Path(__file__).resolve().parents[1]
               / "app/bt_bridge.py").read_text()
-    assert "without completed" in source
-    assert "reconcile with Backtrader pnl" in source
+    assert "NO completed" in source and "reconciles" in source
+    assert "consumed: never joined twice" in source
     # the exit price no longer comes from the observation price
     notify_block = source.split("def notify_trade")[1].split(
         "def next")[0]

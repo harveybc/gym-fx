@@ -330,32 +330,51 @@ class BTBridgeStrategy(bt.Strategy):
             entry = float(getattr(trade, "price", 0.0) or 0.0)
             long_side = bool(getattr(trade, "long", True))
             # Fill-truth (finding 5): join the IMMUTABLE completed
-            # closing-order fill from THIS bar — execution price,
-            # executed size, commission, order lineage. Stale, missing
-            # or ambiguous fill evidence REFUSES; a fabricated
-            # exit/size pair can never be recorded again.
+            # closing-order fill — execution price, executed size,
+            # commission, order lineage — by RECONCILIATION: among the
+            # unconsumed completed fills of this notification phase
+            # (same bar, or the adjacent bar for notification skew),
+            # exactly the fill whose derived gross matches
+            # Backtrader's trade PnL is the closing fill; it is then
+            # CONSUMED so two closes in one bar can never share one
+            # fill. No candidate reconciling refuses (stale/missing);
+            # several DISTINCT reconciling candidates refuse
+            # (ambiguous).
             bar = int(self.bridge.bar_index)
-            fills = [f for f in getattr(self, "_completed_fills", [])
-                     if f["bar_index"] == bar
-                     and abs(f["size"]) > 0.0]
-            if not fills:
+            direction = 1.0 if long_side else -1.0
+            pool = getattr(self, "_completed_fills", [])
+            candidates = []
+            for position_index, fill in enumerate(pool):
+                if abs(fill["size"]) <= 0.0:
+                    continue
+                if fill["bar_index"] not in (bar, bar - 1, bar + 1):
+                    continue
+                fill_gross = direction * abs(fill["size"]) * (
+                    float(fill["price"]) - entry)
+                tolerance = 1e-6 + 1e-6 * max(abs(gross),
+                                              abs(fill_gross))
+                if abs(fill_gross - gross) <= tolerance:
+                    candidates.append((position_index, fill))
+            if not candidates:
                 raise TradeCloseValidationError(
-                    f"bt trade close at bar {bar} without completed "
-                    "closing-fill evidence — stale/missing fill "
-                    "refuses (fill-truth order 2026-08-28)")
-            fill = fills[-1]  # the closing order completes last
+                    f"bt trade close at bar {bar} has NO completed "
+                    "closing fill whose derived gross reconciles "
+                    f"with Backtrader pnl {gross:.8f} — stale or "
+                    "missing fill evidence refuses (fill-truth order "
+                    "2026-08-28)")
+            distinct = {(round(float(f["price"]), 10),
+                         round(abs(float(f["size"])), 10))
+                        for _i, f in candidates}
+            if len(distinct) > 1:
+                raise TradeCloseValidationError(
+                    f"bt trade close at bar {bar}: "
+                    f"{len(distinct)} DISTINCT completed fills all "
+                    "reconcile with the trade PnL — ambiguous fill "
+                    "evidence refuses")
+            position_index, fill = candidates[-1]
+            del pool[position_index]  # consumed: never joined twice
             exit_price = float(fill["price"])
             size = abs(float(fill["size"]))
-            # reconcile fill-derived gross with Backtrader's own PnL
-            direction = 1.0 if long_side else -1.0
-            fill_gross = direction * size * (exit_price - entry)
-            tolerance = 1e-6 + 1e-6 * max(abs(gross), abs(fill_gross))
-            if abs(fill_gross - gross) > tolerance:
-                raise TradeCloseValidationError(
-                    f"fill-derived gross {fill_gross:.8f} does not "
-                    f"reconcile with Backtrader pnl {gross:.8f} "
-                    f"(tolerance {tolerance:.2e}) — ambiguous fill "
-                    "evidence refuses")
             self.bridge.record_trade_close(
                 source="bt_trade_closed",
                 event_id=(f"bt_ep{self.bridge.episode_seq}"
