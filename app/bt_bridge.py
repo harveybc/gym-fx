@@ -96,9 +96,13 @@ class BTBridge:
         * the PnL identity net == gross - costs holds within an
           explicit tolerance;
         * EXACT canonical replay of an existing event id is
-          idempotent; the same id with ANY payload difference raises a
-          typed conflict — an identity collision or a corrected
-          callback can never silently preserve false economics;
+          idempotent WITHIN ONE UNINTERRUPTED SIMULATION EPISODE (the
+          index is in-memory and episode-scoped; durable cross-process
+          attempt identity is the OUTER runner's custody
+          responsibility — audit 2026-08-28 finding 6); the same id
+          with ANY payload difference raises a typed conflict — an
+          identity collision or a corrected callback can never
+          silently preserve false economics;
         * the event map is indexed (no O(n) scan)."""
         import math
 
@@ -294,6 +298,23 @@ class BTBridgeStrategy(bt.Strategy):
             comm = float(getattr(order.executed, "comm", 0.0) or 0.0)
             self._order_cost_accum += comm
             self.bridge.commission_paid += comm
+            # Fill-truth order 2026-08-28 (finding 5): the COMPLETED
+            # order's execution facts are the immutable fill evidence
+            # a close event must join — never a possibly-stale
+            # observation price. FIFO of recent completed fills; the
+            # trade-close callback consumes the ones from ITS bar.
+            executed = order.executed
+            if not hasattr(self, "_completed_fills"):
+                self._completed_fills = []
+            self._completed_fills.append({
+                "order_ref": int(getattr(order, "ref", -1)),
+                "price": float(getattr(executed, "price", 0.0)
+                               or 0.0),
+                "size": float(getattr(executed, "size", 0.0) or 0.0),
+                "commission": comm,
+                "bar_index": int(self.bridge.bar_index),
+            })
+            del self._completed_fills[:-8]  # bounded evidence window
         plugin_notify = (
             getattr(self._strategy_plugin, "notify_order", None)
             if self._strategy_plugin
@@ -307,25 +328,41 @@ class BTBridgeStrategy(bt.Strategy):
             gross = float(getattr(trade, "pnl", 0.0) or 0.0)
             net = float(getattr(trade, "pnlcomm", gross) or gross)
             entry = float(getattr(trade, "price", 0.0) or 0.0)
-            exit_price = float(self.bridge.price or 0.0)
             long_side = bool(getattr(trade, "long", True))
-            # size: the bridge's signed quantity is synced per bar and
-            # still carries the PRE-close units when the closing order
-            # executes; when the geometry allows, the exact fill size
-            # gross/(exit-entry) takes precedence
-            size = abs(float(self.bridge.position_units or 0.0))
-            if abs(exit_price - entry) > 1e-9:
-                derived = abs(gross / (exit_price - entry))
-                if derived > 0.0:
-                    size = derived
-            # deterministic identity: episode + backtrader trade
-            # lineage (ref) — never a bare bar number
+            # Fill-truth (finding 5): join the IMMUTABLE completed
+            # closing-order fill from THIS bar — execution price,
+            # executed size, commission, order lineage. Stale, missing
+            # or ambiguous fill evidence REFUSES; a fabricated
+            # exit/size pair can never be recorded again.
+            bar = int(self.bridge.bar_index)
+            fills = [f for f in getattr(self, "_completed_fills", [])
+                     if f["bar_index"] == bar
+                     and abs(f["size"]) > 0.0]
+            if not fills:
+                raise TradeCloseValidationError(
+                    f"bt trade close at bar {bar} without completed "
+                    "closing-fill evidence — stale/missing fill "
+                    "refuses (fill-truth order 2026-08-28)")
+            fill = fills[-1]  # the closing order completes last
+            exit_price = float(fill["price"])
+            size = abs(float(fill["size"]))
+            # reconcile fill-derived gross with Backtrader's own PnL
+            direction = 1.0 if long_side else -1.0
+            fill_gross = direction * size * (exit_price - entry)
+            tolerance = 1e-6 + 1e-6 * max(abs(gross), abs(fill_gross))
+            if abs(fill_gross - gross) > tolerance:
+                raise TradeCloseValidationError(
+                    f"fill-derived gross {fill_gross:.8f} does not "
+                    f"reconcile with Backtrader pnl {gross:.8f} "
+                    f"(tolerance {tolerance:.2e}) — ambiguous fill "
+                    "evidence refuses")
             self.bridge.record_trade_close(
                 source="bt_trade_closed",
                 event_id=(f"bt_ep{self.bridge.episode_seq}"
                           f"_ref{getattr(trade, 'ref', id(trade))}"),
-                bar_index=int(self.bridge.bar_index),
-                reason="backtrader trade lifecycle close",
+                bar_index=bar,
+                reason=(f"backtrader trade lifecycle close "
+                        f"(fill order_ref={fill['order_ref']})"),
                 side="long" if long_side else "short",
                 size=size,
                 entry_price=entry,

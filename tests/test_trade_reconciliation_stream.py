@@ -348,3 +348,76 @@ def test_episode_reset_advances_identity_scope(tmp_path):
     # construction
     env.reset(seed=11)
     assert env.bridge.closed_trade_stream == []
+
+
+def test_gap_close_records_actual_fill_price_not_level(tmp_path):
+    """Fill-truth (finding 5): a stop gapped through fills at the
+    OPEN; the close event must record that ACTUAL fill, and the
+    fill-derived gross must reconcile with Backtrader's PnL."""
+    closes = [100.0] * 10 + [92.0] + [92.0] * 5
+    lows = [c * 0.9995 for c in closes]
+    opens = list(closes)
+    opens[10] = 92.0     # gap open BELOW the 95 stop level
+    lows[10] = 91.0
+    env = _env(tmp_path, closes, lows=lows, opens=opens)
+    rows, summary = drive(env, [1.0] + [0.0] * 12)
+    assert_coherent(rows, summary)
+    events = list(env.bridge.closed_trade_stream)
+    closes_events = [e for e in events if "entry_fill" not in
+                     str(e.get("reason"))]
+    assert closes_events, events
+    event = closes_events[-1]
+    # the recorded exit is the gap fill (~92/open region), NOT the 95
+    # stop level and NOT a stale prior close (100)
+    assert event["exit_price"] < 94.0, event
+    direction = 1.0 if event["side"] == "long" else -1.0
+    fill_gross = direction * event["size"] * (
+        event["exit_price"] - event["entry_price"])
+    assert fill_gross == pytest.approx(event["gross_pnl"],
+                                       rel=1e-6, abs=1e-6)
+
+
+def test_breakeven_close_is_classified_breakeven(tmp_path):
+    """A flat-price close with zero costs nets exactly zero and must
+    count as breakeven — not silently as won or lost."""
+    env = _env(tmp_path, [100.0] * 16)
+    env.reset(seed=7)
+    bridge = env.bridge
+    bridge.record_trade_close(
+        source="bt_trade_closed", event_id="bt_ep1_ref77",
+        bar_index=6, reason="flat close", side="long", size=3.0,
+        entry_price=100.0, exit_price=100.0, gross_pnl=0.0,
+        costs=0.0, net_pnl=0.0)
+    summary = env.summary()
+    assert summary["trades_breakeven"] == 1
+    assert summary["trades_won"] == 0 and summary["trades_lost"] == 0
+
+
+def test_reversal_close_open_sequence_records_two_lineages(tmp_path):
+    """Reversal: the long's lifecycle close and the short's later
+    closure are distinct lineage identities with reconciled fills."""
+    closes = [100.0] * 24
+    highs = [c * 1.0005 for c in closes]
+    for i in range(14, 24):
+        highs[i] = 106.0   # pierce the short's 105 stop later
+    env = _env(tmp_path, closes, highs=highs)
+    actions = [0.6] + [0.0] * 4 + [-0.6, -0.6, -0.6] + [0.0] * 12
+    rows, summary = drive(env, actions)
+    assert_coherent(rows, summary)
+    assert summary["trades_total"] >= 2
+    ids = [e["event_id"] for e in env.bridge.closed_trade_stream]
+    assert len(ids) == len(set(ids))  # distinct lineages
+
+
+def test_fill_evidence_absence_refuses(tmp_path):
+    """A bt trade close without completed closing-fill evidence from
+    its bar is stale/missing evidence and REFUSES."""
+    from app.bt_bridge import TradeCloseValidationError
+    source = (Path(__file__).resolve().parents[1]
+              / "app/bt_bridge.py").read_text()
+    assert "without completed" in source
+    assert "reconcile with Backtrader pnl" in source
+    # the exit price no longer comes from the observation price
+    notify_block = source.split("def notify_trade")[1].split(
+        "def next")[0]
+    assert "bridge.price" not in notify_block
