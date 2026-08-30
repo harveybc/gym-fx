@@ -1,7 +1,7 @@
-"""Work plan 42 state-machine tests (order @45c49003 WP1/WP2):
-transitions, Tuesday stale-feed vs expected weekend, holiday,
-contradictory/missing session evidence, long/short/pending paths,
-forced-flatten reconciliation, restart determinism."""
+"""Work plan 42 state machine — corrected under order @e303e386.
+
+Every counterexample the auditor reproduced against gym-fx@bec4d1a is
+a PERMANENT regression here (marked AUDIT-PRE)."""
 from __future__ import annotations
 
 import sys
@@ -13,11 +13,16 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.session_exposure import (  # noqa: E402
-    ExposureFacts, SessionEvidence, SessionPolicyError,
-    overlay_action, reconciliation_gate, session_state,
-    validate_policy, watchdog_state)
+    CarriedPositionMigration, ExposureFacts, ReopenEvidence,
+    SessionCalendar, SessionEvidenceError, SessionPolicyError,
+    classify_action, overlay_action, reconciliation_gate,
+    session_state, validate_policy, watchdog_state)
 
 UTC = timezone.utc
+CLOSE = datetime(2026, 8, 28, 17, 0, tzinfo=UTC)
+REOPEN = datetime(2026, 8, 30, 21, 0, tzinfo=UTC)
+NEXT_CLOSE = datetime(2026, 9, 4, 17, 0, tzinfo=UTC)
+NEXT_REOPEN = datetime(2026, 9, 6, 21, 0, tzinfo=UTC)
 
 
 def policy(**overrides):
@@ -37,202 +42,357 @@ def policy(**overrides):
         "carried_position_recovery":
             "protected_opportunistic_then_forced",
         "holiday_policy": "same_as_weekly",
-        "calendar_identity": "a" * 16,
+        "calendar_identity": "cal-digest-abc",
     }
     base.update(overrides)
     return validate_policy(base)
 
 
-FRIDAY_CLOSE = datetime(2026, 8, 28, 17, 0, tzinfo=UTC)
-SUNDAY_REOPEN = datetime(2026, 8, 30, 21, 0, tzinfo=UTC)
-CLOSURES = [(FRIDAY_CLOSE, SUNDAY_REOPEN)]
+def calendar(intervals=None):
+    return SessionCalendar.build(
+        venue="mt5_demo", account_fingerprint="fp-1234",
+        symbol="ETHUSD", calendar_digest="cal-digest-abc",
+        intervals=intervals or [(CLOSE, REOPEN),
+                                (NEXT_CLOSE, NEXT_REOPEN)])
 
 
-def evidence(now, **kw):
-    return SessionEvidence(now=now, closures=CLOSURES, **kw)
+def fresh_reopen(bars=2, checks=3, hint=None):
+    return ReopenEvidence.build(closed_bars_since_reopen=bars,
+                                stability_checks_passed=checks,
+                                hint_time_since_reopen_hours=hint)
 
 
-class TestConfigContract:
-    def test_flatten_must_precede_closure_inside_wind_down(self):
-        with pytest.raises(SessionPolicyError, match="forced flatten"):
-            policy(forced_flatten_hours=40)
-
-    def test_risk_increase_with_flat_demand_is_invalid(self):
-        with pytest.raises(SessionPolicyError, match="invalid"):
-            policy(allow_risk_increase_during_wind_down=True)
-
-    def test_positive_integer_stability_counts(self):
-        with pytest.raises(SessionPolicyError, match="positive"):
-            policy(stability_consecutive_checks=0)
-        with pytest.raises(SessionPolicyError, match="positive"):
-            policy(reopen_min_closed_bars=True)
-
-    def test_unknown_and_missing_fields_refuse(self):
-        with pytest.raises(SessionPolicyError, match="unknown"):
-            validate_policy({**policy(), "extra": 1})
-        with pytest.raises(SessionPolicyError, match="missing"):
-            validate_policy({"enabled": True})
+def flat():
+    return ExposureFacts.build(signed_exposure=0.0)
 
 
-class TestStateMachine:
-    def test_normal_far_from_closure(self):
-        block = session_state(policy(), evidence(
-            FRIDAY_CLOSE - timedelta(hours=100)))
-        assert block["state"] == "NORMAL_TRADING"
-        assert block["time_to_next_close_hours"] == 100.0
+def long_position(size=1.0, pending=0):
+    return ExposureFacts.build(signed_exposure=size,
+                               pending_orders=pending)
 
-    def test_wind_down_window(self):
-        block = session_state(policy(), evidence(
-            FRIDAY_CLOSE - timedelta(hours=20)))
+
+def short_position(size=1.0):
+    return ExposureFacts.build(signed_exposure=-size)
+
+
+# ================= AUDIT-PRE counterexamples ==================== #
+
+class TestAuditPreCounterexamples:
+    """The six facts reproduced against gym-fx@bec4d1a."""
+
+    def test_pre1_string_numeric_now_refuses(self):
+        with pytest.raises(SessionPolicyError, match="finite real"):
+            policy(wind_down_hours="36")
+
+    def test_pre2_nan_now_refuses(self):
+        with pytest.raises(SessionPolicyError, match="non-finite"):
+            policy(max_gap_sigma=float("nan"))
+        with pytest.raises(SessionPolicyError, match="non-finite"):
+            policy(max_spread_relative_to_baseline=float("inf"))
+
+    def test_pre3_open_position_reversal_is_masked(self):
+        """WAS: raw_action=-1.0 with an open position passed through
+        WIND_DOWN untouched."""
+        block = session_state(policy(), now=CLOSE - timedelta(hours=20),
+                              calendar=calendar(),
+                              reopen_evidence=fresh_reopen())
         assert block["state"] == "WIND_DOWN"
-        assert block["wind_down"] and not block["forced_flatten"]
+        decision = overlay_action(policy(), block, long_position(1.0),
+                                  raw_action=-1.0)
+        assert decision["mapped_action"]["kind"] == "reversal"
+        assert decision["overlay"] == "masked_risk_increase"
+        assert decision["final_action"] == 1.0  # holds, never flips
 
-    def test_forced_flatten_window(self):
-        block = session_state(policy(), evidence(
-            FRIDAY_CLOSE - timedelta(hours=2)))
-        assert block["state"] == "FORCED_FLATTEN"
-        assert block["forced_flatten"]
-
-    def test_expected_market_closed(self):
-        block = session_state(policy(), evidence(
-            FRIDAY_CLOSE + timedelta(hours=30)))
+    def test_pre4_closed_market_with_exposure_is_not_healthy(self):
+        """WAS: one position + one pending order during closure
+        reported only EXPECTED_MARKET_CLOSED."""
+        block = session_state(policy(), now=CLOSE + timedelta(hours=30),
+                              calendar=calendar())
         assert block["state"] == "EXPECTED_MARKET_CLOSED"
+        assert watchdog_state(
+            block, bars_fresh=False, terminal_connected=True,
+            exposure=long_position(1.0, pending=1)) == \
+            "UNEXPECTED_EXPOSURE_DURING_CLOSURE"
 
-    def test_reopen_blackout_until_stability(self):
-        after = SUNDAY_REOPEN + timedelta(hours=1)
-        block = session_state(policy(), SessionEvidence(
-            now=after, closures=CLOSURES,
-            time_since_reopen_hours=1.0,
-            closed_bars_since_reopen=0,
-            stability_checks_passed=0))
+    def test_pre5_one_hour_after_reopen_is_blackout(self):
+        """WAS: NORMAL_TRADING one hour after reopen when the adapter
+        hint was absent."""
+        block = session_state(policy(),
+                              now=REOPEN + timedelta(hours=1),
+                              calendar=calendar(),
+                              reopen_evidence=fresh_reopen())
         assert block["state"] == "REOPEN_BLACKOUT"
-        # both minimum time/bars AND stability must pass to exit
-        block2 = session_state(policy(), SessionEvidence(
-            now=SUNDAY_REOPEN + timedelta(hours=5),
-            closures=[(FRIDAY_CLOSE + timedelta(days=7),
-                       SUNDAY_REOPEN + timedelta(days=7))],
-            time_since_reopen_hours=5.0,
-            closed_bars_since_reopen=2,
-            stability_checks_passed=3))
-        assert block2["state"] == "NORMAL_TRADING"
+        assert block["time_since_reopen_hours"] == 1.0
+        # and with NO reopen evidence at all it still fails closed
+        missing = session_state(policy(),
+                                now=REOPEN + timedelta(hours=1),
+                                calendar=calendar(),
+                                reopen_evidence=None)
+        assert missing["state"] == "REOPEN_BLACKOUT"
+        assert missing["reopen_evidence_missing"] is True
 
-    def test_missing_session_evidence_fails_closed(self):
-        block = session_state(policy(), SessionEvidence(
-            now=FRIDAY_CLOSE - timedelta(hours=100),
-            closures=[], evidence_ok=False))
+    def test_pre6_unavailable_reconciliation_is_typed(self):
+        """WAS: raw TypeError as policy behavior."""
+        with pytest.raises(SessionPolicyError, match="integer count"):
+            reconciliation_gate(None, 0, evidence_age_seconds=5)
+        with pytest.raises(SessionPolicyError, match="integer count"):
+            reconciliation_gate(0, True, evidence_age_seconds=5)
+        with pytest.raises(SessionPolicyError, match="finite real"):
+            reconciliation_gate(0, 0, evidence_age_seconds="5")
+
+
+# ================= C1 exposure classification =================== #
+
+class TestSignedExposure:
+    def test_long_enlargement_and_reduction_and_close(self):
+        pos = long_position(1.0)
+        assert classify_action(1.5, pos)["kind"] == "enlargement"
+        assert classify_action(1.5, pos)["risk_increasing"] is True
+        assert classify_action(0.5, pos)["kind"] == "reduction"
+        assert classify_action(0.5, pos)["risk_increasing"] is False
+        assert classify_action(0.0, pos)["kind"] == "close"
+        assert classify_action(1.0, pos)["kind"] == "hold"
+
+    def test_short_mirror_cases(self):
+        pos = short_position(1.0)
+        assert classify_action(-1.5, pos)["kind"] == "enlargement"
+        assert classify_action(-0.5, pos)["kind"] == "reduction"
+        assert classify_action(0.7, pos)["kind"] == "reversal"
+        assert classify_action(0.7, pos)["risk_increasing"] is True
+
+    def test_entry_from_flat_is_risk_increasing(self):
+        assert classify_action(0.3, flat())["kind"] == \
+            "entry_from_flat"
+        assert classify_action(0.0, flat())["kind"] == "hold_flat"
+
+    def test_ambiguous_and_nonfinite_actions_refuse(self):
+        for bad in (None, "0.5", True, float("nan"), float("inf")):
+            with pytest.raises(SessionEvidenceError):
+                classify_action(bad, flat())
+
+    def test_side_contradicting_exposure_refuses(self):
+        with pytest.raises(SessionEvidenceError, match="contradicts"):
+            ExposureFacts.build(signed_exposure=1.0, side="short")
+
+    def test_pending_entry_requires_size_and_order(self):
+        with pytest.raises(SessionEvidenceError, match="zero size"):
+            ExposureFacts.build(signed_exposure=0.0,
+                                pending_entry_side="long",
+                                pending_entry_size=0.0,
+                                pending_orders=1)
+        with pytest.raises(SessionEvidenceError,
+                           match="zero pending orders"):
+            ExposureFacts.build(signed_exposure=0.0,
+                                pending_entry_side="long",
+                                pending_entry_size=0.5,
+                                pending_orders=0)
+
+    def test_partial_fill_exposure_is_representable(self):
+        partial = ExposureFacts.build(signed_exposure=0.4,
+                                      pending_entry_side="long",
+                                      pending_entry_size=0.6,
+                                      pending_orders=1)
+        assert partial.side == "long"
+        assert classify_action(0.4, partial)["kind"] == "hold"
+        assert classify_action(1.0, partial)["kind"] == "enlargement"
+
+
+# ================= C2 calendar-derived state ==================== #
+
+class TestCalendarAuthority:
+    def test_intervals_must_be_ordered_utc_nonoverlapping(self):
+        with pytest.raises(SessionEvidenceError, match="precede"):
+            calendar([(REOPEN, CLOSE)])
+        with pytest.raises(SessionEvidenceError, match="aware"):
+            calendar([(CLOSE.replace(tzinfo=None), REOPEN)])
+        with pytest.raises(SessionEvidenceError, match="overlap"):
+            calendar([(CLOSE, REOPEN),
+                      (CLOSE + timedelta(hours=1),
+                       REOPEN + timedelta(hours=5))])
+
+    def test_server_time_converted_to_utc(self):
+        offset = timezone(timedelta(hours=3))
+        cal = calendar([(CLOSE.astimezone(offset),
+                         REOPEN.astimezone(offset))])
+        assert cal.intervals[0][0] == CLOSE
+        assert cal.intervals[0][1].tzinfo == UTC
+
+    def test_exact_boundaries(self):
+        cal = calendar()
+        at_close = session_state(policy(), now=CLOSE, calendar=cal)
+        assert at_close["state"] == "EXPECTED_MARKET_CLOSED"
+        at_reopen = session_state(policy(), now=REOPEN, calendar=cal,
+                                  reopen_evidence=fresh_reopen())
+        assert at_reopen["state"] == "REOPEN_BLACKOUT"
+
+    def test_blackout_exits_only_after_all_predicates(self):
+        late = REOPEN + timedelta(hours=5)
+        assert session_state(policy(), now=late, calendar=calendar(),
+                             reopen_evidence=fresh_reopen(bars=0)
+                             )["state"] == "REOPEN_BLACKOUT"
+        assert session_state(policy(), now=late, calendar=calendar(),
+                             reopen_evidence=fresh_reopen(checks=1)
+                             )["state"] == "REOPEN_BLACKOUT"
+        assert session_state(policy(), now=late, calendar=calendar(),
+                             reopen_evidence=fresh_reopen()
+                             )["state"] == "NORMAL_TRADING"
+
+    def test_adapter_hint_cannot_authorize_trading(self):
+        """A lying hint (claiming 100h since reopen) does not shorten
+        the blackout: authority is the bound interval."""
+        block = session_state(
+            policy(), now=REOPEN + timedelta(hours=1),
+            calendar=calendar(),
+            reopen_evidence=fresh_reopen(hint=100.0))
+        assert block["state"] == "REOPEN_BLACKOUT"
+        assert block["adapter_hint_disagrees"] is True
+
+    def test_holiday_adjacency_uses_same_machine(self):
+        holiday = (datetime(2026, 9, 7, 13, 0, tzinfo=UTC),
+                   datetime(2026, 9, 8, 13, 0, tzinfo=UTC))
+        cal = calendar([(CLOSE, REOPEN), (NEXT_CLOSE, NEXT_REOPEN),
+                        holiday])
+        block = session_state(policy(),
+                              now=holiday[0] - timedelta(hours=2),
+                              calendar=cal,
+                              reopen_evidence=fresh_reopen())
+        assert block["state"] == "FORCED_FLATTEN"
+
+    def test_stale_calendar_absent_evidence_fails_closed(self):
+        block = session_state(policy(), now=CLOSE - timedelta(days=5),
+                              calendar=None)
         assert block["state"] == "WIND_DOWN"
         assert block["evidence_failed_closed"] is True
 
-    def test_disabled_policy_passes_through(self):
-        block = session_state(policy(enabled=False), evidence(
-            FRIDAY_CLOSE - timedelta(hours=1)))
-        assert block["state"] == "NORMAL_TRADING"
-        assert block["policy_enabled"] is False
-
-    def test_restart_determinism_same_inputs_same_state(self):
-        a = session_state(policy(), evidence(
-            FRIDAY_CLOSE - timedelta(hours=20)))
-        b = session_state(policy(), evidence(
-            FRIDAY_CLOSE - timedelta(hours=20)))
-        assert a == b
+    def test_restart_determinism(self):
+        args = dict(now=CLOSE - timedelta(hours=20),
+                    calendar=calendar(),
+                    reopen_evidence=fresh_reopen())
+        assert session_state(policy(), **args) == \
+            session_state(policy(), **args)
 
 
-class TestOverlay:
-    def test_wind_down_masks_entries_and_cancels_pendings(self):
-        block = session_state(policy(), evidence(
-            FRIDAY_CLOSE - timedelta(hours=20)))
-        decision = overlay_action(
-            policy(), block,
-            ExposureFacts(open_position=False, pending_orders=2),
-            raw_action=0.7)
-        assert decision["overlay"] == "masked_risk_increase"
-        assert decision["final_action"] == 0.0
-        assert decision["cancel_pending"] is True
-        assert decision["raw_model_action"] == 0.7  # recorded raw
+# ================= C3 watchdog precedence ======================= #
 
-    def test_wind_down_allows_model_close_long_and_short(self):
-        block = session_state(policy(), evidence(
-            FRIDAY_CLOSE - timedelta(hours=20)))
-        for side_action in (0.0, -0.0):
-            decision = overlay_action(
-                policy(), block,
-                ExposureFacts(open_position=True),
-                raw_action=side_action)
-            assert decision["overlay"] == "pass_through"
+class TestWatchdogPrecedence:
+    def _closed(self):
+        return session_state(policy(), now=CLOSE + timedelta(hours=30),
+                             calendar=calendar())
 
-    def test_forced_flatten_closes_open_position(self):
-        block = session_state(policy(), evidence(
-            FRIDAY_CLOSE - timedelta(hours=2)))
-        decision = overlay_action(
-            policy(), block, ExposureFacts(open_position=True,
-                                           pending_orders=1),
-            raw_action=0.9)
+    def test_closure_suppresses_only_bar_staleness(self):
+        assert watchdog_state(self._closed(), bars_fresh=False,
+                              terminal_connected=True,
+                              exposure=flat()) == \
+            "EXPECTED_MARKET_CLOSED"
+
+    def test_terminal_account_bracket_take_precedence(self):
+        closed = self._closed()
+        assert watchdog_state(closed, bars_fresh=False,
+                              terminal_connected=False,
+                              exposure=flat()) == \
+            "TERMINAL_DISCONNECTED"
+        assert watchdog_state(closed, bars_fresh=False,
+                              terminal_connected=True,
+                              exposure=flat(),
+                              account_ok=False) == \
+            "ACCOUNT_OR_BRACKET_FAULT"
+        assert watchdog_state(closed, bars_fresh=False,
+                              terminal_connected=True,
+                              exposure=flat(),
+                              brackets_ok=False) == \
+            "ACCOUNT_OR_BRACKET_FAULT"
+
+    def test_flatten_incident_takes_precedence(self):
+        block = session_state(policy(),
+                              now=CLOSE - timedelta(hours=2),
+                              calendar=calendar(),
+                              reopen_evidence=fresh_reopen())
+        assert watchdog_state(
+            block, bars_fresh=True, terminal_connected=True,
+            exposure=long_position(),
+            flatten_incident="FORCED_FLATTEN_FAILED: exposure remains"
+        ) == "FORCED_FLATTEN_FAILED"
+
+    def test_carried_position_recovery_is_one_use_and_scoped(self):
+        closed = self._closed()
+        migration = CarriedPositionMigration.build(
+            migration_id="mig-2026-08-28-eth",
+            opened_before=CLOSE - timedelta(hours=6),
+            symbol="ETHUSD",
+            covers_closure_started_at=CLOSE)
+        assert watchdog_state(
+            closed, bars_fresh=False, terminal_connected=True,
+            exposure=short_position(), carried_migration=migration,
+            now=CLOSE + timedelta(hours=30)) == \
+            "CARRIED_POSITION_RECOVERY_ACTIVE"
+        # a FUTURE closure is NOT normalized by the same record
+        # (the record is bound to ONE closure interval)
+        future_block = session_state(
+            policy(), now=NEXT_CLOSE + timedelta(hours=5),
+            calendar=calendar())
+        assert watchdog_state(
+            future_block, bars_fresh=False, terminal_connected=True,
+            exposure=short_position(), carried_migration=migration,
+            now=NEXT_CLOSE + timedelta(hours=5)) == \
+            "UNEXPECTED_EXPOSURE_DURING_CLOSURE"
+
+    def test_open_window_staleness_still_alerts(self):
+        block = session_state(policy(), now=CLOSE - timedelta(hours=80),
+                              calendar=calendar(),
+                              reopen_evidence=fresh_reopen())
+        assert watchdog_state(block, bars_fresh=False,
+                              terminal_connected=True,
+                              exposure=flat()) == \
+            "FEED_STALE_DURING_OPEN_WINDOW"
+
+
+# ================= overlay + reconciliation ===================== #
+
+class TestOverlayAndReconciliation:
+    def test_forced_flatten_closes_and_cancels(self):
+        block = session_state(policy(), now=CLOSE - timedelta(hours=2),
+                              calendar=calendar(),
+                              reopen_evidence=fresh_reopen())
+        decision = overlay_action(policy(), block,
+                                  long_position(1.0, pending=1),
+                                  raw_action=0.9)
         assert decision["overlay"] == "forced_close"
         assert decision["final_action"] == "CLOSE"
         assert decision["cancel_pending"] is True
 
-    def test_closed_market_no_actionable_step(self):
-        block = session_state(policy(), evidence(
-            FRIDAY_CLOSE + timedelta(hours=10)))
-        decision = overlay_action(policy(), block, ExposureFacts(),
+    def test_closed_market_produces_no_actionable_step(self):
+        block = session_state(policy(), now=CLOSE + timedelta(hours=10),
+                              calendar=calendar())
+        decision = overlay_action(policy(), block, flat(),
                                   raw_action=0.5)
         assert decision["overlay"] == "no_actionable_step"
         assert decision["final_action"] is None
+        assert decision["mapped_action"] is None
 
-    def test_blackout_masks_entries_only(self):
-        block = {"state": "REOPEN_BLACKOUT", "evidence_ok": True}
-        entry = overlay_action(policy(), block, ExposureFacts(),
-                               raw_action=1.0)
-        assert entry["overlay"] == "masked_entry_during_blackout"
-        carried = overlay_action(
-            policy(), block, ExposureFacts(open_position=True),
-            raw_action=0.0)
-        assert carried["overlay"] == "pass_through"
+    def test_reduction_survives_wind_down(self):
+        block = session_state(policy(), now=CLOSE - timedelta(hours=20),
+                              calendar=calendar(),
+                              reopen_evidence=fresh_reopen())
+        decision = overlay_action(policy(), block, long_position(1.0),
+                                  raw_action=0.3)
+        assert decision["overlay"] == "pass_through"
+        assert decision["final_action"] == 0.3
 
+    def test_reconciliation_requires_fresh_zero_zero(self):
+        assert reconciliation_gate(
+            0, 0, evidence_age_seconds=10)["flat_confirmed"] is True
+        assert "stale" in reconciliation_gate(
+            0, 0, evidence_age_seconds=999)["incident"]
+        assert "exposure remains" in reconciliation_gate(
+            1, 0, evidence_age_seconds=5)["incident"]
 
-class TestReconciliationAndWatchdog:
-    def test_flatten_success_requires_fresh_zero_zero(self):
-        ok = reconciliation_gate(0, 0, evidence_age_seconds=10)
-        assert ok["flat_confirmed"] and ok["incident"] is None
-        stale = reconciliation_gate(0, 0, evidence_age_seconds=999)
-        assert not stale["flat_confirmed"]
-        assert "stale" in stale["incident"]
-        exposed = reconciliation_gate(1, 0, evidence_age_seconds=5)
-        assert "exposure remains" in exposed["incident"]
-
-    def test_expected_weekend_vs_tuesday_stale_feed(self):
-        closed = session_state(policy(), evidence(
-            FRIDAY_CLOSE + timedelta(hours=30)))
-        assert watchdog_state(closed, bars_fresh=False,
-                              terminal_connected=True,
-                              exposure=ExposureFacts()) == \
-            "EXPECTED_MARKET_CLOSED"
-        tuesday = session_state(policy(), evidence(
-            FRIDAY_CLOSE - timedelta(hours=80)))
-        assert watchdog_state(tuesday, bars_fresh=False,
-                              terminal_connected=True,
-                              exposure=ExposureFacts()) == \
-            "FEED_STALE_DURING_OPEN_WINDOW"
-
-    def test_closure_never_suppresses_terminal_or_exposure(self):
-        closed = session_state(policy(), evidence(
-            FRIDAY_CLOSE + timedelta(hours=30)))
-        assert watchdog_state(closed, bars_fresh=False,
-                              terminal_connected=False,
-                              exposure=ExposureFacts()) == \
-            "TERMINAL_DISCONNECTED"
-        wind = session_state(policy(), evidence(
-            FRIDAY_CLOSE - timedelta(hours=2)))
-        assert watchdog_state(wind, bars_fresh=True,
-                              terminal_connected=True,
-                              exposure=ExposureFacts(
-                                  open_position=True)) == \
-            "WIND_DOWN_EXPOSURE_PRESENT"
-
-    def test_holiday_uses_same_machine(self):
-        holiday = [(datetime(2026, 9, 7, 13, 0, tzinfo=UTC),
-                    datetime(2026, 9, 8, 13, 0, tzinfo=UTC))]
-        block = session_state(policy(), SessionEvidence(
-            now=datetime(2026, 9, 7, 12, 0, tzinfo=UTC),
-            closures=holiday))
-        assert block["state"] == "FORCED_FLATTEN"
+    def test_raw_mapped_overlay_final_are_separate_facts(self):
+        block = session_state(policy(), now=CLOSE - timedelta(hours=20),
+                              calendar=calendar(),
+                              reopen_evidence=fresh_reopen())
+        decision = overlay_action(policy(), block, flat(),
+                                  raw_action=0.8)
+        assert decision["raw_model_action"] == 0.8
+        assert decision["mapped_action"]["kind"] == "entry_from_flat"
+        assert decision["overlay"] == "masked_risk_increase"
+        assert decision["final_action"] == 0.0

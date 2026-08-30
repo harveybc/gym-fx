@@ -1,29 +1,122 @@
-"""Weekly session-exposure state machine (work plan 42, order
-@45c49003). PURE, venue-agnostic and driver-free: the five states and
-the action overlay are computed from typed inputs (bound session
-calendar, clock, exposure facts, reopen evidence) so gym-fx, the lts
-runners and the calibration materializer share ONE authority.
+"""Weekly session-exposure state machine (work plan 42; corrected
+under order @e303e386 C1-C4).
 
-States: NORMAL_TRADING, WIND_DOWN, FORCED_FLATTEN,
-EXPECTED_MARKET_CLOSED, REOPEN_BLACKOUT.
+PURE, venue-agnostic, driver-free: the five states and the action
+overlay are computed from IMMUTABLE VALIDATED values so gym-fx, the
+lts runners and the calibration materializer share ONE authority.
 
-The overlay never learns and never infers: a learned policy may close
-opportunistically during WIND_DOWN, but the deterministic deadline
-guarantees flat exposure. Raw model action, overlay decision and
-final action are ALWAYS distinct recorded facts."""
+Corrections in this revision, each with a reproduced counterexample:
+
+* C1 exposure is TYPED and SIGNED. The previous ``open_position``
+  boolean made every action legal while a position was open, so a
+  reversal (-1.0 against a long) passed through WIND_DOWN. Risk
+  increase now means greater absolute exposure OR sign reversal OR
+  entry from flat, decided from signed facts under a declared action
+  mapping. Ambiguous or non-finite actions REFUSE.
+* C2 closure/reopen state derives from the BOUND interval set:
+  canonical UTC, ordered, non-overlapping, ``close_at < reopen_at``,
+  tied to venue/account/symbol and calendar digest. Nullable adapter
+  hints may be cross-checked but can never authorize normal trading;
+  missing reopen evidence after a known closure FAILS CLOSED.
+* C3 expected closure suppresses ONLY bar staleness. Terminal,
+  account, bracket, pending-order and exposure incidents take
+  precedence, and the already-carried position gets its own
+  ``CARRIED_POSITION_RECOVERY_ACTIVE`` bound to a one-use migration
+  record — it never normalizes future weekend exposure.
+* C4 strict typed boundaries: bool, str, NaN, inf, fractional counts,
+  negatives and unavailable values are refused. No ``float(...)``,
+  ``int(...)``, ``or 0`` or raw ``TypeError`` as policy behavior.
+"""
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Optional, Sequence
 
 STATES = ("NORMAL_TRADING", "WIND_DOWN", "FORCED_FLATTEN",
           "EXPECTED_MARKET_CLOSED", "REOPEN_BLACKOUT")
+SIDES = ("long", "short", "flat")
+ACTION_MAPPINGS = ("target_exposure_v2",)
+RECOVERY_POLICIES = ("protected_opportunistic_then_forced",)
+HOLIDAY_POLICIES = ("same_as_weekly",)
+SESSION_SOURCES = ("venue_symbol_sessions_v1",)
+EPSILON = 1e-12
 
 
 class SessionPolicyError(ValueError):
     """Invalid configuration/evidence — refused, never defaulted."""
 
+
+class SessionEvidenceError(ValueError):
+    """Session/exposure evidence is unusable — typed refusal."""
+
+
+# ---------------------------------------------------------------- #
+# C4: strict typed primitives (no coercion anywhere)               #
+# ---------------------------------------------------------------- #
+
+def require_real(name: str, value: Any, *, positive: bool = False,
+                 nonnegative: bool = False) -> float:
+    """A real, finite, NON-BOOL number. Strings, bools, NaN and
+    infinities refuse (PRE: wind_down_hours='36' and
+    max_gap_sigma=NaN were both accepted)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise SessionPolicyError(
+            f"{name}: a finite real number is required, got "
+            f"{type(value).__name__} {value!r}")
+    number = float(value)
+    if not math.isfinite(number):
+        raise SessionPolicyError(f"{name}: non-finite value {value!r}")
+    if positive and number <= 0.0:
+        raise SessionPolicyError(f"{name}: must be > 0, got {number}")
+    if nonnegative and number < 0.0:
+        raise SessionPolicyError(f"{name}: must be >= 0, got {number}")
+    return number
+
+
+def require_count(name: str, value: Any, *, minimum: int = 0) -> int:
+    """A non-bool integer count; floats (even integral) refuse."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise SessionPolicyError(
+            f"{name}: an integer count is required, got "
+            f"{type(value).__name__} {value!r}")
+    if value < minimum:
+        raise SessionPolicyError(
+            f"{name}: must be >= {minimum}, got {value}")
+    return value
+
+
+def require_enum(name: str, value: Any,
+                 allowed: Sequence[str]) -> str:
+    if not isinstance(value, str) or value not in allowed:
+        raise SessionPolicyError(
+            f"{name}: {value!r} is not one of {list(allowed)}")
+    return value
+
+
+def require_identity(name: str, value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise SessionPolicyError(
+            f"{name}: a non-empty identity string is required")
+    return value
+
+
+def require_utc(name: str, value: Any) -> datetime:
+    if not isinstance(value, datetime):
+        raise SessionEvidenceError(
+            f"{name}: a datetime is required, got "
+            f"{type(value).__name__}")
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise SessionEvidenceError(
+            f"{name}: timezone-aware UTC datetime required "
+            "(naive datetimes refuse)")
+    return value.astimezone(timezone.utc)
+
+
+# ---------------------------------------------------------------- #
+# C4/§4: typed policy contract                                      #
+# ---------------------------------------------------------------- #
 
 REQUIRED_KEYS = (
     "enabled", "session_source", "wind_down_hours",
@@ -37,8 +130,6 @@ REQUIRED_KEYS = (
 
 
 def validate_policy(config: dict[str, Any]) -> dict[str, Any]:
-    """Typed surface of work plan 42 §4. Invalid combinations are
-    ABSENT from materialization: they refuse here."""
     missing = [k for k in REQUIRED_KEYS if k not in config]
     if missing:
         raise SessionPolicyError(
@@ -47,256 +138,546 @@ def validate_policy(config: dict[str, Any]) -> dict[str, Any]:
     if unknown:
         raise SessionPolicyError(
             f"session_exposure_policy unknown fields {unknown}")
-    if not isinstance(config["enabled"], bool):
-        raise SessionPolicyError("enabled must be a bool")
-    wind_down = float(config["wind_down_hours"])
-    flatten = float(config["forced_flatten_hours"])
-    if wind_down <= 0 or flatten <= 0:
-        raise SessionPolicyError(
-            "wind_down_hours and forced_flatten_hours must be > 0")
-    if flatten >= wind_down:
+    for key in ("enabled", "cancel_pending_on_wind_down",
+                "allow_risk_increase_during_wind_down"):
+        if not isinstance(config[key], bool):
+            raise SessionPolicyError(f"{key} must be a bool")
+    validated = {
+        "enabled": config["enabled"],
+        "session_source": require_enum(
+            "session_source", config["session_source"],
+            SESSION_SOURCES),
+        "wind_down_hours": require_real(
+            "wind_down_hours", config["wind_down_hours"],
+            positive=True),
+        "forced_flatten_hours": require_real(
+            "forced_flatten_hours", config["forced_flatten_hours"],
+            positive=True),
+        "cancel_pending_on_wind_down":
+            config["cancel_pending_on_wind_down"],
+        "allow_risk_increase_during_wind_down":
+            config["allow_risk_increase_during_wind_down"],
+        "reopen_min_hours": require_real(
+            "reopen_min_hours", config["reopen_min_hours"],
+            nonnegative=True),
+        "reopen_min_closed_bars": require_count(
+            "reopen_min_closed_bars", config["reopen_min_closed_bars"],
+            minimum=1),
+        "stability_consecutive_checks": require_count(
+            "stability_consecutive_checks",
+            config["stability_consecutive_checks"], minimum=1),
+        "max_spread_relative_to_baseline": require_real(
+            "max_spread_relative_to_baseline",
+            config["max_spread_relative_to_baseline"], positive=True),
+        "max_gap_sigma": require_real(
+            "max_gap_sigma", config["max_gap_sigma"], positive=True),
+        "max_realized_vol_relative_to_baseline": require_real(
+            "max_realized_vol_relative_to_baseline",
+            config["max_realized_vol_relative_to_baseline"],
+            positive=True),
+        "carried_position_recovery": require_enum(
+            "carried_position_recovery",
+            config["carried_position_recovery"], RECOVERY_POLICIES),
+        "holiday_policy": require_enum(
+            "holiday_policy", config["holiday_policy"],
+            HOLIDAY_POLICIES),
+        "calendar_identity": require_identity(
+            "calendar_identity", config["calendar_identity"]),
+    }
+    if validated["forced_flatten_hours"] >= \
+            validated["wind_down_hours"]:
         raise SessionPolicyError(
             "forced flatten must occur AFTER wind-down begins and "
             "BEFORE closure: forced_flatten_hours < wind_down_hours")
-    for key in ("reopen_min_hours",):
-        if float(config[key]) < 0:
-            raise SessionPolicyError(f"{key} must be >= 0")
-    for key in ("reopen_min_closed_bars",
-                "stability_consecutive_checks"):
-        value = config[key]
-        if isinstance(value, bool) or not isinstance(value, int) \
-                or value < 1:
-            raise SessionPolicyError(
-                f"{key} must be a positive integer")
-    for key in ("max_spread_relative_to_baseline", "max_gap_sigma",
-                "max_realized_vol_relative_to_baseline"):
-        if float(config[key]) <= 0:
-            raise SessionPolicyError(f"{key} must be > 0")
-    if config["enabled"] and not config[
-            "cancel_pending_on_wind_down"] and not config[
-            "allow_risk_increase_during_wind_down"]:
-        pass  # legal: strict blocking with cancellation disabled is
-        # NOT the invalid combo; the invalid combo is below
-    if config["enabled"] and config[
+    if validated["enabled"] and validated[
             "allow_risk_increase_during_wind_down"]:
         raise SessionPolicyError(
             "allow_risk_increase_during_wind_down=true while "
             "demanding flat exposure is invalid (work plan 42 §4)")
-    if not str(config["calendar_identity"]).strip():
-        raise SessionPolicyError("calendar_identity must be bound")
-    return dict(config)
+    return validated
 
 
-@dataclass
-class SessionEvidence:
-    """Facts the machine consumes — every field causally available.
+# ---------------------------------------------------------------- #
+# C2: bound session calendar                                        #
+# ---------------------------------------------------------------- #
 
-    ``closures``: sorted list of (close_at, reopen_at) UTC datetimes
-    from the BOUND venue/symbol session calendar (broker sessions +
-    versioned operator exceptions). Missing/contradictory evidence is
-    represented by ``evidence_ok=False`` and FAILS CLOSED for new
-    entries."""
+@dataclass(frozen=True)
+class SessionCalendar:
+    """Immutable validated closure intervals bound to an identity."""
 
-    now: datetime
-    closures: list
-    evidence_ok: bool = True
-    time_since_reopen_hours: float | None = None
-    closed_bars_since_reopen: int = 0
-    stability_checks_passed: int = 0
+    venue: str
+    account_fingerprint: str
+    symbol: str
+    calendar_digest: str
+    intervals: tuple  # ((close_at, reopen_at), ...) canonical UTC
+
+    @staticmethod
+    def build(*, venue: str, account_fingerprint: str, symbol: str,
+              calendar_digest: str,
+              intervals: Sequence) -> "SessionCalendar":
+        venue = require_identity("venue", venue)
+        account = require_identity("account_fingerprint",
+                                   account_fingerprint)
+        symbol = require_identity("symbol", symbol)
+        digest = require_identity("calendar_digest", calendar_digest)
+        canonical = []
+        for index, item in enumerate(intervals):
+            if not isinstance(item, (tuple, list)) or len(item) != 2:
+                raise SessionEvidenceError(
+                    f"interval[{index}]: (close_at, reopen_at) pair "
+                    "required")
+            close_at = require_utc(f"interval[{index}].close_at",
+                                   item[0])
+            reopen_at = require_utc(f"interval[{index}].reopen_at",
+                                    item[1])
+            if not close_at < reopen_at:
+                raise SessionEvidenceError(
+                    f"interval[{index}]: close_at must precede "
+                    "reopen_at (contradictory session evidence)")
+            canonical.append((close_at, reopen_at))
+        canonical.sort(key=lambda pair: pair[0])
+        for (a_close, a_reopen), (b_close, b_reopen) in zip(
+                canonical, canonical[1:]):
+            if b_close < a_reopen:
+                raise SessionEvidenceError(
+                    "overlapping closure intervals are contradictory "
+                    f"session evidence: {a_close.isoformat()}.."
+                    f"{a_reopen.isoformat()} overlaps "
+                    f"{b_close.isoformat()}")
+        return SessionCalendar(venue=venue,
+                               account_fingerprint=account,
+                               symbol=symbol, calendar_digest=digest,
+                               intervals=tuple(canonical))
+
+    def current_closure(self, now: datetime):
+        for close_at, reopen_at in self.intervals:
+            if close_at <= now < reopen_at:
+                return (close_at, reopen_at)
+        return None
+
+    def most_recent_reopen(self, now: datetime):
+        latest = None
+        for _close_at, reopen_at in self.intervals:
+            if reopen_at <= now and (latest is None
+                                     or reopen_at > latest):
+                latest = reopen_at
+        return latest
+
+    def next_closure(self, now: datetime):
+        for close_at, reopen_at in self.intervals:
+            if now < close_at:
+                return (close_at, reopen_at)
+        return None
 
 
-@dataclass
+@dataclass(frozen=True)
+class ReopenEvidence:
+    """Fresh direct evidence after a reopen. Absent evidence after a
+    known closure FAILS CLOSED (C2)."""
+
+    closed_bars_since_reopen: int
+    stability_checks_passed: int
+    hint_time_since_reopen_hours: Optional[float] = None
+
+    @staticmethod
+    def build(*, closed_bars_since_reopen: Any,
+              stability_checks_passed: Any,
+              hint_time_since_reopen_hours: Any = None
+              ) -> "ReopenEvidence":
+        bars = require_count("closed_bars_since_reopen",
+                             closed_bars_since_reopen, minimum=0)
+        checks = require_count("stability_checks_passed",
+                               stability_checks_passed, minimum=0)
+        hint = (None if hint_time_since_reopen_hours is None
+                else require_real("hint_time_since_reopen_hours",
+                                  hint_time_since_reopen_hours,
+                                  nonnegative=True))
+        return ReopenEvidence(closed_bars_since_reopen=bars,
+                              stability_checks_passed=checks,
+                              hint_time_since_reopen_hours=hint)
+
+
+# ---------------------------------------------------------------- #
+# C1: typed signed exposure                                         #
+# ---------------------------------------------------------------- #
+
+@dataclass(frozen=True)
 class ExposureFacts:
-    open_position: bool = False
-    pending_orders: int = 0
+    """Signed exposure facts sufficient to classify a target action.
+
+    ``signed_exposure``: current signed target/quantity (>0 long,
+    <0 short, 0 flat) under ``action_mapping``."""
+
+    signed_exposure: float
+    side: str
+    pending_entry_side: Optional[str]
+    pending_entry_size: float
+    pending_orders: int
+    action_mapping: str
+
+    @staticmethod
+    def build(*, signed_exposure: Any = 0.0, side: Any = None,
+              pending_entry_side: Any = None,
+              pending_entry_size: Any = 0.0,
+              pending_orders: Any = 0,
+              action_mapping: Any = "target_exposure_v2"
+              ) -> "ExposureFacts":
+        exposure = require_real("signed_exposure", signed_exposure)
+        derived = ("flat" if abs(exposure) <= EPSILON
+                   else ("long" if exposure > 0 else "short"))
+        if side is None:
+            side = derived
+        side = require_enum("side", side, SIDES)
+        if side != derived:
+            raise SessionEvidenceError(
+                f"side {side!r} contradicts signed_exposure "
+                f"{exposure} (derived {derived!r})")
+        mapping = require_enum("action_mapping", action_mapping,
+                               ACTION_MAPPINGS)
+        pending_size = require_real("pending_entry_size",
+                                    pending_entry_size,
+                                    nonnegative=True)
+        orders = require_count("pending_orders", pending_orders,
+                               minimum=0)
+        if pending_entry_side is not None:
+            pending_entry_side = require_enum(
+                "pending_entry_side", pending_entry_side,
+                ("long", "short"))
+            if pending_size <= 0.0:
+                raise SessionEvidenceError(
+                    "pending_entry_side declared with zero size")
+            if orders < 1:
+                raise SessionEvidenceError(
+                    "pending_entry_side declared with zero pending "
+                    "orders")
+        return ExposureFacts(signed_exposure=exposure, side=side,
+                             pending_entry_side=pending_entry_side,
+                             pending_entry_size=pending_size,
+                             pending_orders=orders,
+                             action_mapping=mapping)
+
+    @property
+    def has_position(self) -> bool:
+        return abs(self.signed_exposure) > EPSILON
 
 
-def _next_closure(evidence: SessionEvidence):
-    for close_at, reopen_at in evidence.closures:
-        if evidence.now < reopen_at:
-            return close_at, reopen_at
-    return None, None
+def classify_action(raw_action: Any,
+                    exposure: ExposureFacts) -> dict[str, Any]:
+    """C1: classify a TARGET-exposure action against signed facts.
+
+    Risk increases when absolute exposure grows OR the sign reverses
+    OR an entry is opened from flat. Reduction and explicit close are
+    always legal. Ambiguous or non-finite actions REFUSE."""
+    if exposure.action_mapping != "target_exposure_v2":
+        raise SessionEvidenceError(
+            f"unsupported action mapping "
+            f"{exposure.action_mapping!r}")
+    if raw_action is None:
+        raise SessionEvidenceError(
+            "action is unavailable — ambiguous actions refuse")
+    if isinstance(raw_action, bool) or not isinstance(
+            raw_action, (int, float)):
+        raise SessionEvidenceError(
+            f"action must be a finite real target, got "
+            f"{type(raw_action).__name__} {raw_action!r}")
+    target = float(raw_action)
+    if not math.isfinite(target):
+        raise SessionEvidenceError(
+            f"non-finite action {raw_action!r} refuses")
+    current = exposure.signed_exposure
+    if abs(target) <= EPSILON:
+        kind = "close" if exposure.has_position else "hold_flat"
+        return {"kind": kind, "risk_increasing": False,
+                "target": target, "current": current}
+    if not exposure.has_position:
+        return {"kind": "entry_from_flat", "risk_increasing": True,
+                "target": target, "current": current}
+    if (target > 0) != (current > 0):
+        return {"kind": "reversal", "risk_increasing": True,
+                "target": target, "current": current}
+    if abs(target) > abs(current) + EPSILON:
+        return {"kind": "enlargement", "risk_increasing": True,
+                "target": target, "current": current}
+    if abs(target) < abs(current) - EPSILON:
+        return {"kind": "reduction", "risk_increasing": False,
+                "target": target, "current": current}
+    return {"kind": "hold", "risk_increasing": False,
+            "target": target, "current": current}
 
 
-def session_state(policy: dict, evidence: SessionEvidence) -> dict:
-    """The five-state machine as a pure function. Returns the typed
-    state block (observation fields included)."""
+# ---------------------------------------------------------------- #
+# state machine                                                     #
+# ---------------------------------------------------------------- #
+
+def session_state(policy: dict, *, now: Any,
+                  calendar: Optional[SessionCalendar],
+                  reopen_evidence: Optional[ReopenEvidence] = None
+                  ) -> dict[str, Any]:
+    """The five-state machine as a pure function over VALIDATED
+    values. ``calendar=None`` means session evidence is unavailable:
+    it fails closed for new entries."""
+    now = require_utc("now", now)
     if not policy["enabled"]:
         return {"state": "NORMAL_TRADING", "policy_enabled": False,
+                "evidence_ok": calendar is not None,
                 "time_to_next_close_hours": None,
                 "time_since_reopen_hours": None,
-                "wind_down": False, "forced_flatten": False,
-                "evidence_ok": evidence.evidence_ok}
-    if not evidence.evidence_ok:
-        # missing or contradictory session evidence fails CLOSED for
-        # new entries: strictest exposure state outside closure
+                "wind_down": False, "forced_flatten": False}
+    if calendar is None:
         return {"state": "WIND_DOWN", "policy_enabled": True,
+                "evidence_ok": False,
                 "evidence_failed_closed": True,
                 "time_to_next_close_hours": None,
                 "time_since_reopen_hours": None,
-                "wind_down": True, "forced_flatten": False,
-                "evidence_ok": False}
-    close_at, reopen_at = _next_closure(evidence)
-    now = evidence.now
-    in_closure = (close_at is not None and close_at <= now
-                  and now < reopen_at)
-    if in_closure:
-        return {"state": "EXPECTED_MARKET_CLOSED",
-                "policy_enabled": True,
+                "wind_down": True, "forced_flatten": False}
+    base = {"policy_enabled": True, "evidence_ok": True,
+            "calendar_identity": calendar.calendar_digest,
+            "venue": calendar.venue, "symbol": calendar.symbol}
+    current = calendar.current_closure(now)
+    if current is not None:
+        return {**base, "state": "EXPECTED_MARKET_CLOSED",
                 "time_to_next_close_hours": 0.0,
                 "time_since_reopen_hours": None,
-                "wind_down": False, "forced_flatten": False,
-                "evidence_ok": True}
-    since_reopen = evidence.time_since_reopen_hours
-    if since_reopen is not None:
-        min_hours = float(policy["reopen_min_hours"])
-        min_bars = int(policy["reopen_min_closed_bars"])
-        checks = int(policy["stability_consecutive_checks"])
-        blackout = (since_reopen < min_hours
-                    or evidence.closed_bars_since_reopen < min_bars
-                    or evidence.stability_checks_passed < checks)
-        if blackout:
-            return {"state": "REOPEN_BLACKOUT",
-                    "policy_enabled": True,
+                "closure_started_at": current[0].isoformat(),
+                "closure_reopens_at": current[1].isoformat(),
+                "wind_down": False, "forced_flatten": False}
+    upcoming = calendar.next_closure(now)
+    hours_to_close = (None if upcoming is None else
+                      (upcoming[0] - now).total_seconds() / 3600.0)
+    # C2: blackout identity derives from the BOUND interval set
+    last_reopen = calendar.most_recent_reopen(now)
+    since_reopen = (None if last_reopen is None else
+                    (now - last_reopen).total_seconds() / 3600.0)
+    if last_reopen is not None:
+        if reopen_evidence is None:
+            # missing reopen evidence after a KNOWN closure fails
+            # closed: no entries until direct evidence exists
+            return {**base, "state": "REOPEN_BLACKOUT",
+                    "evidence_failed_closed": True,
                     "time_to_next_close_hours": (
-                        (close_at - now).total_seconds() / 3600
-                        if close_at else None),
-                    "time_since_reopen_hours": round(
-                        since_reopen, 3),
-                    "wind_down": False, "forced_flatten": False,
-                    "evidence_ok": True}
-    hours_to_close = ((close_at - now).total_seconds() / 3600
-                      if close_at else None)
+                        None if hours_to_close is None
+                        else round(hours_to_close, 6)),
+                    "time_since_reopen_hours": round(since_reopen, 6),
+                    "reopen_evidence_missing": True,
+                    "wind_down": False, "forced_flatten": False}
+        hint = reopen_evidence.hint_time_since_reopen_hours
+        hint_disagrees = (hint is not None
+                          and abs(hint - since_reopen) > 1.0)
+        blackout = (
+            since_reopen < policy["reopen_min_hours"]
+            or reopen_evidence.closed_bars_since_reopen
+            < policy["reopen_min_closed_bars"]
+            or reopen_evidence.stability_checks_passed
+            < policy["stability_consecutive_checks"])
+        if blackout:
+            return {**base, "state": "REOPEN_BLACKOUT",
+                    "time_to_next_close_hours": (
+                        None if hours_to_close is None
+                        else round(hours_to_close, 6)),
+                    "time_since_reopen_hours": round(since_reopen, 6),
+                    "closed_bars_since_reopen":
+                        reopen_evidence.closed_bars_since_reopen,
+                    "stability_checks_passed":
+                        reopen_evidence.stability_checks_passed,
+                    "adapter_hint_disagrees": hint_disagrees,
+                    "wind_down": False, "forced_flatten": False}
     if hours_to_close is not None:
-        if hours_to_close <= float(policy["forced_flatten_hours"]):
-            return {"state": "FORCED_FLATTEN",
-                    "policy_enabled": True,
+        if hours_to_close <= policy["forced_flatten_hours"]:
+            return {**base, "state": "FORCED_FLATTEN",
                     "time_to_next_close_hours": round(
-                        hours_to_close, 3),
-                    "time_since_reopen_hours": since_reopen,
-                    "wind_down": True, "forced_flatten": True,
-                    "evidence_ok": True}
-        if hours_to_close <= float(policy["wind_down_hours"]):
-            return {"state": "WIND_DOWN", "policy_enabled": True,
+                        hours_to_close, 6),
+                    "time_since_reopen_hours": (
+                        None if since_reopen is None
+                        else round(since_reopen, 6)),
+                    "wind_down": True, "forced_flatten": True}
+        if hours_to_close <= policy["wind_down_hours"]:
+            return {**base, "state": "WIND_DOWN",
                     "time_to_next_close_hours": round(
-                        hours_to_close, 3),
-                    "time_since_reopen_hours": since_reopen,
-                    "wind_down": True, "forced_flatten": False,
-                    "evidence_ok": True}
-    return {"state": "NORMAL_TRADING", "policy_enabled": True,
-            "time_to_next_close_hours": (round(hours_to_close, 3)
-                                         if hours_to_close is not None
-                                         else None),
-            "time_since_reopen_hours": since_reopen,
-            "wind_down": False, "forced_flatten": False,
-            "evidence_ok": True}
+                        hours_to_close, 6),
+                    "time_since_reopen_hours": (
+                        None if since_reopen is None
+                        else round(since_reopen, 6)),
+                    "wind_down": True, "forced_flatten": False}
+    return {**base, "state": "NORMAL_TRADING",
+            "time_to_next_close_hours": (
+                None if hours_to_close is None
+                else round(hours_to_close, 6)),
+            "time_since_reopen_hours": (
+                None if since_reopen is None
+                else round(since_reopen, 6)),
+            "wind_down": False, "forced_flatten": False}
 
 
 def overlay_action(policy: dict, state_block: dict,
                    exposure: ExposureFacts,
-                   raw_action: float) -> dict:
-    """Deterministic action overlay. Records raw action, overlay
-    decision and final action SEPARATELY (work plan 42 §5). The model
-    is never blinded — only its illegal actions are masked."""
-    state = state_block["state"]
+                   raw_action: Any) -> dict[str, Any]:
+    """Deterministic action overlay recording raw action, mapped
+    classification, overlay decision and final command SEPARATELY."""
+    state = require_enum("state_block.state", state_block.get("state"),
+                         STATES)
+    if state == "EXPECTED_MARKET_CLOSED":
+        # no actionable step exists; the action is not even mapped
+        return {"raw_model_action": raw_action,
+                "mapped_action": None, "session_state": state,
+                "overlay": "no_actionable_step",
+                "cancel_pending": False, "final_action": None}
+    classification = classify_action(raw_action, exposure)
     decision = {"raw_model_action": float(raw_action),
+                "mapped_action": classification,
                 "session_state": state,
                 "overlay": "pass_through",
                 "cancel_pending": False,
                 "final_action": float(raw_action)}
     if not policy["enabled"] or state == "NORMAL_TRADING":
         return decision
-    risk_increasing = _is_risk_increasing(raw_action, exposure)
     if state == "WIND_DOWN":
         if policy["cancel_pending_on_wind_down"] and \
                 exposure.pending_orders > 0:
             decision["cancel_pending"] = True
-        if risk_increasing:
+        if classification["risk_increasing"]:
             decision["overlay"] = "masked_risk_increase"
-            decision["final_action"] = 0.0
+            decision["final_action"] = 0.0 if not \
+                exposure.has_position else exposure.signed_exposure
         return decision
     if state == "FORCED_FLATTEN":
         decision["cancel_pending"] = exposure.pending_orders > 0
-        if exposure.open_position:
+        if exposure.has_position:
             decision["overlay"] = "forced_close"
             decision["final_action"] = "CLOSE"
-        else:
-            decision["overlay"] = ("masked_risk_increase"
-                                   if risk_increasing
-                                   else "pass_through")
-            if risk_increasing:
-                decision["final_action"] = 0.0
-        return decision
-    if state == "EXPECTED_MARKET_CLOSED":
-        decision["overlay"] = "no_actionable_step"
-        decision["final_action"] = None
-        return decision
-    if state == "REOPEN_BLACKOUT":
-        if risk_increasing:
-            decision["overlay"] = "masked_entry_during_blackout"
+        elif classification["risk_increasing"]:
+            decision["overlay"] = "masked_risk_increase"
             decision["final_action"] = 0.0
         return decision
-    raise SessionPolicyError(f"unknown state {state}")
+    if state == "REOPEN_BLACKOUT":
+        if classification["risk_increasing"]:
+            decision["overlay"] = "masked_entry_during_blackout"
+            decision["final_action"] = 0.0 if not \
+                exposure.has_position else exposure.signed_exposure
+        return decision
+    raise SessionPolicyError(f"unhandled state {state}")
 
 
-def _is_risk_increasing(raw_action: float,
-                        exposure: ExposureFacts) -> bool:
-    """Entries and reversals increase risk; hold/reduce/close do not.
-    With no position, any nonzero target is an entry. With one, only
-    same-direction-or-flat targets are non-increasing — the pure
-    fact is decided by the executing strategy's exposure semantics,
-    approximated here by |target| > 0 without an open position, or a
-    sign flip with one."""
-    try:
-        target = float(raw_action)
-    except (TypeError, ValueError):
-        return True
-    if not exposure.open_position:
-        return abs(target) > 0.0
-    return False  # reductions/holds/closes and same-direction holds
-
-
-def reconciliation_gate(positions_total: int, orders_total: int,
-                        evidence_age_seconds: float,
-                        max_age_seconds: float = 120.0) -> dict:
+def reconciliation_gate(positions_total: Any, orders_total: Any,
+                        evidence_age_seconds: Any,
+                        max_age_seconds: Any = 120.0
+                        ) -> dict[str, Any]:
     """FORCED_FLATTEN success requires FRESH DIRECT venue evidence of
-    zero positions and zero orders; anything else is a critical typed
-    incident, never a reported success."""
-    fresh = evidence_age_seconds <= max_age_seconds
-    flat = positions_total == 0 and orders_total == 0
-    return {"flat_confirmed": bool(fresh and flat),
-            "fresh": bool(fresh), "positions": int(positions_total),
-            "orders": int(orders_total),
+    zero positions AND zero orders. Unavailable evidence is a TYPED
+    refusal, never a raw TypeError and never a success."""
+    positions = require_count("positions_total", positions_total,
+                              minimum=0)
+    orders = require_count("orders_total", orders_total, minimum=0)
+    age = require_real("evidence_age_seconds", evidence_age_seconds,
+                       nonnegative=True)
+    limit = require_real("max_age_seconds", max_age_seconds,
+                         positive=True)
+    fresh = age <= limit
+    flat = positions == 0 and orders == 0
+    return {"flat_confirmed": bool(fresh and flat), "fresh": fresh,
+            "positions": positions, "orders": orders,
             "incident": (None if fresh and flat else
                          "FORCED_FLATTEN_FAILED: "
-                         + ("stale evidence" if not fresh else
-                            "exposure remains"))}
+                         + ("stale evidence" if not fresh
+                            else "exposure remains"))}
 
+
+# ---------------------------------------------------------------- #
+# C3: watchdog with truthful precedence                             #
+# ---------------------------------------------------------------- #
 
 WATCHDOG_STATES = (
     "EXPECTED_MARKET_CLOSED", "FEED_STALE_DURING_OPEN_WINDOW",
     "TERMINAL_DISCONNECTED", "SESSION_EVIDENCE_UNAVAILABLE",
     "WIND_DOWN_EXPOSURE_PRESENT", "FORCED_FLATTEN_FAILED",
-    "REOPEN_BLACKOUT_ACTIVE", "TRADING_SESSION_HEALTHY")
+    "REOPEN_BLACKOUT_ACTIVE", "TRADING_SESSION_HEALTHY",
+    "CARRIED_POSITION_RECOVERY_ACTIVE",
+    "UNEXPECTED_EXPOSURE_DURING_CLOSURE",
+    "ACCOUNT_OR_BRACKET_FAULT")
+
+
+@dataclass(frozen=True)
+class CarriedPositionMigration:
+    """ONE-USE record for exposure that predates the policy. It never
+    normalizes future weekend exposure (C3)."""
+
+    migration_id: str
+    opened_before: datetime
+    symbol: str
+    covers_closure_started_at: datetime
+    consumed: bool = False
+
+    @staticmethod
+    def build(*, migration_id: str, opened_before: Any, symbol: str,
+              covers_closure_started_at: Any
+              ) -> "CarriedPositionMigration":
+        opened = require_utc("opened_before", opened_before)
+        closure = require_utc("covers_closure_started_at",
+                              covers_closure_started_at)
+        if opened > closure:
+            raise SessionEvidenceError(
+                "a carried position must predate the closure it is "
+                "migrated across")
+        return CarriedPositionMigration(
+            migration_id=require_identity("migration_id",
+                                          migration_id),
+            opened_before=opened,
+            symbol=require_identity("symbol", symbol),
+            covers_closure_started_at=closure)
+
+    def covers(self, state_block: dict, now: datetime) -> bool:
+        """ONE-USE and bound to ONE closure interval: a later closure
+        is never normalized by the same record."""
+        if self.consumed:
+            return False
+        closure_started = state_block.get("closure_started_at")
+        if closure_started is None:
+            return False
+        started = datetime.fromisoformat(closure_started)
+        if started != self.covers_closure_started_at:
+            return False
+        return self.opened_before <= started
 
 
 def watchdog_state(state_block: dict, *, bars_fresh: bool,
                    terminal_connected: bool,
-                   exposure: ExposureFacts) -> str:
-    """Work plan 42 §9: expected closure suppresses stale-bar alarms
-    but NEVER terminal/exposure failures."""
+                   exposure: ExposureFacts,
+                   brackets_ok: bool = True,
+                   account_ok: bool = True,
+                   flatten_incident: Optional[str] = None,
+                   carried_migration:
+                       Optional[CarriedPositionMigration] = None,
+                   now: Any = None) -> str:
+    """Expected closure suppresses ONLY bar staleness. Terminal,
+    account, bracket, pending-order and exposure-policy incidents
+    take precedence (C3)."""
+    if not isinstance(bars_fresh, bool) or not isinstance(
+            terminal_connected, bool):
+        raise SessionEvidenceError(
+            "bars_fresh and terminal_connected must be bools")
     if not terminal_connected:
         return "TERMINAL_DISCONNECTED"
     if not state_block.get("evidence_ok", True):
         return "SESSION_EVIDENCE_UNAVAILABLE"
-    state = state_block["state"]
+    if not account_ok or not brackets_ok:
+        return "ACCOUNT_OR_BRACKET_FAULT"
+    if flatten_incident:
+        return "FORCED_FLATTEN_FAILED"
+    state = require_enum("state_block.state", state_block.get("state"),
+                         STATES)
+    exposed = exposure.has_position or exposure.pending_orders > 0
     if state == "EXPECTED_MARKET_CLOSED":
+        if exposed:
+            moment = require_utc("now", now) if now is not None \
+                else None
+            if (carried_migration is not None and moment is not None
+                    and carried_migration.covers(state_block, moment)):
+                return "CARRIED_POSITION_RECOVERY_ACTIVE"
+            return "UNEXPECTED_EXPOSURE_DURING_CLOSURE"
         return "EXPECTED_MARKET_CLOSED"
+    if exposed and state in ("WIND_DOWN", "FORCED_FLATTEN"):
+        return "WIND_DOWN_EXPOSURE_PRESENT"
     if not bars_fresh:
         return "FEED_STALE_DURING_OPEN_WINDOW"
-    if state in ("WIND_DOWN", "FORCED_FLATTEN") and (
-            exposure.open_position or exposure.pending_orders):
-        return "WIND_DOWN_EXPOSURE_PRESENT"
     if state == "REOPEN_BLACKOUT":
         return "REOPEN_BLACKOUT_ACTIVE"
     return "TRADING_SESSION_HEALTHY"
