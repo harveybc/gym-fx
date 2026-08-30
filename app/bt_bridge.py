@@ -98,10 +98,16 @@ class BTBridge:
         conflict: an order cannot change from an entry into
         protection, and silently accepting that would be exactly the
         misclassification this registry exists to prevent."""
-        if isinstance(ref, bool) or not isinstance(ref, (int, float)):
+        # R1: a broker order identity is an INT. Accepting a float
+        # and applying int() truncated 1.5 to 1 and 2.9 to 2, which
+        # are real identities belonging to other orders -- a silent
+        # collision that would attach the wrong role to a live order.
+        # No coercion: bools, floats, strings, NaN and infinities all
+        # refuse.
+        if isinstance(ref, bool) or not isinstance(ref, int):
             raise TradeCloseValidationError(
-                f"order ref must be a real identity, got {ref!r}")
-        ref = int(ref)
+                f"order ref must be a non-boolean int identity, got "
+                f"{type(ref).__name__} {ref!r} — no coercion")
         if ref < 0:
             raise TradeCloseValidationError(
                 f"order ref must be nonnegative, got {ref}")

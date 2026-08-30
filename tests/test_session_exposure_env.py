@@ -127,6 +127,8 @@ def _env(tmp_path, *, session=True, intervals="default",
             "session_account_fingerprint": ACCOUNT,
             "session_symbol": SYMBOL,
             "session_spread_column": spread_column,
+            "session_flatten_custody_root": str(
+                tmp_path / "flatten_custody"),
         })
         if intervals == "default":
             config["session_calendar_intervals"] = [
@@ -836,18 +838,132 @@ class TestC3PostFillFlattenLifecycle:
                 "a retired attempt must not report the agent's NEXT "
                 "position as its own failure")
 
-    def test_a_restart_during_in_flight_inherits_nothing(self,
-                                                         tmp_path):
+    def test_a_restart_recovers_the_obligation_it_must_not_forget(
+            self, tmp_path):
+        """INVERTED. The previous test asserted that reset() cleared
+        the attempt and the next episode knew nothing about it. That
+        is not recovery: a pending close obligation simply vanished,
+        and the test encoded the defect as correct behaviour."""
         env = _env(tmp_path)
         frames = _drive(env, LONG[:6])
         assert frames[-1]["info"]["session_flatten_phase"] == \
             "flatten_in_flight"
-        obs, info = env.reset(seed=7)
-        assert env._session_flatten is None
-        assert env._session_cancel_requested == set()
-        first = env.step([1.0])[4]
-        assert first.get("session_flatten_phase") is None
-        assert first.get("session_flatten_confirmed") is False
+        outstanding = env._flatten_store.outstanding()
+        assert len(outstanding) == 1, (
+            "the obligation must be DURABLE before the restart")
+
+        env.reset(seed=7)
+        assert env._session_flatten is not None, (
+            "reset must not forget a pending close")
+        assert env._session_flatten["incident"] == \
+            "RECOVERED_FROM_DURABLE_CUSTODY"
+        assert env._session_recovery is not None
+        assert env._session_recovery["blocks_risk_increase"] is True
+
+        _o, _r, _t, _tr, first = env.step([1.0])
+        assert first["session_recovery_active"] is True
+        assert first["session_overlay"] == "blocked_by_flatten_recovery"
+        assert first["session_final_action"] == 0, (
+            "a risk increase must be blocked until fresh evidence of "
+            "zero positions and zero orders")
+
+    def test_a_process_restart_recovers_the_same_obligation(self,
+                                                            tmp_path):
+        """A brand-new env object reading the same custody root -- the
+        simulation of a process restart -- must find the obligation."""
+        first_env = _env(tmp_path)
+        _drive(first_env, LONG[:6])
+        root = first_env.config["session_flatten_custody_root"]
+        ids = {o["obligation_id"]
+               for o in first_env._flatten_store.outstanding()}
+        assert ids
+
+        reborn = _env(tmp_path, session_flatten_custody_root=root)
+        assert reborn._flatten_store.outstanding()
+        reborn.reset(seed=7)
+        assert reborn._session_recovery is not None
+        assert {o["obligation_id"]
+                for o in reborn._session_recovery["obligations"]} == ids
+        _o, _r, _t, _tr, info = reborn.step([1.0])
+        assert info["session_recovery_active"] is True
+        assert info["session_final_action"] == 0
+
+    def test_recovery_lifts_only_on_fresh_zero_zero_evidence(self,
+                                                             tmp_path):
+        env = _env(tmp_path)
+        _drive(env, LONG[:6])
+        env.reset(seed=7)
+        assert env._session_recovery is not None
+        recovered = env._session_flatten["obligation_id"]
+        frames = []
+        for _ in range(6):
+            _o, _r, term, _t, info = env.step([1.0])
+            frames.append(info)
+            if term:
+                break
+        lifted = [f for f in frames if not f["session_recovery_active"]]
+        assert lifted, "the recovery must be dischargeable"
+        first_lift = lifted[0]
+        gate = first_lift["session_flatten_reconciliation"]
+        assert gate["flat_confirmed"] is True
+        assert gate["positions"] == 0 and gate["orders"] == 0
+        recovered_id = env._session_flatten["obligation_id"] \
+            if env._session_flatten else None
+        still_open = {o["obligation_id"]
+                      for o in env._flatten_store.outstanding()}
+        assert recovered not in still_open, (
+            "the RECOVERED obligation must be discharged in DURABLE "
+            f"custody, not only in memory; still open: {still_open}")
+
+    def test_an_unreadable_record_still_counts_as_outstanding(
+            self, tmp_path):
+        from app.flatten_custody import FlattenObligationStore
+        store = FlattenObligationStore(tmp_path / "corrupt")
+        (store.root / "broken.json").write_text("{ not json")
+        outstanding = store.outstanding()
+        assert len(outstanding) == 1
+        assert outstanding[0]["state"] == "unreadable", (
+            "a record that cannot be read is not evidence that the "
+            "obligation was discharged")
+
+    def test_a_confirmation_requires_evidence_that_says_flat(self,
+                                                             tmp_path):
+        from app.flatten_custody import (FlattenObligationError,
+                                         FlattenObligationStore)
+        store = FlattenObligationStore(tmp_path / "store")
+        store.open_obligation(
+            "o-1", venue="mt5_demo", account_fingerprint="fp-1",
+            symbol="ETHUSD", position_identity="pos-1",
+            signed_exposure=99.8, requested_at_bar=5,
+            code_identity="code-1")
+        for bad in ({"flat_confirmed": False}, {}, None,
+                    {"flat_confirmed": "yes"}):
+            with pytest.raises(FlattenObligationError,
+                               match="flat_confirmed=True"):
+                store.confirm("o-1", reconciliation=bad, bar_index=6)
+        assert store.read("o-1")["state"] == "flatten_requested"
+
+    def test_a_terminal_obligation_is_immutable(self, tmp_path):
+        from app.flatten_custody import (FlattenObligationError,
+                                         FlattenObligationStore)
+        store = FlattenObligationStore(tmp_path / "store2")
+        store.open_obligation(
+            "o-2", venue="mt5_demo", account_fingerprint="fp-1",
+            symbol="ETHUSD", position_identity="pos-1",
+            signed_exposure=1.0, requested_at_bar=1,
+            code_identity="code-1")
+        store.confirm("o-2", reconciliation={"flat_confirmed": True},
+                      bar_index=2)
+        with pytest.raises(FlattenObligationError):
+            store.fail("o-2", incident="late failure")
+        assert store.read("o-2")["state"] == "flatten_confirmed"
+        with pytest.raises(FlattenObligationError,
+                           match="already claimed"):
+            store.open_obligation(
+                "o-2", venue="mt5_demo", account_fingerprint="fp-1",
+                symbol="ETHUSD", position_identity="pos-1",
+                signed_exposure=1.0, requested_at_bar=1,
+                code_identity="code-1")
 
     def test_the_final_state_is_exactly_flat_with_one_close_event(
             self, tmp_path):
@@ -1195,3 +1311,277 @@ class TestC5StrictTerminationBoundaries:
         record = env._session_termination_record()
         assert record["session_exposure_survived_termination"] is False
         assert record["session_carried_exposure"] == 0.0
+
+
+# =================================================================== #
+# R1: strict order-reference identity                                 #
+# =================================================================== #
+
+class TestR1StrictOrderReferences:
+
+    @pytest.mark.parametrize("ref", [1.5, 2.9, 0.0, 3.0,
+                                     float("nan"), float("inf"),
+                                     "3", True, False, None,
+                                     -1, [1]])
+    def test_non_integer_references_refuse_without_coercion(
+            self, tmp_path, ref):
+        from app.bt_bridge import TradeCloseValidationError
+        env = _env(tmp_path)
+        env.reset(seed=7)
+        with pytest.raises(TradeCloseValidationError):
+            env.bridge.register_order_role(ref, "entry")
+        assert not any(k in (1, 2, 3) and v == "entry"
+                       for k, v in env.bridge.order_roles.items()
+                       if k not in (1, 2, 3)), env.bridge.order_roles
+
+    def test_a_fractional_reference_can_no_longer_collide(self,
+                                                          tmp_path):
+        """PRE: 1.5 was truncated to 1 and 2.9 to 2 -- real identities
+        belonging to other live orders."""
+        from app.bt_bridge import TradeCloseValidationError
+        env = _env(tmp_path)
+        env.reset(seed=7)
+        env.step([1.0])
+        before = dict(env.bridge.order_roles)
+        for ref in (1.5, 2.9):
+            with pytest.raises(TradeCloseValidationError,
+                               match="no coercion"):
+                env.bridge.register_order_role(ref, "close")
+        assert env.bridge.order_roles == before, (
+            "a refused registration must leave the registry untouched")
+
+    def test_valid_integer_references_are_accepted(self, tmp_path):
+        env = _env(tmp_path)
+        env.reset(seed=7)
+        assert env.bridge.register_order_role(9001, "entry") == 9001
+        assert env.bridge.role_of(9001) == "entry"
+
+
+# =================================================================== #
+# R2: a REAL resting entry order, cancelled on the real path          #
+# =================================================================== #
+
+class _EnvelopeWithRestingEntry(Envelope):
+    """Submits ONE genuine resting Limit entry through the executing
+    path at a chosen bar, registered as ``entry`` like any other
+    order. It is a real order in backtrader's book, so cancelling it
+    exercises the real broker, not a synthetic dictionary."""
+
+    resting_ref = None
+    submit_at_bar = 2
+
+    def apply_action(self, s, action, config):
+        result = super().apply_action(s, action, config)
+        bar = int(getattr(s.bridge, "bar_index", 0))
+        if (type(self).resting_ref is None
+                and bar >= type(self).submit_at_bar):
+            import backtrader as bt
+            # small enough to fit the cash the open position leaves
+            # free, so the broker ACCEPTS it and it really rests
+            price = float(s.data.close[0]) * 0.90
+            order = s.buy(exectype=bt.Order.Limit, price=price,
+                          size=0.05)
+            s.bridge.register_order_role(int(order.ref), "entry")
+            type(self).resting_ref = int(order.ref)
+        return result
+
+
+def _env_with_resting_entry(tmp_path, **kw):
+    _EnvelopeWithRestingEntry.resting_ref = None
+    config = {
+        "input_data_file": str(_csv(tmp_path)),
+        "date_column": "DATE_TIME", "price_column": "CLOSE",
+        "feature_columns": ["feat"], "feature_binary_columns": [],
+        "include_price_window": False,
+        "window_size": 4, "initial_cash": 10000.0,
+        "position_size": 1.0, "min_equity": 0.0,
+        "env_mode": "training", "commission": 0.0, "leverage": 1.0,
+        "action_space_mode": "continuous",
+        "continuous_action_threshold": 0.0,
+        # a HALF-size position, so the account keeps real free cash
+        # and the broker can actually accept a second resting entry
+        "execution_envelope": {"envelope_mode": "fixed_fraction",
+                               "sl_fraction": 0.50, "tp_fraction": 0.50,
+                               "leverage_cap": 0.4},
+        "session_exposure_enabled": True,
+        "session_exposure_policy": policy(),
+        "session_venue": VENUE,
+        "session_account_fingerprint": ACCOUNT,
+        "session_symbol": SYMBOL,
+        "session_spread_column": "SPREAD",
+        "session_flatten_custody_root": str(tmp_path / "r2_custody"),
+        "session_calendar_intervals": [[str(CLOSE_AT),
+                                        str(REOPEN_AT)]],
+    }
+    config.update(kw)
+    return GymFxEnv(config, DataFeed(config), Broker(config),
+                    _EnvelopeWithRestingEntry(config),
+                    Preprocessor(config), Reward(config),
+                    Metrics(config))
+
+
+class TestR2RealPendingOrderCancellation:
+
+    def _run(self, tmp_path):
+        env = _env_with_resting_entry(tmp_path)
+        frames = _drive(env, LONG[:8])
+        return env, frames, _EnvelopeWithRestingEntry.resting_ref
+
+    def test_a_real_resting_entry_exists_and_is_registered(self,
+                                                           tmp_path):
+        env, frames, ref = self._run(tmp_path)
+        assert ref is not None
+        assert env.bridge.role_of(ref) == "entry"
+        seen = [f for f in frames
+                if any(r["ref"] == ref
+                       for r in (f["info"].get("_inv") or []))]
+        # the order was really in the broker's book at some point
+        assert any(ref in f["info"]["session_cancel_requested_refs"]
+                   for f in frames), (
+            "the request must name the REAL broker ref")
+
+    def test_the_order_is_visible_when_wind_down_begins(self,
+                                                        tmp_path):
+        env = _env_with_resting_entry(tmp_path)
+        env.reset(seed=7)
+        states, saw = [], False
+        for _ in range(6):
+            _o, _r, term, _t, info = env.step([1.0])
+            states.append(info["session_state"])
+            ref = _EnvelopeWithRestingEntry.resting_ref
+            if info["session_state"] == "WIND_DOWN" and ref:
+                saw = info["session_entry_orders"] >= 1
+                break
+            if term:
+                break
+        assert "WIND_DOWN" in states
+        assert saw, (
+            "the resting entry must still be visible as an ENTRY when "
+            "wind-down begins")
+
+    def test_the_real_order_is_cancelled_and_never_fills(self,
+                                                         tmp_path):
+        env, frames, ref = self._run(tmp_path)
+        outcomes = env.bridge.cancel_outcomes
+        assert outcomes.get(ref) == "cancel_submitted", (
+            f"the strategy must have called cancel() on {ref}: "
+            f"{outcomes}")
+        terminal = env.bridge.order_terminal_status.get(ref)
+        assert terminal in ("Canceled", "Cancelled", "Expired"), (
+            f"terminal broker verdict for {ref} was {terminal!r}")
+        assert terminal != "Completed", "the order must never fill"
+        final = frames[-1]["info"]["session_cancellations"]
+        assert final.get(ref) == "cancelled"
+        assert frames[-1]["info"][
+            "session_cancellation_incident"] is None
+
+    def test_the_cancellation_precedes_the_action_of_that_bar(self,
+                                                              tmp_path):
+        """The strategy cancels BEFORE _apply_action, so the entry
+        cannot fill on the bar whose action closes the position."""
+        import inspect
+        from app.bt_bridge import BTBridgeStrategy
+        source = inspect.getsource(BTBridgeStrategy.next)
+        assert source.index("_process_cancel_requests") < \
+            source.index("self._apply_action(action)")
+
+    def test_both_protective_brackets_survive_the_cancellation(
+            self, tmp_path):
+        env = _env_with_resting_entry(tmp_path)
+        env.reset(seed=7)
+        roles_at_wind_down = None
+        for _ in range(6):
+            _o, _r, term, _t, info = env.step([1.0])
+            if info["session_state"] == "WIND_DOWN":
+                roles_at_wind_down = sorted(
+                    r["role"] for r in
+                    (env.bridge.open_order_inventory or ()))
+            if term:
+                break
+        assert roles_at_wind_down is not None
+        assert roles_at_wind_down.count("protective_stop") == 1
+        assert roles_at_wind_down.count(
+            "protective_take_profit") == 1
+
+    def test_the_flatten_still_reaches_zero_zero(self, tmp_path):
+        env, frames, ref = self._run(tmp_path)
+        confirmed = [f for f in frames
+                     if f["info"].get("session_flatten_confirmed")]
+        assert confirmed
+        gate = confirmed[0]["info"]["session_flatten_reconciliation"]
+        assert gate["positions"] == 0 and gate["orders"] == 0
+
+    def test_a_rejected_or_unfilled_cancellation_is_never_success(
+            self, tmp_path):
+        """R2.6: rejection, fill-before-cancel and an order left
+        resting must each fail the flatten, not pass it."""
+        env, frames, ref = self._run(tmp_path)
+        for verdict, expected, incident in (
+                ("Rejected", "rejected",
+                 "ENTRY_CANCELLATION_REJECTED"),
+                ("Completed", "filled_before_cancel",
+                 "ENTRY_FILLED_DESPITE_CANCELLATION")):
+            env.bridge.order_terminal_status[ref] = verdict
+            outcomes = env._session_cancellation_outcomes()
+            assert outcomes["session_cancellations"][ref] == expected
+            assert incident in outcomes["session_cancellation_incident"]
+
+    def test_an_order_left_resting_counts_as_pending(self, tmp_path):
+        env, frames, ref = self._run(tmp_path)
+        env.bridge.order_terminal_status.pop(ref, None)
+        env.bridge.open_order_inventory = (
+            _order(ref, None, "buy", 0.05, role="entry"),)
+        outcomes = env._session_cancellation_outcomes()
+        assert outcomes["session_cancellations"][ref] == "still_open"
+        assert outcomes["session_cancellations_pending"] == 1
+
+
+# =================================================================== #
+# R4: reconciliation provenance                                       #
+# =================================================================== #
+
+class TestR4ReconciliationProvenance:
+
+    def test_the_check_is_labelled_simulator_local(self, tmp_path):
+        env = _env(tmp_path)
+        frames = _drive(env, LONG[:7])
+        gates = [f["info"]["session_flatten_reconciliation"]
+                 for f in frames
+                 if f["info"].get("session_flatten_reconciliation")]
+        assert gates
+        for gate in gates:
+            assert gate["evidence_provenance"] == "simulator_bar_local"
+            assert gate["venue_direct"] is False, (
+                "WP3 must replace this with typed DIRECT venue "
+                "evidence and may not inherit this provenance")
+
+    def test_the_age_is_bound_to_a_bar_not_asserted(self, tmp_path):
+        import inspect
+        source = inspect.getsource(
+            GymFxEnv._session_post_fill_reconciliation)
+        assert "evidence_age_seconds=0.0" not in source, (
+            "the freshness must be derived, not asserted"
+        )
+        env = _env(tmp_path)
+        frames = _drive(env, LONG[:7])
+        gate = next(f["info"]["session_flatten_reconciliation"]
+                    for f in frames
+                    if f["info"].get("session_flatten_confirmed"))
+        assert gate["observed_at_bar"] == gate["evaluated_at_bar"]
+        assert gate["observed_at"] is not None
+        assert gate["age_seconds"] >= 0.0
+
+    def test_a_backwards_bar_clock_refuses(self, tmp_path):
+        env = _env(tmp_path)
+        _drive(env, LONG[:6])
+        env._session_last_evidence_bar = 10_000
+        with pytest.raises(SessionEvidenceError,
+                           match="bar clock went backwards"):
+            env._session_evidence_provenance()
+
+    def test_the_max_age_is_configurable_not_hardcoded(self,
+                                                       tmp_path):
+        env = _env(tmp_path, session_max_evidence_age_seconds=7.5)
+        assert env.session_max_evidence_age_seconds == 7.5
+        default = _env(tmp_path)
+        assert default.session_max_evidence_age_seconds == 120.0

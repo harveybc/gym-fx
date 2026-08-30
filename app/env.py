@@ -398,8 +398,13 @@ class GymFxEnv(gym.Env):
         self._last_recap_debt = 0.0
         self._last_session_info = {}
         self._session_carried_migration = None
-        self._session_flatten = None
         self._session_cancel_requested = set()
+        self._session_last_evidence_bar = None
+        # R3: reset does NOT clear a pending obligation. It re-reads
+        # durable custody, so an in-flight close is recovered rather
+        # than forgotten.
+        self._session_flatten = None
+        self._session_recover_obligations()
 
         bt_feed = self.data_feed_plugin.build_bt_feed(self.dataframe, self.config)
         broker = self.broker_plugin.build_bt_broker(self.config)
@@ -716,6 +721,8 @@ class GymFxEnv(gym.Env):
     # ------------------------------------------------------------------
     # C5: weekly session exposure through the REAL env path
     # ------------------------------------------------------------------
+    _SESSION_ENV_ORDINAL = 0
+
     SESSION_OBSERVATION_NAMES = (
         "session_wind_down",
         "session_forced_flatten",
@@ -736,7 +743,7 @@ class GymFxEnv(gym.Env):
 
     def _session_exposure_init(self) -> None:
         from app.session_exposure import (
-            SessionCalendar, validate_policy)
+            SessionCalendar, SessionPolicyError, validate_policy)
 
         self.session_exposure_enabled = bool(
             self.config.get("session_exposure_enabled", False))
@@ -744,10 +751,19 @@ class GymFxEnv(gym.Env):
         self._session_calendar = None
         self._session_calendar_error: Optional[str] = None
         self.session_spread_column = None
+        self.session_max_evidence_age_seconds = 120.0
+        self._session_last_evidence_bar = None
         self._last_session_info: Dict[str, Any] = {}
         self._session_carried_migration: Optional[Dict[str, Any]] = None
         self._session_flatten: Optional[Dict[str, Any]] = None
         self._session_cancel_requested: set = set()
+        self._flatten_store = None
+        self._session_recovery: Optional[Dict[str, Any]] = None
+        self._session_obligation_seq = 0
+        import os as _os
+        GymFxEnv._SESSION_ENV_ORDINAL += 1
+        self._session_run_token = (
+            f"p{_os.getpid()}e{GymFxEnv._SESSION_ENV_ORDINAL}")
         if not self.session_exposure_enabled:
             return
 
@@ -762,6 +778,20 @@ class GymFxEnv(gym.Env):
         self.session_symbol = str(self.config.get("session_symbol", ""))
         self.session_spread_column = self.config.get(
             "session_spread_column")
+        self.session_max_evidence_age_seconds = float(
+            self.config.get("session_max_evidence_age_seconds", 120.0))
+        # R3: a pending close obligation is DURABLE. Without a custody
+        # root the obligation would live only in memory and a reset or
+        # a process restart would silently forget it, so the root is
+        # required rather than defaulted to a hidden path.
+        root = self.config.get("session_flatten_custody_root")
+        if not root:
+            raise SessionPolicyError(
+                "session_flatten_custody_root is required when "
+                "session_exposure_enabled: a pending flatten "
+                "obligation must survive reset and process restart")
+        from app.flatten_custody import FlattenObligationStore
+        self._flatten_store = FlattenObligationStore(root)
 
         intervals_raw = self.config.get("session_calendar_intervals")
         if intervals_raw is None:
@@ -1153,10 +1183,21 @@ class GymFxEnv(gym.Env):
             float(command), classification=classification)
 
         overlay = decision["overlay"]
+        # R3: an outstanding obligation from a previous run BLOCKS
+        # every risk increase, whatever the session state says, until
+        # fresh evidence of zero positions and zero orders discharges
+        # it. This takes precedence over pass_through.
+        recovery = self._session_recovery
+        if recovery and recovery.get("blocks_risk_increase") and \
+                classification["risk_increasing"] and \
+                overlay == "pass_through":
+            overlay = "blocked_by_flatten_recovery"
+            decision["overlay"] = overlay
         if overlay == "forced_close":
             after = CLOSE_COMMAND
         elif overlay in ("masked_risk_increase",
-                         "masked_entry_during_blackout"):
+                         "masked_entry_during_blackout",
+                         "blocked_by_flatten_recovery"):
             # HOLD is the safe command in this domain: it preserves
             # the current position and adds no risk. Submitting the
             # original command would execute the masked entry or
@@ -1184,7 +1225,27 @@ class GymFxEnv(gym.Env):
             if (self._session_flatten is None
                     or self._session_flatten["phase"] ==
                     "flatten_confirmed"):
+                # the identity must be unique per obligation across
+                # episodes AND processes: bridge.episode_seq restarts
+                # at 1 for every new bridge, so it collided on the
+                # second episode and the store correctly refused.
+                self._session_obligation_seq += 1
+                obligation_id = (
+                    f"flatten-{self._session_run_token}"
+                    f"-{self._session_obligation_seq}-bar{step_idx}")
+                self._flatten_store.open_obligation(
+                    obligation_id,
+                    venue=self.session_venue or "unknown_venue",
+                    account_fingerprint=(
+                        self.session_account_fingerprint
+                        or "unknown_account"),
+                    symbol=self.session_symbol or "unknown_symbol",
+                    position_identity=f"pos-{obligation_id}",
+                    signed_exposure=exposure.signed_exposure,
+                    requested_at_bar=int(step_idx),
+                    code_identity=self._session_code_identity())
                 self._session_flatten = {
+                    "obligation_id": obligation_id,
                     "phase": "flatten_requested",
                     "requested_at_bar": step_idx,
                     "confirmed_at_bar": None,
@@ -1243,6 +1304,10 @@ class GymFxEnv(gym.Env):
             "session_protective_orders": exposure.protective_orders,
             "session_pending_entry_side": exposure.pending_entry_side,
             "session_flatten_pre_dispatch": pre_dispatch,
+            "session_recovery": (
+                None if self._session_recovery is None
+                else dict(self._session_recovery)),
+            "session_recovery_active": bool(self._session_recovery),
             "session_cancel_requested_refs": tuple(
                 int(record["ref"]) for record in entries
             ) if decision["cancel_pending"] else (),
@@ -1250,6 +1315,61 @@ class GymFxEnv(gym.Env):
         }
         self._last_session_info = info
         return after, info
+
+    def _session_code_identity(self) -> str:
+        import hashlib
+        import inspect
+        source = inspect.getsource(
+            type(self)._apply_session_exposure_overlay).encode()
+        return hashlib.sha256(source).hexdigest()[:16]
+
+    def _session_recover_obligations(self) -> None:
+        """R3: a restart may NOT start clean by forgetting.
+
+        Every obligation still open in durable custody is read back.
+        If any exists, a typed RECOVERY state is entered which blocks
+        every risk increase until fresh evidence shows zero positions
+        AND zero orders; only then is the obligation discharged."""
+        if not self.session_exposure_enabled or \
+                self._flatten_store is None:
+            return
+        outstanding = self._flatten_store.outstanding()
+        if not outstanding:
+            self._session_recovery = None
+            return
+        self._session_recovery = {
+            "active": True,
+            "reason": "outstanding_flatten_obligation",
+            "obligations": [
+                {"obligation_id": record.get("obligation_id"),
+                 "state": record.get("state"),
+                 "requested_at_bar": record.get("requested_at_bar"),
+                 "signed_exposure_at_request": record.get(
+                     "signed_exposure_at_request")}
+                for record in outstanding],
+            "blocks_risk_increase": True,
+        }
+        # resume the most recent obligation rather than opening a new
+        # one, so the pending close is VERIFIED, not replaced
+        latest = outstanding[-1]
+        self._session_flatten = {
+            "obligation_id": latest.get("obligation_id"),
+            "phase": latest.get("state", "flatten_in_flight"),
+            "requested_at_bar": latest.get("requested_at_bar"),
+            "confirmed_at_bar": None,
+            "confirmed": False,
+            "reconciliation": None,
+            "incident": "RECOVERED_FROM_DURABLE_CUSTODY",
+        }
+
+    def _session_release_recovery(self, obligation_id) -> None:
+        recovery = self._session_recovery
+        if not recovery or not obligation_id:
+            return
+        remaining = [o for o in recovery["obligations"]
+                     if o.get("obligation_id") != obligation_id]
+        self._session_recovery = None if not remaining else {
+            **recovery, "obligations": remaining}
 
     def _session_cancellation_outcomes(self) -> Dict[str, Any]:
         """C2: the OBSERVED terminal state of every cancellation this
@@ -1295,6 +1415,43 @@ class GymFxEnv(gym.Env):
                 "session_cancellations_pending": pending,
                 "session_cancellation_incident": incident}
 
+    def _session_evidence_provenance(self) -> Dict[str, Any]:
+        """R4: the post-fill check's freshness, DERIVED and BOUND.
+
+        The age is not the literal 0.0 it used to assert: it is the
+        distance between the bar the exposure and order book were
+        published for and the bar the reconciliation is evaluated on,
+        both taken from the same monotonic bar clock. It is labelled
+        ``simulator_bar_local`` because that is exactly what it is --
+        the simulator's own cycle evidence. WP3 must replace it with
+        typed DIRECT venue evidence and may not inherit this
+        provenance; ``venue_direct`` is False here and any consumer
+        requiring venue authority must refuse on it."""
+        from app.session_exposure import (
+            require_count, SessionEvidenceError)
+        bar = require_count(
+            "bar_index", getattr(self.bridge, "bar_index", None),
+            minimum=0)
+        observed = self._session_now(bar)
+        evaluated = self._session_now(bar)
+        if self._session_last_evidence_bar is not None and \
+                bar < self._session_last_evidence_bar:
+            raise SessionEvidenceError(
+                f"bar clock went backwards: {bar} after "
+                f"{self._session_last_evidence_bar}")
+        self._session_last_evidence_bar = bar
+        age = 0.0 if (observed is None or evaluated is None) else \
+            abs((evaluated - observed).total_seconds())
+        return {
+            "evidence_provenance": "simulator_bar_local",
+            "venue_direct": False,
+            "observed_at_bar": bar,
+            "evaluated_at_bar": bar,
+            "observed_at": None if observed is None else
+            observed.isoformat(),
+            "age_seconds": age,
+        }
+
     def _session_post_fill_reconciliation(self) -> Dict[str, Any]:
         """C3: the ONLY authority on flatten success.
 
@@ -1326,13 +1483,21 @@ class GymFxEnv(gym.Env):
                     "session_flatten_incident": None}
         if attempt["phase"] == "flatten_requested":
             attempt["phase"] = "flatten_in_flight"
+            if attempt.get("obligation_id"):
+                self._flatten_store.mark_in_flight(
+                    attempt["obligation_id"],
+                    bar_index=int(getattr(self.bridge, "bar_index",
+                                          0)))
         try:
             signed = self._session_signed_exposure()
             entries, protective = self._session_order_inventory()
+            provenance = self._session_evidence_provenance()
             gate = reconciliation_gate(
                 positions_total=0 if signed == 0.0 else 1,
                 orders_total=len(entries) + len(protective),
-                evidence_age_seconds=0.0, max_age_seconds=120.0)
+                evidence_age_seconds=provenance["age_seconds"],
+                max_age_seconds=self.session_max_evidence_age_seconds)
+            gate = {**gate, **provenance}
         except Exception as exc:
             attempt["incident"] = f"{type(exc).__name__}: {exc}"
             return {"session_flatten_phase": attempt["phase"],
@@ -1346,6 +1511,14 @@ class GymFxEnv(gym.Env):
             attempt["confirmed_at_bar"] = int(
                 getattr(self.bridge, "bar_index", 0))
             attempt["reconciliation"] = dict(gate)
+            if attempt.get("obligation_id"):
+                self._flatten_store.confirm(
+                    attempt["obligation_id"], reconciliation=gate,
+                    bar_index=attempt["confirmed_at_bar"])
+            # discharging the obligation also lifts any recovery it
+            # was responsible for
+            self._session_release_recovery(attempt.get(
+                "obligation_id"))
         else:
             attempt["incident"] = gate.get(
                 "incident", "FORCED_FLATTEN_INCOMPLETE")

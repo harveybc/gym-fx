@@ -127,6 +127,8 @@ def _config(tmp_path, **kw):
         "session_symbol": SYMBOL,
         "session_calendar_intervals": [[str(CLOSE_AT), str(REOPEN_AT)]],
         "session_spread_column": "SPREAD",
+        "session_flatten_custody_root": str(
+            tmp_path / "parity_flatten_custody"),
     }
     config.update(kw)
     return config
