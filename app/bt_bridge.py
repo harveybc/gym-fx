@@ -73,6 +73,12 @@ class BTBridge:
         self.commission_paid: float = 0.0
         self.last_trade_cost: float = 0.0
         self.execution_diagnostics: Dict[str, int] = {}
+        self.open_order_count: int = 0
+        self.open_order_inventory = ()
+        self.order_roles: Dict[int, str] = {}
+        self.cancel_entry_request: tuple = ()
+        self.cancel_outcomes: Dict[int, str] = {}
+        self.order_terminal_status: Dict[int, str] = {}
         # Solvency continuation ledgers (owner curriculum order, WP-C):
         # operational equity is the broker value above; economic equity is
         # operational equity MINUS accumulated recapitalization debt, so a
@@ -81,6 +87,43 @@ class BTBridge:
         self.recapitalization_count: int = 0
         self.would_margin_call_events: list = []
         self.termination_cause: Optional[str] = None
+
+    ORDER_ROLES = ("entry", "protective_stop",
+                   "protective_take_profit", "close")
+
+    def register_order_role(self, ref, role: str) -> int:
+        """C1: bind a broker order identity to its role, once.
+
+        A second registration with a DIFFERENT role is a typed
+        conflict: an order cannot change from an entry into
+        protection, and silently accepting that would be exactly the
+        misclassification this registry exists to prevent."""
+        if isinstance(ref, bool) or not isinstance(ref, (int, float)):
+            raise TradeCloseValidationError(
+                f"order ref must be a real identity, got {ref!r}")
+        ref = int(ref)
+        if ref < 0:
+            raise TradeCloseValidationError(
+                f"order ref must be nonnegative, got {ref}")
+        if role not in self.ORDER_ROLES:
+            raise TradeCloseValidationError(
+                f"unknown order role {role!r}; allowed "
+                f"{list(self.ORDER_ROLES)}")
+        existing = self.order_roles.get(ref)
+        if existing is not None and existing != role:
+            raise TradeCloseConflictError(
+                f"order {ref} is already registered as {existing!r} "
+                f"and cannot be re-registered as {role!r}")
+        self.order_roles[ref] = role
+        return ref
+
+    def role_of(self, ref):
+        """The registered role, or None when the order is UNKNOWN to
+        the registry. None is ambiguity, never 'not protective'."""
+        try:
+            return self.order_roles.get(int(ref))
+        except Exception:
+            return None
 
     def record_trade_close(self, *, source: str, event_id: str,
                            bar_index=None, reason=None, side=None,
@@ -204,6 +247,18 @@ class BTBridge:
         self.position_open_bar_index = None
         self.open_order_count = 0
         self.open_order_inventory = ()
+        # C1: the AUTHORITATIVE role of every order, recorded at
+        # creation against the broker's own stable identity. The role
+        # is never reconstructed from side, size or price: an
+        # independent reversal opposite the position and of exactly
+        # its size is geometrically indistinguishable from a
+        # protective leg, and calling it protection would let it
+        # survive a wind-down cancellation.
+        self.order_roles = {}
+        # C2: executing cancellation channel and its observed outcomes
+        self.cancel_entry_request = ()
+        self.cancel_outcomes = {}
+        self.order_terminal_status = {}
         self.force_flat_request = False
         self.price = 0.0
         self.bar_index = 0
@@ -242,24 +297,23 @@ class BTBridge:
         }
 
 
-def _describe_order(order, position_size: float = 0.0) -> dict:
-    """G4: one open order as typed facts.
+def _describe_order(order, roles=None) -> dict:
+    """C1: one open order as typed facts, with its role taken from
+    the AUTHORITATIVE registry written when the order was created.
 
-    ``reduce_only`` is derived from REAL semantics, not from a hoped
-    for attribute. The envelope submits its bracket legs with
-    ``parent=<entry>``, but backtrader does NOT keep ``.parent``
-    populated on the live child orders -- verified: both resting legs
-    report ``parent is None``. Trusting that relation alone therefore
-    labels every protective STOP and LIMIT a pending ENTRY, which
-    would let the wind-down overlay cancel the very protection it must
-    preserve.
+    The previous version inferred ``reduce_only`` from side and size
+    because backtrader does not keep ``.parent`` populated on live
+    child orders. That heuristic called an independent reversal
+    opposite the position, of exactly the position size, a protective
+    bracket leg -- so the wind-down cancellation would have skipped
+    the very order it had to cancel. Geometry is now recorded for
+    diagnosis only and never decides the role.
 
-    So: a parent link is accepted as definitive when present, and
-    otherwise an order is reduce-only exactly when it can only shrink
-    the open position -- opposite side, size not exceeding the
-    position, resting exectype. An opposite-side order LARGER than the
-    position would flip it and is risk-increasing, so it stays an
-    entry. Unknown fields stay None rather than being guessed."""
+    An order absent from the registry has role ``None``: that is
+    AMBIGUITY and must produce a typed incident upstream, never a
+    default of 'not an entry'."""
+    roles = {} if roles is None else roles
+    ref = int(getattr(order, "ref", 0) or 0)
     parent = getattr(order, "parent", None)
     parent_ref = None if parent is None else int(
         getattr(parent, "ref", 0) or 0)
@@ -274,28 +328,17 @@ def _describe_order(order, position_size: float = 0.0) -> dict:
             if exectype is not None else None
     except Exception:
         exectype_name = None
-    side = None if is_buy is None else ("buy" if is_buy else "sell")
-    abs_size = None if size is None else abs(float(size))
-    position_size = float(position_size or 0.0)
-    if parent_ref is not None:
-        reduce_only = True
-    elif position_size == 0.0 or side is None or abs_size is None:
-        reduce_only = False
-    else:
-        opposite = (side == "sell") if position_size > 0 else (
-            side == "buy")
-        resting = exectype_name in ("Stop", "Limit", "StopLimit",
-                                    "StopTrail", "StopTrailLimit")
-        reduce_only = bool(
-            opposite and resting
-            and abs_size <= abs(position_size) + 1e-9)
+    role = roles.get(ref)
     return {
-        "ref": int(getattr(order, "ref", 0) or 0),
+        "ref": ref,
         "parent_ref": parent_ref,
-        "side": side,
-        "size": abs_size,
+        "side": None if is_buy is None else (
+            "buy" if is_buy else "sell"),
+        "size": None if size is None else abs(float(size)),
         "exectype": exectype_name,
-        "reduce_only": reduce_only,
+        "role": role,
+        "reduce_only": None if role is None else role in (
+            "protective_stop", "protective_take_profit", "close"),
     }
 
 
@@ -365,6 +408,16 @@ class BTBridgeStrategy(bt.Strategy):
         self.bridge.trade_count = 0
 
     def notify_order(self, order: bt.Order) -> None:
+        # C2: record every TERMINAL broker verdict by order identity,
+        # so a cancellation outcome is OBSERVED rather than assumed.
+        try:
+            ref = int(getattr(order, "ref", -1))
+            name = order.Status[order.status]
+            if name in ("Completed", "Canceled", "Cancelled",
+                        "Rejected", "Margin", "Expired"):
+                self.bridge.order_terminal_status[ref] = name
+        except Exception:  # pragma: no cover
+            pass
         if order.status in (order.Completed,):
             comm = float(getattr(order.executed, "comm", 0.0) or 0.0)
             self._order_cost_accum += comm
@@ -517,6 +570,11 @@ class BTBridgeStrategy(bt.Strategy):
                 self.env.runstop()
                 return
 
+        # C2: cancellation is EXECUTED against the broker, before the
+        # action is applied, so a pending entry cannot fill inside the
+        # forbidden window. Protective legs are never touched here.
+        self._process_cancel_requests()
+
         action = int(self.bridge.action_slot)
         self._apply_action(action)
         # Publish the state only after terminal conditions have been bound to
@@ -547,6 +605,46 @@ class BTBridgeStrategy(bt.Strategy):
         if self.bridge.stop_requested:
             self.env.runstop()
             return
+
+    def _process_cancel_requests(self) -> None:
+        """C2: cancel exactly the refs the overlay identified from the
+        ROLE REGISTRY, observe what the broker does with each, and
+        never assume success. A ref that cannot be found among the
+        open orders is reported as such rather than counted cancelled."""
+        requested = tuple(getattr(self.bridge, "cancel_entry_request",
+                                  ()) or ())
+        if not requested:
+            return
+        self.bridge.cancel_entry_request = ()
+        try:
+            open_orders = list(self.broker.get_orders_open() or [])
+        except Exception:
+            open_orders = []
+        by_ref = {int(getattr(o, "ref", -1)): o for o in open_orders}
+        outcomes = dict(getattr(self.bridge, "cancel_outcomes", {})
+                        or {})
+        for ref in requested:
+            ref = int(ref)
+            role = self.bridge.role_of(ref)
+            if role != "entry":
+                # refuse to cancel anything that is not a registered
+                # entry: protective legs must survive until the
+                # position is closed
+                outcomes[ref] = f"refused_role_{role}"
+                continue
+            order = by_ref.get(ref)
+            if order is None:
+                outcomes[ref] = "not_open"
+                continue
+            try:
+                self.cancel(order)
+                outcomes[ref] = "cancel_submitted"
+            except Exception as exc:  # pragma: no cover
+                outcomes[ref] = f"cancel_raised_{type(exc).__name__}"
+            diag = self.bridge.execution_diagnostics
+            diag["session_entry_cancels_submitted"] = (
+                diag.get("session_entry_cancels_submitted", 0) + 1)
+        self.bridge.cancel_outcomes = outcomes
 
     def stop(self) -> None:
         # Data exhausted: mark terminated and signal the env so it stops waiting.
@@ -768,7 +866,7 @@ class BTBridgeStrategy(bt.Strategy):
             # guessing "everything is protective while a position is
             # open" hides a simultaneous pending entry.
             self.bridge.open_order_inventory = tuple(
-                _describe_order(order, float(self.position.size))
+                _describe_order(order, self.bridge.order_roles)
                 for order in open_orders)
         except Exception:
             self.bridge.open_order_count = None

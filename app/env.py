@@ -398,6 +398,8 @@ class GymFxEnv(gym.Env):
         self._last_recap_debt = 0.0
         self._last_session_info = {}
         self._session_carried_migration = None
+        self._session_flatten = None
+        self._session_cancel_requested = set()
 
         bt_feed = self.data_feed_plugin.build_bt_feed(self.dataframe, self.config)
         broker = self.broker_plugin.build_bt_broker(self.config)
@@ -468,6 +470,15 @@ class GymFxEnv(gym.Env):
                 and new_equity <= self.min_equity)
         )
         truncated = False
+
+        # C3: the bar has advanced and the CLOSE has been executed on
+        # the real path, so this is the first moment a flatten may be
+        # confirmed. Nothing before this point is authority.
+        if self.session_exposure_enabled:
+            post = self._session_post_fill_reconciliation()
+            post.update(self._session_cancellation_outcomes())
+            self._last_session_info = {
+                **(self._last_session_info or {}), **post}
 
         obs = self._make_observation()
         info = self._make_info()
@@ -712,6 +723,15 @@ class GymFxEnv(gym.Env):
         "session_reopen_blackout",
         "session_hours_to_next_close",
         "session_hours_since_reopen",
+        # C4: the evidence that GOVERNS the reopen, so the agent can
+        # tell why it is still blocked. All bounded to [0,1] and all
+        # FAIL-CLOSED to the worst value when the input is absent.
+        "session_reopen_bar_progress",
+        "session_reopen_stability_progress",
+        "session_spread_ratio_norm",
+        "session_gap_sigma_norm",
+        "session_vol_ratio_norm",
+        "session_quote_continuous",
     )
 
     def _session_exposure_init(self) -> None:
@@ -726,6 +746,8 @@ class GymFxEnv(gym.Env):
         self.session_spread_column = None
         self._last_session_info: Dict[str, Any] = {}
         self._session_carried_migration: Optional[Dict[str, Any]] = None
+        self._session_flatten: Optional[Dict[str, Any]] = None
+        self._session_cancel_requested: set = set()
         if not self.session_exposure_enabled:
             return
 
@@ -781,6 +803,15 @@ class GymFxEnv(gym.Env):
                     low=0.0, high=np.inf, shape=(1,), dtype=np.float32),
                 "session_hours_since_reopen": spaces.Box(
                     low=0.0, high=np.inf, shape=(1,), dtype=np.float32),
+                **{name: spaces.Box(low=0.0, high=1.0, shape=(1,),
+                                    dtype=np.float32)
+                   for name in (
+                       "session_reopen_bar_progress",
+                       "session_reopen_stability_progress",
+                       "session_spread_ratio_norm",
+                       "session_gap_sigma_norm",
+                       "session_vol_ratio_norm",
+                       "session_quote_continuous")},
             }
         )
 
@@ -825,25 +856,48 @@ class GymFxEnv(gym.Env):
                 "overlay refuses rather than assuming zero entries")
         entries, protective = [], []
         for record in inventory:
-            if not isinstance(record, dict) or "reduce_only" not in \
-                    record:
+            if not isinstance(record, dict) or "role" not in record:
                 raise SessionEvidenceError(
                     f"malformed order record {record!r}")
-            (protective if record["reduce_only"] else entries).append(
-                record)
+            role = record["role"]
+            if role is None:
+                # C1: an order absent from the role registry is
+                # AMBIGUOUS. Treating it as "not an entry" is exactly
+                # the misclassification the registry exists to
+                # prevent, and treating it as an entry could cancel
+                # live protection. It refuses.
+                raise SessionEvidenceError(
+                    f"order {record.get('ref')!r} has no registered "
+                    "role — an unidentified order is ambiguous and "
+                    "the weekly overlay refuses to act on it")
+            if role == "entry":
+                entries.append(record)
+            elif role in ("protective_stop",
+                          "protective_take_profit", "close"):
+                protective.append(record)
+            else:
+                raise SessionEvidenceError(
+                    f"unknown order role {role!r}")
         return tuple(entries), tuple(protective)
 
     def _session_signed_exposure(self) -> float:
         """G4: signed exposure with NO coercive fallback. A bridge
         that cannot state its own position refuses."""
-        from app.session_exposure import SessionEvidenceError
+        from app.session_exposure import (
+            SessionEvidenceError, require_real)
         units = getattr(self.bridge, "position_units", None)
         if isinstance(units, bool) or not isinstance(
                 units, (int, float)):
             raise SessionEvidenceError(
                 f"position_units is unavailable ({units!r}) — signed "
                 "exposure refuses")
-        units = float(units)
+        # NaN and infinity are neither an exposure nor a flat account
+        try:
+            units = require_real("position_units", units)
+        except Exception as exc:
+            raise SessionEvidenceError(
+                f"position_units is not usable exposure evidence: "
+                f"{exc}") from exc
         if units != 0.0:
             return units
         # a flat units reading is only trustworthy if the discrete
@@ -901,7 +955,12 @@ class GymFxEnv(gym.Env):
         baseline_n = policy["reopen_baseline_bars"]
         gap_n = policy["reopen_gap_sigma_bars"]
         vol_n = policy["reopen_realized_vol_bars"]
-        need = max(baseline_n, gap_n, vol_n) + 1
+        # C4: the realized-volatility baseline has its OWN past window,
+        # placed strictly before the recent window it is compared to.
+        # Reusing the gap-return sigma as the denominator made the
+        # ratio a function of the gap statistic rather than a
+        # volatility regime comparison.
+        need = max(baseline_n, gap_n, vol_n + baseline_n) + 1
         if idx < need:
             return {"passed": False, "reasons": ["insufficient_history"],
                     "spread_ratio": None, "gap_sigma": None,
@@ -942,16 +1001,21 @@ class GymFxEnv(gym.Env):
             if gap_sigma > policy["max_gap_sigma"]:
                 reasons.append("gap_above_sigma")
 
-        # realized volatility relative to the same past-only baseline
+        # realized volatility against an INDEPENDENT past baseline
         recent = closes[idx - vol_n:idx + 1]
         recent_ret = np.diff(recent) / recent[:-1]
         recent_vol = float(np.std(recent_ret)) if len(recent_ret) > 1 \
             else 0.0
+        base_slice = closes[idx - vol_n - baseline_n:idx - vol_n + 1]
+        base_ret = np.diff(base_slice) / base_slice[:-1]
+        baseline_vol = float(np.std(base_ret)) if len(base_ret) > 1 \
+            else 0.0
         vol_ratio = None
-        if sigma <= 0.0 or not np.isfinite(recent_vol):
+        if baseline_vol <= 0.0 or not np.isfinite(baseline_vol) \
+                or not np.isfinite(recent_vol):
             reasons.append("realized_vol_unavailable")
         else:
-            vol_ratio = recent_vol / sigma
+            vol_ratio = recent_vol / baseline_vol
             if vol_ratio > policy[
                     "max_realized_vol_relative_to_baseline"]:
                 reasons.append("realized_vol_above_baseline")
@@ -983,7 +1047,9 @@ class GymFxEnv(gym.Env):
 
         return {"passed": not reasons, "reasons": reasons,
                 "spread_ratio": spread_ratio, "gap_sigma": gap_sigma,
-                "vol_ratio": vol_ratio, "quote_continuous": continuous}
+                "vol_ratio": vol_ratio, "baseline_vol": baseline_vol,
+                "recent_vol": recent_vol,
+                "quote_continuous": continuous}
 
     def _session_reopen_evidence(self, step_idx: int, now):
         """G2: materialize ReopenEvidence from causal observations.
@@ -1100,24 +1166,44 @@ class GymFxEnv(gym.Env):
             after = command
         decision["final_action"] = after
 
-        gate = None
+        # C2: EXECUTE the cancellation the policy decided on. The
+        # refs come from the ROLE REGISTRY, so protective legs are
+        # never among them and survive until the position is closed.
+        entries, protective = self._session_order_inventory()
+        if decision["cancel_pending"] and entries:
+            refs = tuple(int(record["ref"]) for record in entries)
+            self.bridge.cancel_entry_request = refs
+            self._session_cancel_requested.update(refs)
+
+        # C3: the flatten LIFECYCLE. Requesting is not executing and
+        # executing is not confirming. Only a POST-FILL check on the
+        # same real path may confirm; the pre-dispatch view below is
+        # DIAGNOSTIC and can never be authority for success.
+        pre_dispatch = None
         if overlay == "forced_close":
-            # G4: the forced flatten is only ACCEPTED once the shared
-            # typed gate proves fresh zero positions and zero orders.
-            # Until then it is an in-flight attempt, not a success.
-            entries, protective = self._session_order_inventory()
+            if (self._session_flatten is None
+                    or self._session_flatten["phase"] ==
+                    "flatten_confirmed"):
+                self._session_flatten = {
+                    "phase": "flatten_requested",
+                    "requested_at_bar": step_idx,
+                    "confirmed_at_bar": None,
+                    "confirmed": False,
+                    "reconciliation": None,
+                    "incident": None,
+                }
             try:
-                gate = reconciliation_gate(
+                pre_dispatch = reconciliation_gate(
                     positions_total=(
                         0 if not exposure.has_position else 1),
                     orders_total=len(entries) + len(protective),
                     evidence_age_seconds=0.0,
                     max_age_seconds=120.0)
             except Exception as exc:
-                # a gate that cannot be evaluated is a typed INCIDENT,
-                # never a silent success
-                gate = {"flat_confirmed": False,
-                        "incident": f"{type(exc).__name__}: {exc}"}
+                pre_dispatch = {
+                    "flat_confirmed": False,
+                    "incident": f"{type(exc).__name__}: {exc}"}
+            pre_dispatch = {**pre_dispatch, "diagnostic_only": True}
 
         if after != command:
             diag = getattr(self.bridge, "execution_diagnostics", {}) or {}
@@ -1156,20 +1242,133 @@ class GymFxEnv(gym.Env):
             "session_entry_orders": exposure.entry_orders,
             "session_protective_orders": exposure.protective_orders,
             "session_pending_entry_side": exposure.pending_entry_side,
-            "session_flatten_reconciliation": gate,
+            "session_flatten_pre_dispatch": pre_dispatch,
+            "session_cancel_requested_refs": tuple(
+                int(record["ref"]) for record in entries
+            ) if decision["cancel_pending"] else (),
             **reopen_info,
         }
         self._last_session_info = info
         return after, info
+
+    def _session_cancellation_outcomes(self) -> Dict[str, Any]:
+        """C2: the OBSERVED terminal state of every cancellation this
+        episode requested. A ref still resting after its cancellation
+        was submitted is reported ``still_open``, never assumed gone."""
+        if not self._session_cancel_requested:
+            return {"session_cancellations": {},
+                    "session_cancellations_pending": 0,
+                    "session_cancellation_incident": None}
+        inventory = getattr(self.bridge, "open_order_inventory", None)
+        open_refs = set() if not inventory else {
+            int(record["ref"]) for record in inventory}
+        submitted = dict(getattr(self.bridge, "cancel_outcomes", {})
+                         or {})
+        terminal = dict(getattr(self.bridge, "order_terminal_status",
+                                {}) or {})
+        outcomes, pending, incident = {}, 0, None
+        for ref in sorted(self._session_cancel_requested):
+            status = terminal.get(ref)
+            if status in ("Canceled", "Cancelled", "Expired"):
+                outcomes[ref] = "cancelled"
+            elif status == "Rejected":
+                outcomes[ref] = "rejected"
+                incident = (
+                    f"ENTRY_CANCELLATION_REJECTED: order {ref}")
+            elif status == "Completed":
+                outcomes[ref] = "filled_before_cancel"
+                incident = (
+                    f"ENTRY_FILLED_DESPITE_CANCELLATION: order {ref}")
+            elif ref in open_refs:
+                outcomes[ref] = "still_open"
+                pending += 1
+            elif submitted.get(ref, "").startswith("refused_role"):
+                outcomes[ref] = submitted[ref]
+                incident = (
+                    f"CANCELLATION_REFUSED_WRONG_ROLE: order {ref}")
+            else:
+                outcomes[ref] = "gone_without_verdict"
+                incident = incident or (
+                    f"CANCELLATION_UNVERIFIED: order {ref} left the "
+                    "book with no terminal broker verdict")
+        return {"session_cancellations": outcomes,
+                "session_cancellations_pending": pending,
+                "session_cancellation_incident": incident}
+
+    def _session_post_fill_reconciliation(self) -> Dict[str, Any]:
+        """C3: the ONLY authority on flatten success.
+
+        Runs AFTER the bar advanced, so it reads the exposure and the
+        order book that exist once the CLOSE has been executed on the
+        real path. A flatten stays ``flatten_in_flight`` until fresh
+        evidence from that same path shows zero positions AND zero
+        orders; a rejected close or a surviving order keeps it in
+        flight with a typed incident and never becomes success."""
+        from app.session_exposure import reconciliation_gate
+        attempt = self._session_flatten
+        if attempt is None:
+            return {"session_flatten_phase": None,
+                    "session_flatten_confirmed": False,
+                    "session_flatten_reconciliation": None,
+                    "session_flatten_incident": None}
+        if attempt["phase"] == "flatten_confirmed":
+            # a confirmed flatten is TERMINAL. Re-evaluating it on
+            # later bars would report the agent's NEXT position as a
+            # failure of an attempt that already completed.
+            return {"session_flatten_phase": "flatten_confirmed",
+                    "session_flatten_confirmed": True,
+                    "session_flatten_requested_at_bar": attempt[
+                        "requested_at_bar"],
+                    "session_flatten_confirmed_at_bar": attempt[
+                        "confirmed_at_bar"],
+                    "session_flatten_reconciliation": attempt[
+                        "reconciliation"],
+                    "session_flatten_incident": None}
+        if attempt["phase"] == "flatten_requested":
+            attempt["phase"] = "flatten_in_flight"
+        try:
+            signed = self._session_signed_exposure()
+            entries, protective = self._session_order_inventory()
+            gate = reconciliation_gate(
+                positions_total=0 if signed == 0.0 else 1,
+                orders_total=len(entries) + len(protective),
+                evidence_age_seconds=0.0, max_age_seconds=120.0)
+        except Exception as exc:
+            attempt["incident"] = f"{type(exc).__name__}: {exc}"
+            return {"session_flatten_phase": attempt["phase"],
+                    "session_flatten_confirmed": False,
+                    "session_flatten_reconciliation": None,
+                    "session_flatten_incident": attempt["incident"]}
+        if gate["flat_confirmed"]:
+            attempt["phase"] = "flatten_confirmed"
+            attempt["confirmed"] = True
+            attempt["incident"] = None
+            attempt["confirmed_at_bar"] = int(
+                getattr(self.bridge, "bar_index", 0))
+            attempt["reconciliation"] = dict(gate)
+        else:
+            attempt["incident"] = gate.get(
+                "incident", "FORCED_FLATTEN_INCOMPLETE")
+        return {"session_flatten_phase": attempt["phase"],
+                "session_flatten_confirmed": bool(
+                    attempt["confirmed"]),
+                "session_flatten_requested_at_bar": attempt[
+                    "requested_at_bar"],
+                "session_flatten_confirmed_at_bar": attempt.get(
+                    "confirmed_at_bar"),
+                "session_flatten_reconciliation": gate,
+                "session_flatten_incident": attempt["incident"]}
 
     def _session_termination_record(self) -> Dict[str, Any]:
         """Episode termination is an EPISODE boundary, not a venue
         event. If exposure is open when the episode ends, it survives
         and is reported as a carried position requiring migration --
         never silently zeroed by reset()."""
-        signed = float(getattr(self.bridge, "position_units", 0.0) or 0.0)
-        if signed == 0.0:
-            signed = float(getattr(self.bridge, "position", 0) or 0)
+        from app.session_exposure import require_count
+        # C5: no coercion at this boundary. Absent, boolean, NaN or
+        # wrongly typed evidence REFUSES; it never becomes a flat
+        # account that would silently discard a carried position.
+        signed = self._session_signed_exposure()
         if signed == 0.0:
             return {"session_exposure_survived_termination": False,
                     "session_carried_exposure": 0.0}
@@ -1177,10 +1376,12 @@ class GymFxEnv(gym.Env):
             "session_exposure_survived_termination": True,
             "session_carried_exposure": signed,
             "session_carried_position_requires_migration": True,
-            "session_carried_episode_seq": int(
-                getattr(self.bridge, "episode_seq", 0) or 0),
-            "session_carried_bar_index": int(
-                getattr(self.bridge, "bar_index", 0) or 0),
+            "session_carried_episode_seq": require_count(
+                "episode_seq", getattr(self.bridge, "episode_seq",
+                                       None), minimum=0),
+            "session_carried_bar_index": require_count(
+                "bar_index", getattr(self.bridge, "bar_index", None),
+                minimum=0),
             "termination_does_not_close_exposure": True,
         }
         self._session_carried_migration = record
@@ -1212,6 +1413,55 @@ class GymFxEnv(gym.Env):
                 dtype=np.float32),
             "session_hours_since_reopen": np.array(
                 [_hours("session_time_since_reopen_hours")],
+                dtype=np.float32),
+            **self._session_evidence_observation(info),
+        }
+
+    def _session_evidence_observation(self, info) -> Dict[str, Any]:
+        """C4: the reopen evidence, bounded to [0,1] and FAIL-CLOSED.
+
+        An absent input yields the WORST value -- 1.0 for a threshold
+        ratio, 0.0 for continuity -- so a missing observation can only
+        make the regime look less safe, never more."""
+        policy = self._session_policy or {}
+        check = info.get("session_reopen_last_check") or {}
+
+        def _progress(value, target):
+            if value is None or target in (None, 0):
+                return 0.0
+            return float(min(1.0, max(0.0, value / float(target))))
+
+        def _ratio(key, limit_key):
+            value = check.get(key)
+            limit = policy.get(limit_key)
+            if value is None or limit in (None, 0) or \
+                    not np.isfinite(value):
+                return 1.0                      # unavailable = worst
+            return float(min(1.0, max(0.0, value / float(limit))))
+
+        continuous = check.get("quote_continuous")
+        return {
+            "session_reopen_bar_progress": np.array(
+                [_progress(info.get("session_reopen_closed_bars"),
+                           policy.get("reopen_min_closed_bars"))],
+                dtype=np.float32),
+            "session_reopen_stability_progress": np.array(
+                [_progress(info.get("session_reopen_stability_streak"),
+                           policy.get("stability_consecutive_checks"))],
+                dtype=np.float32),
+            "session_spread_ratio_norm": np.array(
+                [_ratio("spread_ratio",
+                        "max_spread_relative_to_baseline")],
+                dtype=np.float32),
+            "session_gap_sigma_norm": np.array(
+                [_ratio("gap_sigma", "max_gap_sigma")],
+                dtype=np.float32),
+            "session_vol_ratio_norm": np.array(
+                [_ratio("vol_ratio",
+                        "max_realized_vol_relative_to_baseline")],
+                dtype=np.float32),
+            "session_quote_continuous": np.array(
+                [1.0 if continuous is True else 0.0],
                 dtype=np.float32),
         }
 

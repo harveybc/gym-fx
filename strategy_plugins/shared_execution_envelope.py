@@ -85,6 +85,25 @@ class Plugin:
             s.bridge.close_events = []
         return s.bridge.close_events
 
+    @staticmethod
+    def _register_roles(s, *, entry=None, stop=None, limit=None,
+                        close=None) -> None:
+        """C1: bind each created order to its role on the bridge, by
+        the broker's own identity, at the moment of creation. This is
+        the ONLY authority on what an order is for."""
+        bridge = getattr(s, "bridge", None)
+        if bridge is None or not hasattr(bridge, "register_order_role"):
+            return
+        for order, role in ((entry, "entry"),
+                            (stop, "protective_stop"),
+                            (limit, "protective_take_profit"),
+                            (close, "close")):
+            if order is None:
+                continue
+            ref = getattr(order, "ref", None)
+            if ref is not None:
+                bridge.register_order_role(ref, role)
+
     def _submit_bracket(self, s, p, direction: int, units: float,
                         decision_price: float) -> None:
         """ONE logical entry lifecycle: parent (transmit=False), STOP
@@ -110,6 +129,7 @@ class Plugin:
                          parent=parent, transmit=False)
             limit = s.buy(exectype=bt.Order.Limit, price=tp,
                           size=units, parent=parent, transmit=True)
+        self._register_roles(s, entry=parent, stop=stop, limit=limit)
         self._children = [stop, limit]
         self._parent = int(parent.ref)
         self._pending_entry = {"dir": direction, "units": units,
@@ -129,6 +149,7 @@ class Plugin:
                          price=anchor + sl_d, size=units)
             limit = s.buy(exectype=bt.Order.Limit,
                           price=anchor - tp_d, size=units, oco=stop)
+        self._register_roles(s, stop=stop, limit=limit)
         self._children = [stop, limit]
 
     def _resize_children(self, s, new_units: float) -> None:
@@ -155,6 +176,7 @@ class Plugin:
             if exectype == bt.Order.Limit:
                 limit = fn(exectype=bt.Order.Limit, price=price,
                            size=new_units, oco=stop)
+        self._register_roles(s, stop=stop, limit=limit)
         self._children = [o for o in (stop, limit) if o is not None]
 
     def _settle_position(self, s, fill_price: float) -> None:
@@ -295,7 +317,7 @@ class Plugin:
             # position is never accepted evidence.
             s.bridge.envelope_run_failure = (
                 f"unprotected_position_bar_{bar}")
-            s.close()
+            self._register_roles(s, close=s.close())
             self._events(s).append({"bar_index": bar,
                                     "reason": "envelope_residual_sweep",
                                     "price": price})
@@ -310,7 +332,7 @@ class Plugin:
         if action == 3:
             self._cancel_children(s)
             if pos != 0:
-                s.close()
+                self._register_roles(s, close=s.close())
                 self._events(s).append({"bar_index": bar,
                                         "reason": "policy_close",
                                         "price": price})
@@ -326,7 +348,7 @@ class Plugin:
             # directional signal with ~zero fraction = target flat
             self._cancel_children(s)
             if pos != 0:
-                s.close()
+                self._register_roles(s, close=s.close())
                 self._events(s).append({"bar_index": bar,
                                         "reason": "policy_close",
                                         "price": price})
@@ -349,7 +371,7 @@ class Plugin:
             # cancels are honored here), THEN the fresh atomic bracket.
             self._cancel_children(s)
             self._entry_bar_check = None
-            s.close()
+            self._register_roles(s, close=s.close())
             self._events(s).append({"bar_index": bar,
                                     "reason": "reversal_close",
                                     "price": price})

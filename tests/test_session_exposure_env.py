@@ -436,30 +436,68 @@ class TestG2CausalReopenEvidence:
 # G4: order inventory and fresh reconciliation                        #
 # =================================================================== #
 
-def _order(ref, parent_ref, side, size):
+def _order(ref, parent_ref, side, size, role="entry"):
     return {"ref": ref, "parent_ref": parent_ref, "side": side,
-            "size": size, "exectype": None,
-            "reduce_only": parent_ref is not None}
+            "size": size, "exectype": None, "role": role,
+            "reduce_only": None if role is None else role != "entry"}
 
 
 class TestG4OrderInventoryAndReconciliation:
 
-    def test_pending_entry_is_distinguished_from_protective_children(
+    def test_role_comes_from_the_registry_not_from_geometry(
             self, tmp_path):
+        """Musashi's adversary: an INDEPENDENT reversal entry,
+        opposite the position and of exactly its size, is
+        geometrically indistinguishable from a protective leg. Under
+        the old heuristic it was called protection and would have
+        survived the wind-down cancellation."""
         env = _env(tmp_path)
         env.reset(seed=7)
         env.step([1.0])
         env.step([1.0])
+        env.bridge.register_order_role(701, "entry")
         env.bridge.open_order_inventory = (
-            _order(11, None, "buy", 5.0),       # pending ENTRY
-            _order(12, 9, "sell", 5.0),         # protective child
+            _order(701, None, "sell", 99.8, role="entry"),
+            _order(702, None, "sell", 99.8,
+                   role="protective_stop"),
         )
         facts = env._session_exposure_facts()
-        assert facts.protective_orders == 1
         assert facts.entry_orders == 1, (
-            "a simultaneous pending entry must not be hidden behind "
-            "the protective bracket")
-        assert facts.pending_entry_side == "long"
+            "the reversal entry must NOT be mistaken for protection")
+        assert facts.protective_orders == 1
+        assert facts.pending_entry_side == "short"
+
+    def test_an_unregistered_order_is_ambiguous_and_refuses(
+            self, tmp_path):
+        env = _env(tmp_path)
+        env.reset(seed=7)
+        env.step([1.0])
+        env.bridge.open_order_inventory = (
+            _order(999, None, "sell", 1.0, role=None),)
+        with pytest.raises(SessionEvidenceError,
+                           match="no registered role"):
+            env._session_exposure_facts()
+
+    def test_the_registry_refuses_a_conflicting_reregistration(
+            self, tmp_path):
+        from app.bt_bridge import TradeCloseConflictError
+        env = _env(tmp_path)
+        env.reset(seed=7)
+        env.bridge.register_order_role(55, "entry")
+        env.bridge.register_order_role(55, "entry")      # idempotent
+        with pytest.raises(TradeCloseConflictError,
+                           match="already registered"):
+            env.bridge.register_order_role(55, "protective_stop")
+
+    def test_the_registry_refuses_unknown_roles_and_bad_refs(self,
+                                                             tmp_path):
+        from app.bt_bridge import TradeCloseValidationError
+        env = _env(tmp_path)
+        env.reset(seed=7)
+        for ref, role in ((1, "hedge"), (-1, "entry"),
+                          (True, "entry"), ("x", "entry")):
+            with pytest.raises(TradeCloseValidationError):
+                env.bridge.register_order_role(ref, role)
 
     def test_unavailable_inventory_refuses(self, tmp_path):
         env = _env(tmp_path)
@@ -514,82 +552,325 @@ class TestG4OrderInventoryAndReconciliation:
         assert all(r["parent_ref"] is None for r in inventory), (
             "this test is only meaningful while backtrader drops the "
             "parent link; if it starts populating it, revisit")
+        assert {r["role"] for r in inventory} == {
+            "protective_stop", "protective_take_profit"}
         assert all(r["reduce_only"] for r in inventory)
         assert all(r["exectype"] in ("Stop", "Limit")
                    for r in inventory)
         assert frames[-1]["info"]["session_entry_orders"] == 0
         assert frames[-1]["info"]["session_protective_orders"] == 2
 
-    def test_an_oversized_opposite_order_is_not_reduce_only(self):
+    def test_geometry_no_longer_decides_the_role(self):
+        """The describer records geometry for DIAGNOSIS only. An
+        unregistered order gets role None and reduce_only None --
+        ambiguity, which refuses upstream -- no matter how protective
+        it looks."""
         from app.bt_bridge import _describe_order
 
         class _O:
             ref = 9
             parent = None
-            size = 250.0
-            exectype = None
+            size = 99.8
+            exectype = 3
+            ExecTypes = ["Market", "Close", "Limit", "Stop"]
 
             def isbuy(self):
                 return False
 
-        order = _O()
-        order.exectype = 3          # Stop, via ExecTypes lookup below
-        order.ExecTypes = ["Market", "Close", "Limit", "Stop",
-                           "StopLimit"]
-        record = _describe_order(order, position_size=100.0)
+        record = _describe_order(_O(), roles={})
+        assert record["role"] is None
+        assert record["reduce_only"] is None
         assert record["exectype"] == "Stop"
-        assert record["reduce_only"] is False, (
-            "an opposite-side order larger than the position would "
-            "FLIP it; that is risk-increasing, not protective")
+        registered = _describe_order(_O(), roles={9: "entry"})
+        assert registered["reduce_only"] is False
+        protective = _describe_order(_O(),
+                                     roles={9: "protective_stop"})
+        assert protective["reduce_only"] is True
 
-    def test_a_same_side_resting_order_is_a_pending_entry(self):
-        from app.bt_bridge import _describe_order
 
-        class _O:
-            ref = 10
-            parent = None
-            size = 50.0
-            exectype = 2
-            ExecTypes = ["Market", "Close", "Limit", "Stop"]
+# =================================================================== #
+# C2/C3: executing cancellation and post-fill confirmation            #
+# =================================================================== #
 
-            def isbuy(self):
-                return True
+class TestC2ExecutingCancellation:
 
-        record = _describe_order(_O(), position_size=100.0)
-        assert record["reduce_only"] is False
+    def test_pending_entries_are_actually_cancelled(self, tmp_path,
+                                                    monkeypatch):
+        """The overlay must hand the broker the entry refs, not merely
+        publish cancel_pending in info."""
+        env = _env(tmp_path)
+        original = GymFxEnv._session_order_inventory
+        synthetic = _order(4242, None, "buy", 10.0, role="entry")
 
-    def test_forced_close_runs_the_shared_reconciliation_gate(
+        def with_pending_entry(self):
+            entries, protective = original(self)
+            return tuple(list(entries) + [synthetic]), protective
+
+        monkeypatch.setattr(GymFxEnv, "_session_order_inventory",
+                            with_pending_entry)
+        env.reset(seed=7)
+        env.bridge.register_order_role(4242, "entry")
+        frames = []
+        for a in LONG[:6]:
+            obs, r, term, tr, info = env.step([a])
+            frames.append({"obs": obs, "reward": r, "info": info,
+                           "terminated": term,
+                           "submitted": int(env.bridge.action_slot)})
+            if term:
+                break
+        wind = [f for f in frames
+                if f["info"]["session_state"] in
+                ("WIND_DOWN", "FORCED_FLATTEN")]
+        assert wind, "the fixture must reach wind-down"
+        assert any(f["info"]["session_cancel_pending"] for f in wind)
+        assert 4242 in env._session_cancel_requested, (
+            "the overlay must REQUEST the cancellation, not only "
+            "publish the boolean")
+        assert any(4242 in f["info"]["session_cancel_requested_refs"]
+                   for f in wind)
+        assert env.bridge.cancel_outcomes.get(4242) == "not_open", (
+            "the strategy looked for it in the real order book")
+
+    def test_the_strategy_reverifies_the_role_before_cancelling(
+            self, tmp_path):
+        """Defence in depth: even if a ref reaches the cancel channel,
+        the strategy refuses to cancel anything whose role it cannot
+        verify in the registry."""
+        env = _env(tmp_path)
+        env.reset(seed=7)
+        env.step([1.0])
+        env.bridge.cancel_entry_request = (98765,)
+        env.step([1.0])
+        assert env.bridge.cancel_outcomes[98765] == "refused_role_None"
+
+    def test_the_broker_channel_receives_only_registered_entries(
             self, tmp_path):
         env = _env(tmp_path)
-        frames = _drive(env, LONG)
-        forced = [f for f in frames
-                  if f["info"]["session_overlay"] == "forced_close"]
-        assert forced
-        gate = forced[0]["info"]["session_flatten_reconciliation"]
-        assert gate is not None, (
-            "a forced flatten must be checked by the shared typed "
-            "gate, not accepted on a reported position alone")
-        assert "flat_confirmed" in gate
-        assert gate["flat_confirmed"] is False, (
-            "at the moment the close is submitted the position is "
-            "still open, so the flatten is an in-flight ATTEMPT")
+        env.reset(seed=7)
+        for _ in range(3):
+            env.step([1.0])
+        assert env.bridge.open_order_inventory, "brackets must be live"
+        # protective legs must never be honoured by the cancel channel
+        env.bridge.cancel_entry_request = tuple(
+            r["ref"] for r in env.bridge.open_order_inventory)
+        env.step([1.0])
+        outcomes = env.bridge.cancel_outcomes
+        assert outcomes, "the strategy must have processed the request"
+        assert all(v.startswith("refused_role") for v in
+                   outcomes.values()), outcomes
+        assert env.bridge.open_order_inventory, (
+            "the protective bracket must still be alive")
 
-    def test_the_gate_refuses_while_exposure_remains(self):
-        from app.session_exposure import reconciliation_gate
-        assert reconciliation_gate(
-            positions_total=1, orders_total=0,
-            evidence_age_seconds=0.0)["flat_confirmed"] is False
-        assert reconciliation_gate(
-            positions_total=0, orders_total=2,
-            evidence_age_seconds=0.0)["flat_confirmed"] is False
-        assert reconciliation_gate(
-            positions_total=0, orders_total=0,
-            evidence_age_seconds=0.0)["flat_confirmed"] is True
+    def test_protective_brackets_survive_wind_down_until_the_close(
+            self, tmp_path):
+        """C2: the wind-down cancels entries only. The protective
+        legs must stay alive right up to the close, and it is the
+        CLOSE that retires them, not the session overlay."""
+        env = _env(tmp_path)
+        env.reset(seed=7)
+        live = []
+        for _ in range(6):
+            _o, _r, term, _t, info = env.step([1.0])
+            live.append((info["session_state"],
+                         info["session_overlay"],
+                         tuple(r["role"] for r in
+                               (env.bridge.open_order_inventory or ()))))
+            if term:
+                break
+        wind = [row for row in live if row[0] == "WIND_DOWN"]
+        assert wind, "the fixture must reach wind-down"
+        for _state, _overlay, roles in wind:
+            assert set(roles) == {"protective_stop",
+                                  "protective_take_profit"}, (
+                "protection must survive the wind-down")
+        forced = [row for row in live if row[1] == "forced_close"]
+        assert forced and forced[0][2] == (), (
+            "the CLOSE retires the brackets, and only then")
+
+    def test_pre_dispatch_and_post_fill_read_different_moments(
+            self, tmp_path):
+        """The overlay's view is taken BEFORE the action reaches the
+        broker; the authority is taken AFTER. They are meant to
+        disagree at the closing bar, and that disagreement is the
+        whole point of the split."""
+        env = _env(tmp_path)
+        frames = _drive(env, LONG[:6])
+        closing = next(f for f in frames
+                       if f["info"]["session_overlay"] ==
+                       "forced_close")
+        pre = closing["info"]["session_flatten_pre_dispatch"]
+        post = closing["info"]["session_flatten_reconciliation"]
+        assert pre["diagnostic_only"] is True
+        assert pre["orders"] == 2, (
+            "before dispatch the protective legs are still resting")
+        assert post["orders"] == 0, (
+            "after the close executed they are gone")
+        assert post["positions"] == 1, (
+            "and the position has not settled yet, so this bar cannot "
+            "confirm")
+        assert closing["info"]["session_flatten_confirmed"] is False
+
+    def test_a_rejected_cancellation_is_a_typed_incident(self,
+                                                         tmp_path):
+        env = _env(tmp_path)
+        env.reset(seed=7)
+        env.step([1.0])
+        env._session_cancel_requested.add(31337)
+        env.bridge.order_terminal_status[31337] = "Rejected"
+        outcomes = env._session_cancellation_outcomes()
+        assert outcomes["session_cancellations"][31337] == "rejected"
+        assert "ENTRY_CANCELLATION_REJECTED" in \
+            outcomes["session_cancellation_incident"]
+
+    def test_an_entry_that_filled_despite_cancellation_is_reported(
+            self, tmp_path):
+        env = _env(tmp_path)
+        env.reset(seed=7)
+        env.step([1.0])
+        env._session_cancel_requested.add(31338)
+        env.bridge.order_terminal_status[31338] = "Completed"
+        outcomes = env._session_cancellation_outcomes()
+        assert outcomes["session_cancellations"][31338] == \
+            "filled_before_cancel"
+        assert "ENTRY_FILLED_DESPITE_CANCELLATION" in \
+            outcomes["session_cancellation_incident"]
+
+    def test_an_order_still_resting_is_pending_not_cancelled(self,
+                                                             tmp_path):
+        env = _env(tmp_path)
+        env.reset(seed=7)
+        for _ in range(3):
+            env.step([1.0])
+        assert env.bridge.open_order_inventory
+        ref = env.bridge.open_order_inventory[0]["ref"]
+        env._session_cancel_requested.add(ref)
+        outcomes = env._session_cancellation_outcomes()
+        assert outcomes["session_cancellations"][ref] == "still_open"
+        assert outcomes["session_cancellations_pending"] == 1
 
 
-# =================================================================== #
-# G5: non-vacuous lifecycle tests                                     #
-# =================================================================== #
+class TestC3PostFillFlattenLifecycle:
+
+    def _run(self, tmp_path, actions):
+        env = _env(tmp_path)
+        return env, _drive(env, actions)
+
+    @pytest.mark.parametrize("actions,label", [(LONG, "long"),
+                                               (SHORT, "short")])
+    def test_the_three_phases_occur_in_order(self, tmp_path, actions,
+                                             label):
+        env, frames = self._run(tmp_path, actions)
+        phases = [f["info"].get("session_flatten_phase")
+                  for f in frames]
+        assert "flatten_in_flight" in phases, label
+        assert "flatten_confirmed" in phases, label
+        assert phases.index("flatten_in_flight") < \
+            phases.index("flatten_confirmed")
+
+    def test_confirmation_never_precedes_the_close(self, tmp_path):
+        env, frames = self._run(tmp_path, LONG)
+        submit = next(i for i, f in enumerate(frames)
+                      if f["submitted"] == 3)
+        confirm = next(i for i, f in enumerate(frames)
+                       if f["info"].get("session_flatten_confirmed"))
+        assert confirm > submit, (
+            "a flatten confirmed at or before the bar that submitted "
+            "the CLOSE is a pre-dispatch check, not a confirmation")
+
+    def test_the_pre_dispatch_view_is_diagnostic_only(self, tmp_path):
+        env, frames = self._run(tmp_path, LONG)
+        pre = [f["info"]["session_flatten_pre_dispatch"]
+               for f in frames
+               if f["info"].get("session_flatten_pre_dispatch")]
+        assert pre
+        for view in pre:
+            assert view["diagnostic_only"] is True
+            assert view["flat_confirmed"] is False
+
+    def test_the_fill_is_delayed_by_one_bar(self, tmp_path):
+        env, frames = self._run(tmp_path, LONG)
+        in_flight = next(f for f in frames
+                         if f["info"].get("session_flatten_phase") ==
+                         "flatten_in_flight")
+        assert in_flight["info"][
+            "session_flatten_reconciliation"]["positions"] == 1, (
+            "at the submitting bar the position is still open")
+        confirmed = next(f for f in frames
+                         if f["info"].get(
+                             "session_flatten_confirmed"))
+        assert confirmed["info"][
+            "session_flatten_confirmed_at_bar"] == \
+            in_flight["info"]["bar_index"] + 1
+
+    def test_a_rejected_close_never_confirms(self, tmp_path,
+                                             monkeypatch):
+        from strategy_plugins import shared_execution_envelope as env_mod
+        original = env_mod.Plugin.apply_action
+
+        def refusing(self, s, action, config):
+            if int(action) == 3:
+                return          # the broker refused the close
+            return original(self, s, action, config)
+
+        monkeypatch.setattr(env_mod.Plugin, "apply_action", refusing)
+        env, frames = self._run(tmp_path, LONG)
+        phases = [f["info"].get("session_flatten_phase")
+                  for f in frames]
+        assert "flatten_in_flight" in phases
+        assert "flatten_confirmed" not in phases, (
+            "a close that never executed must not confirm")
+        incidents = {f["info"].get("session_flatten_incident")
+                     for f in frames}
+        assert any(i and "FORCED_FLATTEN" in i for i in incidents)
+
+    def test_a_confirmed_flatten_is_terminal(self, tmp_path):
+        env, frames = self._run(tmp_path, LONG)
+        confirmed_from = next(
+            i for i, f in enumerate(frames)
+            if f["info"].get("session_flatten_confirmed"))
+        for frame in frames[confirmed_from:]:
+            info = frame["info"]
+            assert info["session_flatten_phase"] == \
+                "flatten_confirmed"
+            assert info["session_flatten_incident"] is None, (
+                "a retired attempt must not report the agent's NEXT "
+                "position as its own failure")
+
+    def test_a_restart_during_in_flight_inherits_nothing(self,
+                                                         tmp_path):
+        env = _env(tmp_path)
+        frames = _drive(env, LONG[:6])
+        assert frames[-1]["info"]["session_flatten_phase"] == \
+            "flatten_in_flight"
+        obs, info = env.reset(seed=7)
+        assert env._session_flatten is None
+        assert env._session_cancel_requested == set()
+        first = env.step([1.0])[4]
+        assert first.get("session_flatten_phase") is None
+        assert first.get("session_flatten_confirmed") is False
+
+    def test_the_final_state_is_exactly_flat_with_one_close_event(
+            self, tmp_path):
+        env = _env(tmp_path)
+        frames = _drive(env, LONG[:7])
+        confirmed = frames[-1]["info"]
+        assert confirmed["session_flatten_confirmed"] is True
+        gate = confirmed["session_flatten_reconciliation"]
+        assert gate["positions"] == 0 and gate["orders"] == 0
+        policy_closes = [e for e in env.bridge.close_events
+                         if e.get("reason") == "policy_close"]
+        assert len(policy_closes) == 1, (
+            f"exactly one forced close, got {policy_closes}")
+        # exactly ONE economic closure event, with costs and a PnL
+        # identity that holds
+        assert len(env.bridge.closed_trade_stream) == 1, \
+            env.bridge.closed_trade_stream
+        event = env.bridge.closed_trade_stream[0]
+        assert event["costs"] >= 0.0
+        assert event["net_pnl"] == pytest.approx(
+            event["gross_pnl"] - event["costs"], abs=1e-6)
+        assert env.bridge.trade_count == 1
+
 
 NO_CLOSURE = [["2030-01-05 00:00:00+00:00",
                "2030-01-06 00:00:00+00:00"]]
@@ -728,3 +1009,189 @@ class TestSessionEvidenceReadsTheRealTimestamps:
         assert any(f["info"]["session_evidence_ok"] for f in frames)
         assert not any(f["info"]["session_evidence_failed_closed"]
                        for f in frames)
+
+
+# =================================================================== #
+# C4: observable reopen evidence and an independent vol baseline      #
+# =================================================================== #
+
+EVIDENCE_FIELDS = ("session_reopen_bar_progress",
+                   "session_reopen_stability_progress",
+                   "session_spread_ratio_norm",
+                   "session_gap_sigma_norm",
+                   "session_vol_ratio_norm",
+                   "session_quote_continuous")
+
+
+class TestC4ObservableReopenEvidence:
+
+    def test_the_governing_evidence_is_declared_and_emitted(self,
+                                                            tmp_path):
+        env = _env(tmp_path)
+        for name in EVIDENCE_FIELDS:
+            assert name in GymFxEnv.SESSION_OBSERVATION_NAMES
+            assert name in env.observation_space.spaces
+        for frame in _drive(env, LONG):
+            obs = frame["obs"]
+            for name in EVIDENCE_FIELDS:
+                value = float(obs[name][0])
+                assert 0.0 <= value <= 1.0, (name, value)
+                assert np.isfinite(value)
+            assert env.observation_space.contains(obs)
+
+    def test_the_agent_can_tell_why_it_is_still_blocked(self,
+                                                        tmp_path):
+        env = _env(tmp_path)
+        blocked = [f for f in _drive(env, LONG)
+                   if f["info"]["session_state"] == "REOPEN_BLACKOUT"]
+        assert blocked
+        progress = [float(f["obs"]["session_reopen_stability_progress"][0])
+                    for f in blocked]
+        assert progress[0] < progress[-1] or len(set(progress)) > 1, (
+            "the stability progress must be visible and move")
+        bars = [float(f["obs"]["session_reopen_bar_progress"][0])
+                for f in blocked]
+        assert bars[-1] >= bars[0]
+
+    def test_missing_evidence_is_observed_as_the_WORST_value(self,
+                                                             tmp_path):
+        env = _env(tmp_path, spread_column=None)
+        blocked = [f for f in _drive(env, LONG)
+                   if f["info"]["session_state"] == "REOPEN_BLACKOUT"]
+        assert blocked
+        for frame in blocked:
+            assert float(frame["obs"]["session_spread_ratio_norm"][0]) \
+                == 1.0, (
+                "an unavailable ratio must read as the threshold, "
+                "never as a safe zero")
+        assert all(float(f["obs"][
+            "session_reopen_stability_progress"][0]) == 0.0
+            for f in blocked)
+
+    def test_a_gap_at_a_checkable_bar_is_a_discontinuity(self,
+                                                          tmp_path):
+        """The default fixture's gap sits at bar 6, earlier than the
+        history both windows need, so it is reported
+        insufficient_history rather than continuous -- which is also
+        fail-closed. With a longer pre-block the gap lands on a
+        checkable bar and IS detected."""
+        env = _env(tmp_path)
+        env.reset(seed=7)
+        for _ in range(9):
+            env.step([1.0])
+        assert env._session_stability_check(PRE_BARS)["reasons"] == [
+            "insufficient_history"]
+
+        # a fixture whose gap lands on a CHECKABLE bar: 14 contiguous
+        # bars, then a closure declared after them
+        late_close = pd.Timestamp("2024-01-03 08:00:00", tz="UTC")
+        late_reopen = pd.Timestamp("2024-01-04 08:00:00", tz="UTC")
+        before = pd.date_range("2024-01-01 00:00:00", periods=14,
+                               freq=f"{BAR_HOURS}h", tz="UTC")
+        after_block = pd.date_range(late_reopen, periods=18,
+                                    freq=f"{BAR_HOURS}h", tz="UTC")
+        stamps = before.append(after_block).tz_localize(None)
+        long_env = _env(
+            tmp_path,
+            csv=_csv(tmp_path, stamps=stamps, name="longpre.csv"),
+            intervals=[[str(late_close), str(late_reopen)]])
+        long_env.reset(seed=7)
+        for _ in range(20):
+            _o, _r, term, _t, _i = long_env.step([1.0])
+            if term:
+                break
+        at_gap = long_env._session_stability_check(14)
+        after = long_env._session_stability_check(16)
+        assert at_gap["quote_continuous"] is False
+        assert "quote_discontinuity" in at_gap["reasons"]
+        assert after["quote_continuous"] is True
+
+    def test_the_volatility_baseline_is_independent_of_the_gap_sigma(
+            self, tmp_path):
+        """The ratio must compare two realized-volatility windows, not
+        divide a recent volatility by the GAP return sigma."""
+        env = _env(tmp_path)
+        env.reset(seed=7)
+        for _ in range(14):
+            env.step([1.0])
+        check = env._session_stability_check(12)
+        assert check["baseline_vol"] is not None
+        assert check["vol_ratio"] == pytest.approx(
+            check["recent_vol"] / check["baseline_vol"], rel=1e-12)
+
+    def test_the_baseline_window_precedes_the_recent_window(self,
+                                                            tmp_path):
+        """Changing a bar inside the RECENT window moves the ratio;
+        the baseline window is disjoint and strictly earlier."""
+        env = _env(tmp_path)
+        env.reset(seed=7)
+        for _ in range(16):
+            env.step([1.0])
+        idx = 13
+        vol_n = env._session_policy["reopen_realized_vol_bars"]
+        base_n = env._session_policy["reopen_baseline_bars"]
+        before = env._session_stability_check(idx)
+        column = env.price_column
+        # a bar strictly before the baseline window must not matter
+        untouched = idx - vol_n - base_n - 1
+        env.dataframe.iloc[untouched,
+                           env.dataframe.columns.get_loc(column)] *= 5.0
+        after = env._session_stability_check(idx)
+        assert before["vol_ratio"] == after["vol_ratio"], (
+            f"a bar at {untouched}, outside both windows, changed the "
+            "ratio")
+
+    def test_insufficient_history_covers_both_windows(self, tmp_path):
+        env = _env(tmp_path)
+        env.reset(seed=7)
+        env.step([1.0])
+        policy = env._session_policy
+        need = max(policy["reopen_baseline_bars"],
+                   policy["reopen_gap_sigma_bars"],
+                   policy["reopen_realized_vol_bars"] +
+                   policy["reopen_baseline_bars"]) + 1
+        assert env._session_stability_check(need - 1)["reasons"] == [
+            "insufficient_history"]
+
+
+# =================================================================== #
+# C5: strict typed termination boundaries                             #
+# =================================================================== #
+
+class TestC5StrictTerminationBoundaries:
+
+    def test_no_coercion_remains_in_the_termination_record(self):
+        import inspect
+        source = inspect.getsource(
+            GymFxEnv._session_termination_record)
+        assert " or 0" not in source
+        assert " or 0.0" not in source
+
+    @pytest.mark.parametrize("bad", [None, True, float("nan"),
+                                     float("inf"), "1.0"])
+    def test_invalid_exposure_refuses_instead_of_reading_flat(
+            self, tmp_path, bad):
+        env = _env(tmp_path)
+        env.reset(seed=7)
+        env.step([1.0])
+        env.bridge.position_units = bad
+        with pytest.raises(SessionEvidenceError):
+            env._session_termination_record()
+
+    @pytest.mark.parametrize("field", ["episode_seq", "bar_index"])
+    def test_invalid_counters_refuse(self, tmp_path, field):
+        env = _env(tmp_path)
+        env.reset(seed=7)
+        for _ in range(3):
+            env.step([1.0])
+        setattr(env.bridge, field, None)
+        with pytest.raises(Exception):
+            env._session_termination_record()
+
+    def test_a_genuinely_flat_account_still_reports_flat(self,
+                                                         tmp_path):
+        env = _env(tmp_path)
+        env.reset(seed=7)
+        record = env._session_termination_record()
+        assert record["session_exposure_survived_termination"] is False
+        assert record["session_carried_exposure"] == 0.0
