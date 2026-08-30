@@ -28,7 +28,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-STATES = ("prepared", "active", "completed", "failed")
+# E1: `prepared` was advertised but never materialized. An honest
+# state machine declares only the states it actually produces.
+STATES = ("active", "completed", "failed")
 TERMINAL_STATES = ("completed", "failed")
 
 
@@ -89,19 +91,58 @@ def _atomic_exclusive_write(path: Path, payload: dict) -> None:
     _fsync_dir(path.parent)
 
 
-def _durable_update(path: Path, payload: dict) -> None:
-    """Update an EXISTING record durably (state transitions after the
-    exclusive claim). The claim itself never takes this path."""
-    tmp = path.with_suffix(path.suffix + f".upd.{os.getpid()}")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+def _atomic_terminal_transition(path: Path, expected_state: str,
+                                payload: dict) -> None:
+    """E1: EXACTLY ONE process may move ``active`` to a terminal
+    state. Election is by an exclusive TRANSITION LOCK created with
+    ``O_EXCL``; the loser observes the winner and PRESERVES it,
+    never overwriting. The record's current state is re-verified
+    under the lock (expected-state identity)."""
+    if path.is_symlink() or path.parent.is_symlink():
+        raise MigrationCustodyError(
+            f"{path.name}: symlinked custody path refused")
+    lock = path.with_suffix(path.suffix + ".terminal.lock")
     try:
-        os.write(fd, json.dumps(payload, indent=1,
-                                default=str).encode())
-        os.fsync(fd)
+        lock_fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                          0o600)
+    except FileExistsError as exc:
+        current = json.loads(path.read_text()).get("state")
+        raise MigrationCustodyError(
+            f"{path.name}: a competing terminal transition holds the "
+            f"lock (record state={current!r}) — the winner is "
+            "preserved, never overwritten") from exc
+    try:
+        os.write(lock_fd, str(os.getpid()).encode())
+        os.fsync(lock_fd)
     finally:
-        os.close(fd)
-    os.replace(tmp, path)
-    _fsync_dir(path.parent)
+        os.close(lock_fd)
+    try:
+        # expected-state identity verified UNDER the lock
+        current = json.loads(path.read_text())
+        if current.get("state") != expected_state:
+            raise MigrationCustodyError(
+                f"{path.name}: expected state {expected_state!r} but "
+                f"found {current.get('state')!r} — a terminal state "
+                "is immutable and the winner is preserved")
+        tmp = path.with_suffix(path.suffix + f".upd.{os.getpid()}")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            os.write(fd, json.dumps(payload, indent=1,
+                                    default=str).encode())
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.replace(tmp, path)
+        _fsync_dir(path.parent)
+    finally:
+        # the lock is retained ONLY on failure paths that must stay
+        # diagnosable; a successful transition releases it
+        if path.is_file() and json.loads(
+                path.read_text()).get("state") in TERMINAL_STATES:
+            try:
+                os.unlink(lock)
+            except FileNotFoundError:
+                pass
 
 
 class MigrationCustody:
@@ -121,10 +162,26 @@ class MigrationCustody:
         return self.root / f"migration_{safe}.json"
 
     def read(self, migration_id: str) -> Optional[dict]:
-        """READ-ONLY, repeatable, never mutating (D1)."""
+        """READ-ONLY, repeatable, never mutating (D1). Symlinks are
+        REFUSED, never followed (E1)."""
         path = self._path(migration_id)
-        if not path.is_file():
+        if path.is_symlink() or path.parent.is_symlink():
+            raise MigrationCustodyError(
+                f"{path.name}: symlinked custody record refused")
+        if not path.exists():
             return None
+        if not path.is_file():
+            raise MigrationCustodyError(
+                f"{path.name}: custody path is not a regular file")
+        if path.stat().st_size == 0:
+            # placeholder from a claim interrupted between exclusive
+            # creation and replacement: fails closed with a DIAGNOSED
+            # disposition, never a silent recovery
+            raise MigrationCustodyError(
+                f"{path.name}: INTERRUPTED_CLAIM_UNCERTAIN — empty "
+                "placeholder from a crash between exclusive creation "
+                "and durable replacement; operator disposition "
+                "required, no silent recovery")
         record = json.loads(path.read_text())
         if record.get("state") not in STATES or \
                 "record_digest" not in record:
@@ -143,18 +200,39 @@ class MigrationCustody:
 
     def claim(self, migration, state_block: dict,
               position_identity: str, *,
-              native_protection_digest: str,
+              protection_evidence,
               policy_identity: str,
-              code_identity: str) -> dict:
+              code_identity: str, now: Any = None) -> dict:
         """prepared -> active by EXACTLY ONE claimant (D2).
 
         Every identity must match the state block; a second claim, a
         terminal record, another closure/position/symbol/account/
         venue, or missing/stale protection evidence REFUSE."""
+        from app.direct_evidence import NativeProtectionEvidence
         from app.session_exposure import require_identity, require_utc
 
-        require_identity("native_protection_digest",
-                         native_protection_digest)
+        # E2: only a TYPED, IDENTITY-BOUND, FRESH, re-hashed envelope
+        # authorizes. A string is not evidence.
+        if not isinstance(protection_evidence,
+                          NativeProtectionEvidence):
+            raise MigrationCustodyError(
+                "native protection must be a validated "
+                "NativeProtectionEvidence envelope — a digest string "
+                "can never authorize")
+        if protection_evidence.rehash() != \
+                protection_evidence.raw_digest:
+            raise MigrationCustodyError(
+                "protection evidence digest does not re-hash to its "
+                "raw payload")
+        protection_evidence.verify_identity(
+            venue=migration.venue,
+            account_fingerprint=migration.account_fingerprint,
+            symbol=migration.symbol,
+            position_identity=position_identity)
+        protection_evidence.verify_fresh(
+            now if now is not None
+            else datetime.now(timezone.utc))
+        native_protection_digest = protection_evidence.raw_digest
         require_identity("policy_identity", policy_identity)
         require_identity("code_identity", code_identity)
         require_identity("position_identity", position_identity)
@@ -223,9 +301,14 @@ class MigrationCustody:
         return record
 
     def finish(self, migration_id: str, terminal_state: str, *,
-               reconciliation: dict) -> dict:
-        """active -> completed | failed. Requires DIRECT FRESH
-        reconciliation evidence (D3.9)."""
+               reconciliation, now: Any = None) -> dict:
+        """active -> completed | failed under an ATOMIC transition
+        with expected-state identity (E1). ``completed`` requires a
+        typed envelope proving STRICT zero positions AND zero orders;
+        ``failed`` PRESERVES the non-flat/stale evidence and can
+        never later become completed (E2)."""
+        from app.direct_evidence import (EvidenceError,
+                                         ReconciliationEvidence)
         if terminal_state not in TERMINAL_STATES:
             raise MigrationCustodyError(
                 f"illegal terminal state {terminal_state!r}")
@@ -237,23 +320,48 @@ class MigrationCustody:
             raise MigrationCustodyError(
                 f"{migration_id}: already {record['state']} — "
                 "terminal states are immutable")
-        if not isinstance(reconciliation, dict) or \
-                "flat_confirmed" not in reconciliation or \
-                "fresh" not in reconciliation:
+        if not isinstance(reconciliation, ReconciliationEvidence):
             raise MigrationCustodyError(
-                f"{migration_id}: direct reconciliation evidence is "
-                "required to finish custody")
+                f"{migration_id}: a validated ReconciliationEvidence "
+                "envelope is required — a dict of truthy strings can "
+                "never finish custody")
+        if reconciliation.rehash() != reconciliation.raw_digest:
+            raise MigrationCustodyError(
+                f"{migration_id}: reconciliation digest does not "
+                "re-hash to its raw payload")
+        reconciliation.verify_identity(
+            venue=record["venue"],
+            account_fingerprint=record["account_fingerprint"],
+            symbol=record["symbol"],
+            position_identity=record["position_identity"])
+        moment = now if now is not None else datetime.now(
+            timezone.utc)
+        stale_reason = None
+        try:
+            reconciliation.verify_fresh(moment)
+        except EvidenceError as exc:
+            stale_reason = str(exc)
         if terminal_state == "completed":
-            if not reconciliation.get("flat_confirmed") or \
-                    not reconciliation.get("fresh"):
+            if stale_reason is not None:
                 raise MigrationCustodyError(
                     f"{migration_id}: completion requires FRESH "
-                    "evidence of zero exposure")
+                    f"evidence ({stale_reason})")
+            reconciliation.require_flat()
+        evidence_block = {
+            "evidence_id": reconciliation.evidence_id,
+            "source": reconciliation.source,
+            "observed_at": reconciliation.observed_at.isoformat(),
+            "positions_total": reconciliation.positions_total,
+            "orders_total": reconciliation.orders_total,
+            "raw_digest": reconciliation.raw_digest,
+            "stale_reason": stale_reason,
+        }
         updated = {k: v for k, v in record.items()
                    if k != "record_digest"}
         updated.update({"state": terminal_state,
                         "finished_at": _utc_now(),
-                        "reconciliation": reconciliation})
+                        "reconciliation_evidence": evidence_block})
         updated["record_digest"] = _sha_obj(updated)
-        _durable_update(self._path(migration_id), updated)
+        _atomic_terminal_transition(self._path(migration_id),
+                                    "active", updated)
         return updated

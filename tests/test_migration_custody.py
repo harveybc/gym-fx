@@ -16,6 +16,8 @@ import pytest
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
+from app.direct_evidence import (  # noqa: E402
+    EvidenceError, NativeProtectionEvidence, ReconciliationEvidence)
 from app.migration_custody import (  # noqa: E402
     MigrationCustody, MigrationCustodyError)
 from app.session_exposure import (  # noqa: E402
@@ -27,9 +29,31 @@ CLOSE = datetime(2026, 8, 28, 17, 0, tzinfo=UTC)
 REOPEN = datetime(2026, 8, 30, 21, 0, tzinfo=UTC)
 NEXT_CLOSE = datetime(2026, 9, 4, 17, 0, tzinfo=UTC)
 NEXT_REOPEN = datetime(2026, 9, 6, 21, 0, tzinfo=UTC)
-PROTECTION = "sha-protection-evidence-1"
 POLICY_ID = "policy-v1"
 CODE_ID = "code-v1"
+NOW = CLOSE + timedelta(hours=30)
+
+
+def protection(symbol="ETHUSD", account="fp-1", venue="mt5_demo",
+               position="pos-1", observed=None, sl=True):
+    return NativeProtectionEvidence.build(
+        venue=venue, account_fingerprint=account, symbol=symbol,
+        position_identity=position,
+        observed_at=observed or (NOW - timedelta(seconds=10)),
+        source="mt5_bridge_report", evidence_id="ev-prot-1",
+        raw_payload={"sl": 1234.5, "tp": 1100.0, "ticket": 55},
+        stop_loss_accepted=sl, take_profit_accepted=True)
+
+
+def reconciliation(positions=0, orders=0, observed=None,
+                   symbol="ETHUSD", position="pos-1"):
+    return ReconciliationEvidence.build(
+        venue="mt5_demo", account_fingerprint="fp-1", symbol=symbol,
+        position_identity=position,
+        observed_at=observed or (NOW - timedelta(seconds=5)),
+        source="mt5_bridge_report", evidence_id="ev-rec-1",
+        raw_payload={"positions": positions, "orders": orders},
+        positions_total=positions, orders_total=orders)
 
 
 def policy():
@@ -73,15 +97,15 @@ def migration(symbol="ETHUSD", account="fp-1", venue="mt5_demo",
         native_protection_confirmed=protected)
 
 
-def claim(custody, block=None, mig=None, position="pos-1"):
+def claim(custody, block=None, mig=None, position="pos-1",
+          prot=None):
+    record = mig or migration()
     return custody.claim(
-        mig or migration(), block or closed_block(), position,
-        native_protection_digest=PROTECTION,
-        policy_identity=POLICY_ID, code_identity=CODE_ID)
-
-
-FRESH_FLAT = {"flat_confirmed": True, "fresh": True,
-              "positions": 0, "orders": 0}
+        record, block or closed_block(), position,
+        protection_evidence=prot or protection(
+            symbol=record.symbol, account=record.account_fingerprint,
+            venue=record.venue, position=position),
+        policy_identity=POLICY_ID, code_identity=CODE_ID, now=NOW)
 
 
 class TestDurableOneUseCustody:
@@ -127,7 +151,7 @@ class TestDurableOneUseCustody:
         # a FRESH instance (restart) must remember
         assert MigrationCustody(root).is_active("mig-1") is True
         MigrationCustody(root).finish("mig-1", "completed",
-                                      reconciliation=FRESH_FLAT)
+                                      reconciliation=reconciliation(), now=NOW)
         assert MigrationCustody(root).read("mig-1")["state"] == \
             "completed"
         assert MigrationCustody(root).is_active("mig-1") is False
@@ -136,7 +160,7 @@ class TestDurableOneUseCustody:
         custody = MigrationCustody(tmp_path / "custody")
         claim(custody)
         custody.finish("mig-1", "completed",
-                       reconciliation=FRESH_FLAT)
+                       reconciliation=reconciliation(), now=NOW)
         with pytest.raises(MigrationCustodyError, match="terminal"):
             claim(custody)
 
@@ -160,11 +184,6 @@ class TestDurableOneUseCustody:
         with pytest.raises(MigrationCustodyError,
                            match="native protection"):
             claim(custody, mig=migration(protected=False))
-        with pytest.raises(Exception):
-            custody.claim(migration(), closed_block(), "pos-1",
-                          native_protection_digest="",
-                          policy_identity=POLICY_ID,
-                          code_identity=CODE_ID)
 
     def test_d3_7_interrupted_write_never_authorized(self, tmp_path):
         """A stray temporary file is not a claim, and a truncated
@@ -216,22 +235,21 @@ class TestDurableOneUseCustody:
             self, tmp_path):
         custody = MigrationCustody(tmp_path / "custody")
         claim(custody)
-        with pytest.raises(MigrationCustodyError, match="required"):
+        with pytest.raises(MigrationCustodyError, match="envelope"):
             custody.finish("mig-1", "completed", reconciliation={})
         with pytest.raises(MigrationCustodyError, match="FRESH"):
-            custody.finish("mig-1", "completed",
-                           reconciliation={"flat_confirmed": True,
-                                           "fresh": False})
-        with pytest.raises(MigrationCustodyError, match="FRESH"):
-            custody.finish("mig-1", "completed",
-                           reconciliation={"flat_confirmed": False,
-                                           "fresh": True})
+            custody.finish("mig-1", "completed", now=NOW,
+                           reconciliation=reconciliation(
+                               observed=NOW - timedelta(hours=3)))
+        with pytest.raises(EvidenceError, match="exactly 0"):
+            custody.finish("mig-1", "completed", now=NOW,
+                           reconciliation=reconciliation(positions=1))
         done = custody.finish("mig-1", "completed",
-                              reconciliation=FRESH_FLAT)
+                              reconciliation=reconciliation(), now=NOW)
         assert done["state"] == "completed"
         with pytest.raises(MigrationCustodyError, match="immutable"):
             custody.finish("mig-1", "failed",
-                           reconciliation=FRESH_FLAT)
+                           reconciliation=reconciliation(), now=NOW)
 
     def test_d3_10_no_live_position_is_touched(self):
         """Custody is pure filesystem state under a test root: no
@@ -256,3 +274,195 @@ class TestDurableOneUseCustody:
         link.symlink_to(real)
         with pytest.raises(MigrationCustodyError, match="symlink"):
             MigrationCustody(link)
+
+
+# ============== E3: concurrency, crash and fabrication ========== #
+
+def _race_script(root: Path, barrier: Path, mode: str) -> str:
+    return textwrap.dedent(f"""
+        import sys, time, os
+        sys.path.insert(0, {str(REPO)!r})
+        sys.path.insert(0, {str(REPO / 'tests')!r})
+        from test_migration_custody import (
+            MigrationCustody, claim, reconciliation, NOW)
+        barrier = {str(barrier)!r}
+        # synchronization barrier: both processes wait for the file
+        open(barrier + "." + str(os.getpid()), "w").close()
+        while len([f for f in os.listdir(os.path.dirname(barrier))
+                   if f.startswith(os.path.basename(barrier) + ".")]) < 2:
+            time.sleep(0.005)
+        custody = MigrationCustody({str(root)!r})
+        try:
+            if {mode!r} == "claim":
+                claim(custody)
+            else:
+                custody.finish("mig-1", {mode!r},
+                               reconciliation=reconciliation(
+                                   positions=0 if {mode!r} == "completed"
+                                   else 1),
+                               now=NOW)
+            print("WON")
+        except Exception as exc:
+            print("LOST:" + type(exc).__name__)
+    """)
+
+
+def _run_race(tmp_path, root, mode, n=2):
+    barrier = tmp_path / "barrier"
+    script = tmp_path / f"race_{mode}.py"
+    script.write_text(_race_script(root, barrier, mode))
+    procs = [subprocess.Popen([sys.executable, str(script)],
+                              stdout=subprocess.PIPE, text=True)
+             for _ in range(n)]
+    return [p.communicate()[0].strip() for p in procs]
+
+
+class TestE3ConcurrencyAndFabrication:
+    def test_e3_1_barrier_synchronized_claim_race(self, tmp_path):
+        """Popen + barrier: both processes reach the claim together;
+        exactly one wins."""
+        outs = _run_race(tmp_path, tmp_path / "custody", "claim")
+        assert sum(1 for o in outs if o == "WON") == 1, outs
+        assert sum(1 for o in outs if o.startswith("LOST")) == 1, outs
+
+    def test_e3_2_completed_races_failed_one_immutable_winner(
+            self, tmp_path):
+        root = tmp_path / "custody"
+        claim(MigrationCustody(root))
+        barrier = tmp_path / "barrier2"
+        scripts = []
+        for mode in ("completed", "failed"):
+            path = tmp_path / f"term_{mode}.py"
+            path.write_text(_race_script(root, barrier, mode))
+            scripts.append(path)
+        procs = [subprocess.Popen([sys.executable, str(p)],
+                                  stdout=subprocess.PIPE, text=True)
+                 for p in scripts]
+        outs = [p.communicate()[0].strip() for p in procs]
+        assert sum(1 for o in outs if o == "WON") == 1, outs
+        final = MigrationCustody(root).read("mig-1")
+        assert final["state"] in ("completed", "failed")
+        # the winner is IMMUTABLE: the loser never overwrote it
+        with pytest.raises(MigrationCustodyError):
+            MigrationCustody(root).finish(
+                "mig-1", "completed",
+                reconciliation=reconciliation(), now=NOW)
+
+    def test_e3_3_two_completions_different_evidence_no_overwrite(
+            self, tmp_path):
+        root = tmp_path / "custody"
+        custody = MigrationCustody(root)
+        claim(custody)
+        first = custody.finish("mig-1", "completed",
+                               reconciliation=reconciliation(),
+                               now=NOW)
+        winner_evidence = first["reconciliation_evidence"]
+        other = ReconciliationEvidence.build(
+            venue="mt5_demo", account_fingerprint="fp-1",
+            symbol="ETHUSD", position_identity="pos-1",
+            observed_at=NOW - timedelta(seconds=1),
+            source="other_source", evidence_id="ev-rec-OTHER",
+            raw_payload={"positions": 0, "orders": 0, "n": 2},
+            positions_total=0, orders_total=0)
+        with pytest.raises(MigrationCustodyError):
+            custody.finish("mig-1", "completed",
+                           reconciliation=other, now=NOW)
+        assert MigrationCustody(root).read("mig-1")[
+            "reconciliation_evidence"] == winner_evidence
+
+    def test_e3_4_restart_from_placeholder_is_diagnosed(
+            self, tmp_path):
+        """A crash between exclusive final creation and replacement
+        leaves an empty placeholder: classified, never silently
+        recovered."""
+        custody = MigrationCustody(tmp_path / "custody")
+        path = custody._path("mig-1")
+        os.close(os.open(path, os.O_WRONLY | os.O_CREAT, 0o600))
+        with pytest.raises(MigrationCustodyError,
+                           match="INTERRUPTED_CLAIM_UNCERTAIN"):
+            custody.read("mig-1")
+        with pytest.raises(MigrationCustodyError):
+            claim(custody)
+
+    def test_e3_5_symlinked_record_refused_not_followed(
+            self, tmp_path):
+        custody = MigrationCustody(tmp_path / "custody")
+        claim(custody)
+        path = custody._path("mig-1")
+        elsewhere = tmp_path / "elsewhere.json"
+        elsewhere.write_text(path.read_text())
+        path.unlink()
+        path.symlink_to(elsewhere)
+        with pytest.raises(MigrationCustodyError, match="symlink"):
+            custody.read("mig-1")
+        with pytest.raises(MigrationCustodyError, match="symlink"):
+            custody.finish("mig-1", "completed",
+                           reconciliation=reconciliation(), now=NOW)
+
+    def test_e3_6a_fabricated_protection_digest_refuses(
+            self, tmp_path):
+        """PRE: native_protection_digest='not-a-digest-or-fresh-
+        evidence' authorized."""
+        custody = MigrationCustody(tmp_path / "custody")
+        with pytest.raises(MigrationCustodyError, match="envelope"):
+            custody.claim(migration(), closed_block(), "pos-1",
+                          protection_evidence="not-a-digest-or-"
+                                              "fresh-evidence",
+                          policy_identity=POLICY_ID,
+                          code_identity=CODE_ID, now=NOW)
+        # and a tampered digest inside a real envelope is
+        # UNCONSTRUCTABLE: the digest is re-hashed from the payload
+        good = protection()
+        with pytest.raises(EvidenceError, match="fabricated digest"):
+            NativeProtectionEvidence(
+                good.venue, good.account_fingerprint, good.symbol,
+                good.position_identity, good.observed_at,
+                good.source, good.evidence_id, good.raw_payload,
+                "0" * 64, good.max_age_seconds, True, True)
+
+    def test_e3_6b_string_yes_reconciliation_refuses(self, tmp_path):
+        """PRE: {'flat_confirmed':'yes','fresh':'yes'} completed
+        custody."""
+        custody = MigrationCustody(tmp_path / "custody")
+        claim(custody)
+        with pytest.raises(MigrationCustodyError, match="envelope"):
+            custody.finish("mig-1", "completed", now=NOW,
+                           reconciliation={"flat_confirmed": "yes",
+                                           "fresh": "yes"})
+        assert MigrationCustody(
+            custody.root).read("mig-1")["state"] == "active"
+
+    def test_e3_strict_types_in_envelopes(self):
+        with pytest.raises(EvidenceError, match="strict bool"):
+            protection(sl="yes")
+        with pytest.raises((EvidenceError, Exception)):
+            ReconciliationEvidence.build(
+                venue="v", account_fingerprint="a", symbol="s",
+                position_identity="p", observed_at=NOW,
+                source="src", evidence_id="e",
+                raw_payload={"x": 1}, positions_total=True,
+                orders_total=0)
+
+    def test_e3_stale_and_identity_mismatch_refuse(self, tmp_path):
+        custody = MigrationCustody(tmp_path / "custody")
+        # typed refusals from the evidence layer itself
+        with pytest.raises(EvidenceError, match="stale"):
+            claim(custody, prot=protection(
+                observed=NOW - timedelta(hours=5)))
+        with pytest.raises(EvidenceError, match="mismatch"):
+            claim(custody, prot=protection(symbol="BTCUSD"))
+        assert custody.read("mig-1") is None  # no record left
+
+    def test_e3_failed_preserves_evidence_and_never_completes(
+            self, tmp_path):
+        custody = MigrationCustody(tmp_path / "custody")
+        claim(custody)
+        failed = custody.finish("mig-1", "failed", now=NOW,
+                                reconciliation=reconciliation(
+                                    positions=1))
+        assert failed["state"] == "failed"
+        assert failed["reconciliation_evidence"][
+            "positions_total"] == 1
+        with pytest.raises(MigrationCustodyError, match="immutable"):
+            custody.finish("mig-1", "completed",
+                           reconciliation=reconciliation(), now=NOW)
