@@ -37,7 +37,14 @@ from typing import Any, Optional, Sequence
 STATES = ("NORMAL_TRADING", "WIND_DOWN", "FORCED_FLATTEN",
           "EXPECTED_MARKET_CLOSED", "REOPEN_BLACKOUT")
 SIDES = ("long", "short", "flat")
-ACTION_MAPPINGS = ("target_exposure_v2",)
+ACTION_MAPPINGS = ("target_exposure_v2", "discrete_command_v1")
+# G1: the env's discrete command domain. It is NOT the signed-target
+# domain classify_action consumes: feeding command id 2 ("go short")
+# to a target-value classifier silently reads it as "target exposure
+# +2", which reports an enlargement of a short as a reversal.
+DISCRETE_COMMANDS = {0: "hold", 1: "long", 2: "short", 3: "close"}
+HOLD_COMMAND = 0
+CLOSE_COMMAND = 3
 RECOVERY_POLICIES = ("protected_opportunistic_then_forced",)
 HOLIDAY_POLICIES = ("same_as_weekly",)
 SESSION_SOURCES = ("venue_symbol_sessions_v1",)
@@ -50,6 +57,13 @@ class SessionPolicyError(ValueError):
 
 class SessionEvidenceError(ValueError):
     """Session/exposure evidence is unusable — typed refusal."""
+
+
+class SessionDataContradictionError(ValueError):
+    """The market data contradicts the bound session calendar: a
+    tradable bar exists inside a declared closure. Work plan 42
+    prohibits synthesized tradable weekend bars, so this is a typed
+    refusal and never a zeroed reward on a fabricated step."""
 
 
 # ---------------------------------------------------------------- #
@@ -126,7 +140,11 @@ REQUIRED_KEYS = (
     "max_spread_relative_to_baseline", "max_gap_sigma",
     "max_realized_vol_relative_to_baseline",
     "carried_position_recovery", "holiday_policy",
-    "calendar_identity")
+    "calendar_identity",
+    # G2: baseline windows and units are BOUND HERE, never inferred
+    # at the call site. All three are counts of fully closed bars.
+    "reopen_baseline_bars", "reopen_gap_sigma_bars",
+    "reopen_realized_vol_bars")
 
 
 def validate_policy(config: dict[str, Any]) -> dict[str, Any]:
@@ -183,6 +201,15 @@ def validate_policy(config: dict[str, Any]) -> dict[str, Any]:
             HOLIDAY_POLICIES),
         "calendar_identity": require_identity(
             "calendar_identity", config["calendar_identity"]),
+        "reopen_baseline_bars": require_count(
+            "reopen_baseline_bars", config["reopen_baseline_bars"],
+            minimum=2),
+        "reopen_gap_sigma_bars": require_count(
+            "reopen_gap_sigma_bars", config["reopen_gap_sigma_bars"],
+            minimum=2),
+        "reopen_realized_vol_bars": require_count(
+            "reopen_realized_vol_bars",
+            config["reopen_realized_vol_bars"], minimum=2),
     }
     if validated["forced_flatten_hours"] >= \
             validated["wind_down_hours"]:
@@ -456,6 +483,55 @@ class ExposureFacts:
         return max(0, self.pending_orders - self.protective_orders)
 
 
+def classify_discrete_command(command: Any,
+                              exposure: ExposureFacts
+                              ) -> dict[str, Any]:
+    """G1: classify a DISCRETE COMMAND against signed exposure.
+
+    The discrete domain carries a fixed position size, so enlargement
+    and reduction are not expressible in it and never appear; a
+    directional command that agrees with the open side is a HOLD of
+    that side, not an enlargement. Anything outside
+    ``DISCRETE_COMMANDS`` REFUSES rather than defaulting to hold."""
+    if exposure.action_mapping != "discrete_command_v1":
+        raise SessionEvidenceError(
+            f"classify_discrete_command requires the "
+            f"discrete_command_v1 mapping, got "
+            f"{exposure.action_mapping!r}")
+    if isinstance(command, bool) or not isinstance(command, int):
+        raise SessionEvidenceError(
+            f"discrete command must be an int, got "
+            f"{type(command).__name__} {command!r}")
+    if command not in DISCRETE_COMMANDS:
+        raise SessionEvidenceError(
+            f"unknown discrete command {command!r}; allowed "
+            f"{sorted(DISCRETE_COMMANDS)}")
+    current = exposure.signed_exposure
+    name = DISCRETE_COMMANDS[command]
+    if name == "close":
+        kind = "close" if exposure.has_position else "hold_flat"
+        return {"kind": kind, "risk_increasing": False,
+                "command": command, "command_name": name,
+                "current": current}
+    if name == "hold":
+        kind = "hold" if exposure.has_position else "hold_flat"
+        return {"kind": kind, "risk_increasing": False,
+                "command": command, "command_name": name,
+                "current": current}
+    wanted = 1.0 if name == "long" else -1.0
+    if not exposure.has_position:
+        return {"kind": "entry_from_flat", "risk_increasing": True,
+                "command": command, "command_name": name,
+                "current": current}
+    if (wanted > 0) != (current > 0):
+        return {"kind": "reversal", "risk_increasing": True,
+                "command": command, "command_name": name,
+                "current": current}
+    return {"kind": "hold", "risk_increasing": False,
+            "command": command, "command_name": name,
+            "current": current}
+
+
 def classify_action(raw_action: Any,
                     exposure: ExposureFacts) -> dict[str, Any]:
     """C1: classify a TARGET-exposure action against signed facts.
@@ -635,9 +711,17 @@ def session_state(policy: dict, *, now: Any,
 
 def overlay_action(policy: dict, state_block: dict,
                    exposure: ExposureFacts,
-                   raw_action: Any) -> dict[str, Any]:
+                   raw_action: Any, *,
+                   classification: Optional[dict] = None
+                   ) -> dict[str, Any]:
     """Deterministic action overlay recording raw action, mapped
-    classification, overlay decision and final command SEPARATELY."""
+    classification, overlay decision and final command SEPARATELY.
+
+    ``classification`` lets a caller in a DIFFERENT action domain
+    supply its own already-mapped classification (see
+    classify_discrete_command) so the state-driven policy below stays
+    the single authority instead of being reimplemented per domain.
+    It is validated, never trusted blindly."""
     state = require_enum("state_block.state", state_block.get("state"),
                          STATES)
     if state == "EXPECTED_MARKET_CLOSED":
@@ -646,7 +730,19 @@ def overlay_action(policy: dict, state_block: dict,
                 "mapped_action": None, "session_state": state,
                 "overlay": "no_actionable_step",
                 "cancel_pending": False, "final_action": None}
-    classification = classify_action(raw_action, exposure)
+    if classification is None:
+        classification = classify_action(raw_action, exposure)
+    else:
+        if not isinstance(classification, dict):
+            raise SessionEvidenceError(
+                "classification must be a mapping")
+        require_enum("classification.kind",
+                     classification.get("kind"),
+                     ("close", "hold_flat", "entry_from_flat",
+                      "reversal", "enlargement", "reduction", "hold"))
+        if not isinstance(classification.get("risk_increasing"), bool):
+            raise SessionEvidenceError(
+                "classification.risk_increasing must be a bool")
     decision = {"raw_model_action": float(raw_action),
                 "mapped_action": classification,
                 "session_state": state,

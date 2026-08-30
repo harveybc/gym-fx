@@ -43,8 +43,7 @@ from preprocessor_plugins.feature_window_preprocessor import (
 from reward_plugins.pnl_reward import Plugin as Reward
 from simulation_engines.nautilus_gym import NautilusGymFxEnv
 from strategy_plugins.shared_execution_envelope import Plugin as Envelope
-from test_session_exposure_env import (
-    FLAT, policy, VENUE, ACCOUNT, SYMBOL)
+from test_session_exposure_env import policy, VENUE, ACCOUNT, SYMBOL
 
 
 # 15-minute bars, not the platform's H4. simulation_engines/
@@ -54,11 +53,15 @@ from test_session_exposure_env import (
 # cannot run on the Nautilus engine at all. Reported, not worked around:
 # the parity claim below is therefore established at M15.
 BAR_MINUTES = 15
-PARITY_START = "2024-01-01 00:00:00"
+PRE_BARS = 6
+POST_BARS = 18
 CLOSE_AT = pd.Timestamp("2024-01-01 01:30:00", tz="UTC")
 REOPEN_AT = pd.Timestamp("2024-01-01 03:00:00", tz="UTC")
 PARITY_POLICY = policy(wind_down_hours=0.5, forced_flatten_hours=0.25,
-                       reopen_min_hours=0.5)
+                       reopen_min_hours=0.5, reopen_min_closed_bars=2,
+                       stability_consecutive_checks=2,
+                       reopen_baseline_bars=4, reopen_gap_sigma_bars=4,
+                       reopen_realized_vol_bars=4)
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = ROOT / (
@@ -68,23 +71,33 @@ PROFILE = ROOT / (
 PARITY_FIELDS = (
     "session_state", "session_wind_down", "session_forced_flatten",
     "session_evidence_ok", "session_evidence_failed_closed",
-    "session_overlay", "session_raw_model_action",
-    "session_final_action", "session_action_before_overlay",
-    "session_action_after_overlay", "session_no_actionable_step",
-    "session_cancel_pending", "session_cancel_scope",
+    "session_raw_model_output", "session_mapped_command",
     "session_time_to_next_close_hours",
-    "session_time_since_reopen_hours",
+    "session_time_since_reopen_hours", "session_reopen_closed_bars",
+    "session_reopen_stability_streak",
 )
+# The classification VERDICT is engine-independent; the exposure
+# MAGNITUDE it is computed against is not (see
+# TestKnownEngineEconomicDivergence), so only the verdict is compared.
+MAPPED_FIELDS = ("kind", "risk_increasing", "command",
+                 "command_name")
 
 
 def _bars(tmp_path, name="parity_bars.csv"):
-    closes = np.asarray(FLAT, dtype=float)
+    """A REAL historical gap: no rows inside the declared closure."""
+    before = pd.date_range("2024-01-01 00:00:00", periods=PRE_BARS,
+                           freq=f"{BAR_MINUTES}min", tz="UTC")
+    after = pd.date_range(REOPEN_AT, periods=POST_BARS,
+                          freq=f"{BAR_MINUTES}min", tz="UTC")
+    stamps = before.append(after).tz_localize(None)
+    n = len(stamps)
+    closes = 100.0 + 0.20 * np.sin(np.arange(n, dtype=float))
     frame = pd.DataFrame({
-        "DATE_TIME": pd.date_range(PARITY_START, periods=len(closes),
-                                   freq=f"{BAR_MINUTES}min"),
+        "DATE_TIME": stamps,
         "OPEN": closes, "HIGH": closes * 1.0005,
         "LOW": closes * 0.9995, "CLOSE": closes, "VOLUME": 1000.0,
-        "feat": np.linspace(0.0, 1.0, len(closes)),
+        "SPREAD": np.full(n, 0.0002),
+        "feat": np.linspace(0.0, 1.0, n),
     })
     path = tmp_path / name
     frame.to_csv(path, index=False)
@@ -113,6 +126,7 @@ def _config(tmp_path, **kw):
         "session_account_fingerprint": ACCOUNT,
         "session_symbol": SYMBOL,
         "session_calendar_intervals": [[str(CLOSE_AT), str(REOPEN_AT)]],
+        "session_spread_column": "SPREAD",
     }
     config.update(kw)
     return config
@@ -162,8 +176,10 @@ def _session_trace(env, actions, seed=7):
     trace = {}
     for action in actions:
         _obs, _r, term, _t, info = env.step([float(action)])
+        mapped = info.get("session_mapped_action") or {}
         trace[int(info["bar_index"])] = {
-            k: info.get(k) for k in PARITY_FIELDS}
+            **{k: info.get(k) for k in PARITY_FIELDS},
+            "mapped": {k: mapped.get(k) for k in MAPPED_FIELDS}}
         if term:
             break
     return trace
@@ -192,7 +208,51 @@ def _canonical(trace):
 
 class TestSessionDecisionParityAcrossEngines:
 
-    def test_session_decision_trace_is_byte_identical(self, tmp_path):
+    def test_the_decision_function_never_forks_between_engines(
+            self, tmp_path):
+        """The strong claim: wherever the two engines are in the SAME
+        situation, they reach byte-equal session decisions. Where they
+        diverge, the divergence is fully explained by the exposure
+        being different -- which is a pinned economic difference, not
+        a fork in the state machine or the overlay."""
+        core = _core(tmp_path)
+        sim = _sim(tmp_path)
+        try:
+            core_trace = _session_trace(core, ACTIONS)
+            sim_trace = _session_trace(sim, ACTIONS)
+            core_exposure = _drive_exposure(core)
+            sim_exposure = _drive_exposure(sim)
+        finally:
+            core.close()
+            sim.close()
+        shared = sorted(set(core_trace) & set(sim_trace))
+        assert len(shared) >= 10, f"too few shared bars: {shared}"
+
+        core_sign = {bar: (0 if abs(v) == 0 else (1 if v > 0 else -1))
+                     for bar, v in zip(sorted(core_trace),
+                                       core_exposure)}
+        sim_sign = {bar: (0 if abs(v) == 0 else (1 if v > 0 else -1))
+                    for bar, v in zip(sorted(sim_trace), sim_exposure)}
+
+        same_situation, explained = 0, 0
+        for bar in shared:
+            if core_sign.get(bar) == sim_sign.get(bar):
+                same_situation += 1
+                assert _canonical(core_trace[bar]) == \
+                    _canonical(sim_trace[bar]), (
+                    f"bar {bar}: identical situation, different "
+                    "decision -- the state machine or overlay forked")
+            elif core_trace[bar] != sim_trace[bar]:
+                explained += 1
+        assert same_situation >= 8, (
+            f"only {same_situation} bars shared a situation")
+        assert explained + same_situation >= len(shared) - 1
+
+    def test_state_machine_and_evidence_are_byte_identical(self,
+                                                           tmp_path):
+        """The state machine itself reads only the calendar, the
+        clock and past bars -- never the position -- so it must be
+        byte-equal on every shared bar with no exception."""
         core = _core(tmp_path)
         sim = _sim(tmp_path)
         try:
@@ -201,14 +261,19 @@ class TestSessionDecisionParityAcrossEngines:
         finally:
             core.close()
             sim.close()
-        shared = sorted(set(core_trace) & set(sim_trace))
-        assert len(shared) >= 10, (
-            f"too few shared bars to prove parity: {shared}")
-        assert _canonical([core_trace[b] for b in shared]) == \
-            _canonical([sim_trace[b] for b in shared]), (
-            "the session state machine and overlay live in shared "
-            "GymFxEnv code that NautilusGymFxEnv does not override; a "
-            "divergence here means an engine forked the decision")
+        fields = ("session_state", "session_wind_down",
+                  "session_forced_flatten", "session_evidence_ok",
+                  "session_evidence_failed_closed",
+                  "session_time_to_next_close_hours",
+                  "session_time_since_reopen_hours",
+                  "session_reopen_closed_bars",
+                  "session_reopen_stability_streak",
+                  "session_raw_model_output",
+                  "session_mapped_command")
+        for bar in sorted(set(core_trace) & set(sim_trace)):
+            for field in fields:
+                assert core_trace[bar][field] == sim_trace[bar][field], (
+                    f"bar {bar}, field {field}")
 
     def test_all_five_states_are_exercised_on_both_engines(self,
                                                            tmp_path):
@@ -226,24 +291,19 @@ class TestSessionDecisionParityAcrossEngines:
             sim.close()
         assert core_states == sim_states
         assert {"NORMAL_TRADING", "WIND_DOWN", "FORCED_FLATTEN",
-                "EXPECTED_MARKET_CLOSED"} <= core_states
+                "REOPEN_BLACKOUT"} <= core_states
 
-    def test_no_actionable_step_suppresses_reward_on_both_engines(
+    def test_no_step_occurs_inside_a_closure_on_either_engine(
             self, tmp_path):
         for build in (_core, _sim):
             env = build(tmp_path)
             try:
-                env.reset(seed=7)
-                for action in ACTIONS:
-                    _o, reward, term, _t, info = env.step([action])
-                    if info.get("session_no_actionable_step"):
-                        assert reward == 0.0, (
-                            f"{type(env).__name__} attributed reward "
-                            "to a closed interval")
-                    if term:
-                        break
+                trace = _session_trace(env, ACTIONS)
             finally:
                 env.close()
+            assert all(f["session_state"] != "EXPECTED_MARKET_CLOSED"
+                       for f in trace.values()), (
+                f"{build.__name__} stepped inside a declared closure")
 
     def test_session_observation_fields_match_across_engines(self,
                                                              tmp_path):
@@ -351,3 +411,121 @@ class TestKnownCrossEngineBarOffset:
         assert offsets == [1] * len(offsets), (
             "the known cross-engine bar offset changed; the parity "
             "harness assumptions must be revisited")
+
+
+class TestKnownEngineEconomicDivergence:
+    """PRE-EXISTING and NOT introduced by the session work. The two
+    engines take ECONOMICALLY DIFFERENT positions from the same
+    config, so their exposure magnitudes, order books and therefore
+    any economic comparison are not interchangeable. Recorded as an
+    executable authority block: while these assertions hold, no
+    cross-engine economic claim may be made.
+
+    1. Sizing. The backtrader path sizes through the shared execution
+       envelope (portfolio fraction), while GymBridgeStrategy.on_bar
+       uses the literal ``position_size`` from config.
+    2. Order book. The backtrader path rests two protective bracket
+       legs; the Nautilus path rests nothing at all.
+    3. Bar alignment. See TestKnownCrossEngineBarOffset.
+    """
+
+    def test_engines_hold_different_exposure_from_the_same_config(
+            self, tmp_path):
+        core = _core(tmp_path)
+        sim = _sim(tmp_path)
+        try:
+            core_trace = _drive_exposure(core)
+            sim_trace = _drive_exposure(sim)
+        finally:
+            core.close()
+            sim.close()
+        core_max = max(abs(v) for v in core_trace)
+        sim_max = max(abs(v) for v in sim_trace)
+        assert core_max > 1.0 and sim_max == pytest.approx(1.0), (
+            f"core peaked at {core_max}, sim at {sim_max}; if these "
+            "converge, the economic authority block can be lifted")
+
+    def test_only_the_core_engine_rests_protective_orders(self,
+                                                          tmp_path):
+        core = _core(tmp_path)
+        sim = _sim(tmp_path)
+        try:
+            _session_trace(core, ACTIONS)
+            _session_trace(sim, ACTIONS)
+            core_inv = core.bridge.open_order_inventory
+            sim_inv = sim.bridge.open_order_inventory
+        finally:
+            core.close()
+            sim.close()
+        assert core_inv and all(r["reduce_only"] for r in core_inv)
+        assert sim_inv == (), (
+            "the Nautilus path rests no orders; a cross-engine claim "
+            "about protection or cancellation is therefore invalid")
+
+    def test_no_economic_cross_engine_comparison_is_authorized(self):
+        # an explicit, executable statement of the standing block
+        assert AUTHORITY["economic_comparison_authorized"] is False
+        assert set(AUTHORITY["blocking_findings"]) == {
+            "F-C bar alignment", "F-D unsupported timeframes",
+            "sizing regime", "order book"}
+
+
+def _drive_exposure(env, seed=7):
+    env.reset(seed=seed)
+    values = []
+    for action in ACTIONS:
+        _o, _r, term, _t, info = env.step([float(action)])
+        values.append(float(info["session_signed_exposure"]))
+        if term:
+            break
+    return values
+
+
+AUTHORITY = {
+    "economic_comparison_authorized": False,
+    "blocking_findings": (
+        "F-C bar alignment", "F-D unsupported timeframes",
+        "sizing regime", "order book"),
+}
+
+
+class TestFDNautilusRefusesUnsupportedTimeframes:
+    """G6-4: while nautilus_adapter hardcodes MINUTE aggregation and
+    BarType refuses a step of 60 or more, H1 and H4 -- the timeframes
+    this platform actually trades -- must be refused EXPLICITLY at
+    construction rather than failing deep inside the adapter with a
+    BarType parse error."""
+
+    @pytest.mark.parametrize("timeframe", ["H1", "H4", "D1", "60m"])
+    def test_unsupported_timeframes_refuse_at_construction(
+            self, tmp_path, timeframe):
+        config = _config(
+            tmp_path, execution_cost_profile=str(PROFILE),
+            timeframe=timeframe,
+            financing_rate_data_file=str(
+                ROOT / "examples/data/fx_rollover_rates_smoke.csv"))
+        plugins = _plugins(config)
+        with pytest.raises(ValueError, match="unsupported"):
+            NautilusGymFxEnv(config, plugins["data_feed_plugin"],
+                             plugins["broker_plugin"],
+                             plugins["strategy_plugin"],
+                             plugins["preprocessor_plugin"],
+                             plugins["reward_plugin"],
+                             plugins["metrics_plugin"])
+
+    @pytest.mark.parametrize("timeframe", ["M1", "M5", "M15"])
+    def test_supported_timeframes_construct(self, tmp_path,
+                                            timeframe):
+        config = _config(
+            tmp_path, execution_cost_profile=str(PROFILE),
+            timeframe=timeframe,
+            financing_rate_data_file=str(
+                ROOT / "examples/data/fx_rollover_rates_smoke.csv"))
+        plugins = _plugins(config)
+        env = NautilusGymFxEnv(config, plugins["data_feed_plugin"],
+                               plugins["broker_plugin"],
+                               plugins["strategy_plugin"],
+                               plugins["preprocessor_plugin"],
+                               plugins["reward_plugin"],
+                               plugins["metrics_plugin"])
+        env.close()

@@ -233,6 +233,23 @@ class GymFxEnv(gym.Env):
             self.continuous_action_contract = None
             self.continuous_action_threshold = None
             self.continuous_exit_threshold = None
+        # F-B: build_base_observation_space defaults
+        # include_price_window to `not feature_columns` while the
+        # preprocessor defaults it to its own params, so a
+        # feature-column config that never mentions the key DECLARED a
+        # space without prices/returns and then EMITTED them --
+        # observation_space.contains(obs) was False. Resolve the flag
+        # ONCE from the actual emitter and pin it into the config both
+        # sides read, so the declared space and the emitted
+        # observation agree by construction. The emitter is the
+        # authority on what it emits, so no observation CONTENT
+        # changes; only the declaration is repaired.
+        if "include_price_window" not in self.config:
+            emitter_params = getattr(
+                self.preprocessor_plugin, "params", None) or {}
+            if "include_price_window" in emitter_params:
+                self.config["include_price_window"] = bool(
+                    emitter_params["include_price_window"])
         self.observation_space = build_base_observation_space(
             self.config,
             window_size=self.window_size,
@@ -409,7 +426,8 @@ class GymFxEnv(gym.Env):
         a = self._coerce_action(action)
         a, event_context_info = self._apply_event_context_overlay(a)
         self._last_event_context_info = event_context_info
-        a, session_info = self._apply_session_exposure_overlay(a)
+        a, session_info = self._apply_session_exposure_overlay(
+            a, raw_action)
         self._record_action(raw_action, a)
 
         if self.bridge.terminated:
@@ -443,12 +461,6 @@ class GymFxEnv(gym.Env):
         )
         force_close_penalty = self._force_close_reward_penalty(self.bridge.bar_index)
         reward = base_reward - force_close_penalty
-
-        # C5: a closed interval offers NO ACTIONABLE STEP, so no reward
-        # is attributed to it. Account state still carries forward --
-        # the bar advanced and equity/position were never reset.
-        if session_info.get("session_no_actionable_step"):
-            reward = 0.0
 
         terminated = bool(
             self.bridge.terminated
@@ -711,6 +723,7 @@ class GymFxEnv(gym.Env):
         self._session_policy: Optional[Dict[str, Any]] = None
         self._session_calendar = None
         self._session_calendar_error: Optional[str] = None
+        self.session_spread_column = None
         self._last_session_info: Dict[str, Any] = {}
         self._session_carried_migration: Optional[Dict[str, Any]] = None
         if not self.session_exposure_enabled:
@@ -725,6 +738,8 @@ class GymFxEnv(gym.Env):
         self.session_account_fingerprint = str(
             self.config.get("session_account_fingerprint", ""))
         self.session_symbol = str(self.config.get("session_symbol", ""))
+        self.session_spread_column = self.config.get(
+            "session_spread_column")
 
         intervals_raw = self.config.get("session_calendar_intervals")
         if intervals_raw is None:
@@ -785,58 +800,253 @@ class GymFxEnv(gym.Env):
     def _session_now(self, step_idx: int):
         """UTC timestamp of the current bar. Naive stamps are read as
         UTC, matching oanda_calendar._to_ny."""
-        idx = max(0, min(int(step_idx), len(self.dataframe) - 1))
         try:
-            if self._date_column in self.dataframe.columns:
-                ts = pd.Timestamp(
-                    self.dataframe.iloc[idx][self._date_column])
-            elif isinstance(self.dataframe.index, pd.DatetimeIndex):
-                # The default data feed promotes the date column to the
-                # INDEX. Reading only .columns is why the pre-existing
-                # OANDA-calendar helper degrades to neutral zeros under
-                # that feed; session evidence must not repeat it.
-                ts = pd.Timestamp(self.dataframe.index[idx])
-            else:
+            raw = self._bar_timestamp(step_idx)
+            if raw is None:
                 return None
+            ts = pd.Timestamp(raw)
         except Exception:
             return None
         if ts is None or pd.isna(ts):
             return None
         return self._session_utc(ts)
 
+    def _session_order_inventory(self):
+        """G4: typed pending-entry / protective split derived from
+        ACTUAL order identities. No `or 0` coercion: an unavailable
+        inventory is a typed refusal, because an unknown order book
+        must never read as 'no pending entries'."""
+        from app.session_exposure import SessionEvidenceError
+        inventory = getattr(self.bridge, "open_order_inventory", None)
+        if inventory is None:
+            raise SessionEvidenceError(
+                "open order inventory is unavailable — the pending "
+                "entry / protective split cannot be derived and the "
+                "overlay refuses rather than assuming zero entries")
+        entries, protective = [], []
+        for record in inventory:
+            if not isinstance(record, dict) or "reduce_only" not in \
+                    record:
+                raise SessionEvidenceError(
+                    f"malformed order record {record!r}")
+            (protective if record["reduce_only"] else entries).append(
+                record)
+        return tuple(entries), tuple(protective)
+
+    def _session_signed_exposure(self) -> float:
+        """G4: signed exposure with NO coercive fallback. A bridge
+        that cannot state its own position refuses."""
+        from app.session_exposure import SessionEvidenceError
+        units = getattr(self.bridge, "position_units", None)
+        if isinstance(units, bool) or not isinstance(
+                units, (int, float)):
+            raise SessionEvidenceError(
+                f"position_units is unavailable ({units!r}) — signed "
+                "exposure refuses")
+        units = float(units)
+        if units != 0.0:
+            return units
+        # a flat units reading is only trustworthy if the discrete
+        # position agrees; a disagreement is a typed contradiction
+        position = getattr(self.bridge, "position", None)
+        if isinstance(position, bool) or not isinstance(
+                position, (int, float)):
+            raise SessionEvidenceError(
+                f"position is unavailable ({position!r})")
+        if int(position) != 0:
+            raise SessionEvidenceError(
+                f"position_units is 0.0 but position is {position!r} "
+                "— contradictory exposure facts refuse")
+        return 0.0
+
     def _session_exposure_facts(self):
-        from app.session_exposure import ExposureFacts
-        signed = float(getattr(self.bridge, "position_units", 0.0) or 0.0)
-        if signed == 0.0:
-            signed = float(getattr(self.bridge, "position", 0) or 0)
-        open_orders = int(
-            getattr(self.bridge, "open_order_count", 0) or 0)
-        # F3: native SL/TP brackets are PROTECTIVE and must never be
-        # counted as entry orders the overlay may cancel. With a
-        # position open, the bracket children are the open orders.
-        protective = open_orders if abs(signed) > 0.0 else 0
+        from app.session_exposure import (
+            ExposureFacts, SessionEvidenceError)
+        entries, protective = self._session_order_inventory()
+        pending_side = None
+        pending_size = 0.0
+        if entries:
+            sides = {record["side"] for record in entries}
+            if len(sides) == 1 and sides <= {"buy", "sell"}:
+                pending_side = ("long" if entries[0]["side"] == "buy"
+                                else "short")
+                sizes = [record["size"] for record in entries]
+                if any(size is None for size in sizes):
+                    raise SessionEvidenceError(
+                        "a pending entry order has no reported size; "
+                        "an unknown size is refused, never read as 0")
+                pending_size = float(sum(sizes))
+                if pending_size <= 0.0:
+                    raise SessionEvidenceError(
+                        f"pending entry size {pending_size} is not "
+                        "positive")
         return ExposureFacts.build(
-            signed_exposure=signed, pending_orders=open_orders,
-            protective_orders=protective,
-            action_mapping=str(self.config.get(
-                "session_action_mapping", "target_exposure_v2")))
+            signed_exposure=self._session_signed_exposure(),
+            pending_orders=len(entries) + len(protective),
+            protective_orders=len(protective),
+            pending_entry_side=pending_side,
+            pending_entry_size=pending_size,
+            action_mapping="discrete_command_v1")
+
+    # -- G2: causal reopen evidence ---------------------------------
+    def _session_stability_check(self, idx: int) -> dict:
+        """One PAST-ONLY stability observation for bar ``idx``.
+
+        Every input is computed from bars strictly BEFORE idx plus the
+        bar itself; no future bar can influence it. A missing input is
+        reported unavailable and FAILS the check, never passes it."""
+        policy = self._session_policy
+        frame = self.dataframe
+        reasons = []
+        baseline_n = policy["reopen_baseline_bars"]
+        gap_n = policy["reopen_gap_sigma_bars"]
+        vol_n = policy["reopen_realized_vol_bars"]
+        need = max(baseline_n, gap_n, vol_n) + 1
+        if idx < need:
+            return {"passed": False, "reasons": ["insufficient_history"],
+                    "spread_ratio": None, "gap_sigma": None,
+                    "vol_ratio": None, "quote_continuous": None}
+
+        closes = frame[self.price_column].to_numpy(dtype=float)
+
+        # spread relative to a PAST-ONLY baseline
+        spread_ratio = None
+        column = self.session_spread_column
+        if column and column in frame.columns:
+            spreads = frame[column].to_numpy(dtype=float)
+            baseline = spreads[idx - baseline_n:idx]
+            current = float(spreads[idx])
+            mean = float(np.mean(baseline)) if len(baseline) else 0.0
+            if not np.isfinite(current) or not np.isfinite(mean) \
+                    or mean <= 0.0:
+                reasons.append("spread_unavailable")
+            else:
+                spread_ratio = current / mean
+                if spread_ratio > policy[
+                        "max_spread_relative_to_baseline"]:
+                    reasons.append("spread_above_baseline")
+        else:
+            # no spread evidence is NOT a pass
+            reasons.append("spread_unavailable")
+
+        # opening gap in sigmas of past-only returns
+        past = closes[idx - gap_n:idx]
+        returns = np.diff(past) / past[:-1]
+        sigma = float(np.std(returns)) if len(returns) > 1 else 0.0
+        gap_sigma = None
+        if sigma <= 0.0 or not np.isfinite(sigma):
+            reasons.append("gap_sigma_unavailable")
+        else:
+            gap = (closes[idx] - closes[idx - 1]) / closes[idx - 1]
+            gap_sigma = abs(float(gap)) / sigma
+            if gap_sigma > policy["max_gap_sigma"]:
+                reasons.append("gap_above_sigma")
+
+        # realized volatility relative to the same past-only baseline
+        recent = closes[idx - vol_n:idx + 1]
+        recent_ret = np.diff(recent) / recent[:-1]
+        recent_vol = float(np.std(recent_ret)) if len(recent_ret) > 1 \
+            else 0.0
+        vol_ratio = None
+        if sigma <= 0.0 or not np.isfinite(recent_vol):
+            reasons.append("realized_vol_unavailable")
+        else:
+            vol_ratio = recent_vol / sigma
+            if vol_ratio > policy[
+                    "max_realized_vol_relative_to_baseline"]:
+                reasons.append("realized_vol_above_baseline")
+
+        # Quote continuity. The expected spacing is derived from the
+        # PAST-ONLY baseline bars themselves, never from an optional
+        # `timeframe` config label: a helper that silently reports
+        # "unavailable" when a label is absent is exactly the F-A
+        # failure mode. A DECLARED timeframe that contradicts the data
+        # is a typed contradiction, not a tie broken in its favour.
+        continuous = None
+        stamps = [self._session_now(j)
+                  for j in range(idx - baseline_n, idx + 1)]
+        if any(stamp is None for stamp in stamps):
+            reasons.append("quote_continuity_unavailable")
+        else:
+            deltas = [(b - a).total_seconds() / 3600.0
+                      for a, b in zip(stamps, stamps[1:])]
+            expected = float(np.median(deltas[:-1]))
+            declared = float(self._timeframe_hours or 0.0)
+            if expected <= 0.0:
+                reasons.append("quote_continuity_unavailable")
+            elif declared > 0.0 and abs(declared - expected) > 1e-6:
+                reasons.append("timeframe_contradicts_data")
+            else:
+                continuous = abs(deltas[-1] - expected) <= 1e-6
+                if not continuous:
+                    reasons.append("quote_discontinuity")
+
+        return {"passed": not reasons, "reasons": reasons,
+                "spread_ratio": spread_ratio, "gap_sigma": gap_sigma,
+                "vol_ratio": vol_ratio, "quote_continuous": continuous}
+
+    def _session_reopen_evidence(self, step_idx: int, now):
+        """G2: materialize ReopenEvidence from causal observations.
+
+        Counts FULLY CLOSED bars since the bound reopen instant and
+        CONSECUTIVE passing stability checks — a single failing check
+        resets the streak to zero, so a blackout can only be exited by
+        an uninterrupted run of stable bars."""
+        from app.session_exposure import ReopenEvidence
+        calendar = self._session_calendar
+        if calendar is None or now is None:
+            return None, {}
+        reopen_at = calendar.most_recent_reopen(now)
+        if reopen_at is None:
+            return None, {}
+        closed_bars = 0
+        streak = 0
+        detail = []
+        for idx in range(step_idx + 1):
+            stamp = self._session_now(idx)
+            if stamp is None or stamp <= reopen_at:
+                continue
+            # a bar is FULLY CLOSED only if the next bar's stamp has
+            # been reached; the bar under decision is still forming
+            if idx >= step_idx:
+                continue
+            closed_bars += 1
+            check = self._session_stability_check(idx)
+            streak = streak + 1 if check["passed"] else 0
+            detail.append({"bar": idx, **check})
+        evidence = ReopenEvidence.build(
+            closed_bars_since_reopen=closed_bars,
+            stability_checks_passed=streak,
+            hint_time_since_reopen_hours=None)
+        return evidence, {
+            "session_reopen_closed_bars": closed_bars,
+            "session_reopen_stability_streak": streak,
+            "session_reopen_last_check": detail[-1] if detail else None,
+        }
 
     def _apply_session_exposure_overlay(
-            self, action: int) -> tuple[int, Dict[str, Any]]:
-        """Raw / mapped / overlay / final are recorded SEPARATELY and
-        never collapsed into one another."""
+            self, action: int, raw_model_output) -> tuple[
+                int, Dict[str, Any]]:
+        """G1: the ORIGINAL model output, the MAPPED discrete command
+        and the CURRENT signed exposure are three separate values.
+        Risk is classified from the mapped command by a discrete
+        adapter -- command ids are never fed to a target-value
+        classifier -- and a masked entry, enlargement or reversal
+        submits HOLD, never the command it claims to have masked."""
         if not self.session_exposure_enabled or self.bridge is None:
             return int(action), {}
         from app.session_exposure import (
-            session_state, overlay_action, SessionEvidenceError,
-            SessionPolicyError)
+            HOLD_COMMAND, CLOSE_COMMAND, SessionDataContradictionError,
+            classify_discrete_command, overlay_action,
+            reconciliation_gate, session_state)
 
         step_idx = max(0, min(
             int(getattr(self.bridge, "bar_index", 0) or 0),
             self.total_bars))
         now = self._session_now(step_idx)
+        reopen_evidence, reopen_info = self._session_reopen_evidence(
+            step_idx, now)
         if now is None:
-            # No timestamp is no session evidence. Fail closed.
             state_block = {"state": "WIND_DOWN", "policy_enabled": True,
                            "evidence_ok": False,
                            "evidence_failed_closed": True,
@@ -847,48 +1057,78 @@ class GymFxEnv(gym.Env):
             state_block = session_state(
                 self._session_policy, now=now,
                 calendar=self._session_calendar,
+                reopen_evidence=reopen_evidence,
                 expected_venue=self.session_venue or None,
                 expected_account_fingerprint=(
                     self.session_account_fingerprint or None),
                 expected_symbol=self.session_symbol or None)
 
-        exposure = self._session_exposure_facts()
-        before = int(action)
-        decision = overlay_action(self._session_policy, state_block,
-                                  exposure, float(before))
-
-        final = decision["final_action"]
         state = state_block["state"]
-        no_actionable_step = (state == "EXPECTED_MARKET_CLOSED")
-        if no_actionable_step:
-            # The market is closed: no decision is executed and no
-            # reward is attributed. The bar still advances so account
-            # state CARRIES FORWARD across the closed interval.
-            after = 0
-        elif final == "CLOSE":
-            # Forced close travels the SHARED cost/fill envelope as
-            # action 3 (bridge.action_slot -> Plugin.apply_action).
-            # It must NOT use flatten_step: force_flat_request returns
-            # before the plugin dispatch and would settle outside the
-            # envelope, producing no close event and no trade cost.
-            after = 3
-        elif decision["overlay"] in ("masked_risk_increase",
-                                     "masked_entry_during_blackout"):
-            after = 0 if not exposure.has_position else before
-        else:
-            after = before
+        if state == "EXPECTED_MARKET_CLOSED":
+            # G3: a tradable bar inside a declared closure is a
+            # contradiction between the data and the bound calendar.
+            # Real historical data has a TIMESTAMP GAP there and the
+            # simulator performs no step at all. Zeroing the reward on
+            # a fabricated bar would conceal whatever economic change
+            # that bar carried, so this refuses instead.
+            raise SessionDataContradictionError(
+                f"bar {step_idx} at {now} falls inside a declared "
+                "session closure: the simulator must perform no step "
+                "during a closure, and a fabricated tradable bar "
+                "inside one is prohibited")
 
-        if after != before or no_actionable_step:
+        exposure = self._session_exposure_facts()
+        command = int(action)
+        classification = classify_discrete_command(command, exposure)
+        # the state-driven policy stays the single authority; only
+        # the CLASSIFICATION crosses the domain boundary
+        decision = overlay_action(
+            self._session_policy, state_block, exposure,
+            float(command), classification=classification)
+
+        overlay = decision["overlay"]
+        if overlay == "forced_close":
+            after = CLOSE_COMMAND
+        elif overlay in ("masked_risk_increase",
+                         "masked_entry_during_blackout"):
+            # HOLD is the safe command in this domain: it preserves
+            # the current position and adds no risk. Submitting the
+            # original command would execute the masked entry or
+            # reversal.
+            after = HOLD_COMMAND
+        else:
+            after = command
+        decision["final_action"] = after
+
+        gate = None
+        if overlay == "forced_close":
+            # G4: the forced flatten is only ACCEPTED once the shared
+            # typed gate proves fresh zero positions and zero orders.
+            # Until then it is an in-flight attempt, not a success.
+            entries, protective = self._session_order_inventory()
+            try:
+                gate = reconciliation_gate(
+                    positions_total=(
+                        0 if not exposure.has_position else 1),
+                    orders_total=len(entries) + len(protective),
+                    evidence_age_seconds=0.0,
+                    max_age_seconds=120.0)
+            except Exception as exc:
+                # a gate that cannot be evaluated is a typed INCIDENT,
+                # never a silent success
+                gate = {"flat_confirmed": False,
+                        "incident": f"{type(exc).__name__}: {exc}"}
+
+        if after != command:
             diag = getattr(self.bridge, "execution_diagnostics", {}) or {}
             diag["session_overlay_overrides"] = (
                 diag.get("session_overlay_overrides", 0) + 1)
-            key = ("session_no_actionable_steps" if no_actionable_step
-                   else f"session_{decision['overlay']}_actions")
+            key = f"session_{overlay}_actions"
             diag[key] = diag.get(key, 0) + 1
             self.bridge.execution_diagnostics = diag
 
-        mapped = decision["mapped_action"]
         info = {
+            "session_decision_bar_index": step_idx,
             "session_state": state,
             "session_wind_down": bool(state_block.get("wind_down")),
             "session_forced_flatten": bool(
@@ -901,21 +1141,23 @@ class GymFxEnv(gym.Env):
                 "time_to_next_close_hours"),
             "session_time_since_reopen_hours": state_block.get(
                 "time_since_reopen_hours"),
-            # the four DISTINCT records the overlay contract requires
-            "session_raw_model_action": decision["raw_model_action"],
-            "session_mapped_action": (
-                None if mapped is None else dict(mapped)),
-            "session_overlay": decision["overlay"],
-            "session_final_action": final,
-            # what the env actually submitted, kept separate again
-            "session_action_before_overlay": before,
+            # G1: three separate values, none derived from another
+            "session_raw_model_output": raw_model_output,
+            "session_mapped_command": command,
+            "session_mapped_action": dict(classification),
+            "session_signed_exposure": exposure.signed_exposure,
+            "session_overlay": overlay,
+            "session_final_action": after,
+            "session_action_before_overlay": command,
             "session_action_after_overlay": after,
             "session_cancel_pending": bool(decision["cancel_pending"]),
             "session_cancel_scope": decision.get("cancel_scope"),
-            "session_no_actionable_step": no_actionable_step,
-            "session_signed_exposure": exposure.signed_exposure,
+            "session_no_actionable_step": False,
             "session_entry_orders": exposure.entry_orders,
             "session_protective_orders": exposure.protective_orders,
+            "session_pending_entry_side": exposure.pending_entry_side,
+            "session_flatten_reconciliation": gate,
+            **reopen_info,
         }
         self._last_session_info = info
         return after, info
@@ -1151,13 +1393,28 @@ class GymFxEnv(gym.Env):
                 "broker_market_open": 0.0,
                 "is_no_trade_window": 0.0,
             }
-        if self._date_column not in self.dataframe.columns:
-            ts = None
-        else:
-            idx = max(0, min(step_idx, len(self.dataframe) - 1))
-            ts = self.dataframe.iloc[idx][self._date_column]
+        # F-A: the default data feed promotes the date column to the
+        # INDEX. Reading only .columns made this helper take its
+        # ts=None branch under that feed, so ALL ELEVEN fields were
+        # constant zeros and every run that observed them trained on
+        # no signal at all. Both layouts now resolve to the SAME
+        # timestamp, so equivalent inputs give bit-identical features.
+        ts = self._bar_timestamp(step_idx)
         tf_h = float(self._timeframe_hours or 1.0) or 1.0
         return compute_fx_calendar_features(ts, timeframe_hours=tf_h)
+
+    def _bar_timestamp(self, step_idx: int):
+        """The raw timestamp of a bar, from the date COLUMN or, when
+        the feed has promoted it, from the DatetimeIndex. Returns None
+        only when neither carries one."""
+        if len(self.dataframe) == 0:
+            return None
+        idx = max(0, min(int(step_idx), len(self.dataframe) - 1))
+        if self._date_column in self.dataframe.columns:
+            return self.dataframe.iloc[idx][self._date_column]
+        if isinstance(self.dataframe.index, pd.DatetimeIndex):
+            return self.dataframe.index[idx]
+        return None
 
     def _safe_margin_closeout_percent(self) -> float:
         """Read margin_closeout_percent from the bridge if available; else 0.0."""

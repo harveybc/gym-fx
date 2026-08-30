@@ -43,6 +43,9 @@ def policy(**overrides):
             "protected_opportunistic_then_forced",
         "holiday_policy": "same_as_weekly",
         "calendar_identity": "cal-digest-abc",
+        "reopen_baseline_bars": 20,
+        "reopen_gap_sigma_bars": 20,
+        "reopen_realized_vol_bars": 20,
     }
     base.update(overrides)
     return validate_policy(base)

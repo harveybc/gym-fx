@@ -203,6 +203,7 @@ class BTBridge:
         self.holding_bars = 0
         self.position_open_bar_index = None
         self.open_order_count = 0
+        self.open_order_inventory = ()
         self.force_flat_request = False
         self.price = 0.0
         self.bar_index = 0
@@ -239,6 +240,63 @@ class BTBridge:
             "event_context_forced_flat_actions": 0,
             "event_context_forced_flat_orders": 0,
         }
+
+
+def _describe_order(order, position_size: float = 0.0) -> dict:
+    """G4: one open order as typed facts.
+
+    ``reduce_only`` is derived from REAL semantics, not from a hoped
+    for attribute. The envelope submits its bracket legs with
+    ``parent=<entry>``, but backtrader does NOT keep ``.parent``
+    populated on the live child orders -- verified: both resting legs
+    report ``parent is None``. Trusting that relation alone therefore
+    labels every protective STOP and LIMIT a pending ENTRY, which
+    would let the wind-down overlay cancel the very protection it must
+    preserve.
+
+    So: a parent link is accepted as definitive when present, and
+    otherwise an order is reduce-only exactly when it can only shrink
+    the open position -- opposite side, size not exceeding the
+    position, resting exectype. An opposite-side order LARGER than the
+    position would flip it and is risk-increasing, so it stays an
+    entry. Unknown fields stay None rather than being guessed."""
+    parent = getattr(order, "parent", None)
+    parent_ref = None if parent is None else int(
+        getattr(parent, "ref", 0) or 0)
+    try:
+        is_buy = bool(order.isbuy())
+    except Exception:
+        is_buy = None
+    size = getattr(order, "size", None)
+    exectype = getattr(order, "exectype", None)
+    try:
+        exectype_name = order.ExecTypes[int(exectype)] \
+            if exectype is not None else None
+    except Exception:
+        exectype_name = None
+    side = None if is_buy is None else ("buy" if is_buy else "sell")
+    abs_size = None if size is None else abs(float(size))
+    position_size = float(position_size or 0.0)
+    if parent_ref is not None:
+        reduce_only = True
+    elif position_size == 0.0 or side is None or abs_size is None:
+        reduce_only = False
+    else:
+        opposite = (side == "sell") if position_size > 0 else (
+            side == "buy")
+        resting = exectype_name in ("Stop", "Limit", "StopLimit",
+                                    "StopTrail", "StopTrailLimit")
+        reduce_only = bool(
+            opposite and resting
+            and abs_size <= abs(position_size) + 1e-9)
+    return {
+        "ref": int(getattr(order, "ref", 0) or 0),
+        "parent_ref": parent_ref,
+        "side": side,
+        "size": abs_size,
+        "exectype": exectype_name,
+        "reduce_only": reduce_only,
+    }
 
 
 class BTBridgeStrategy(bt.Strategy):
@@ -702,10 +760,21 @@ class BTBridgeStrategy(bt.Strategy):
                 0, bar_index - int(self.bridge.position_open_bar_index)
             )
         try:
-            self.bridge.open_order_count = len(
-                self.broker.get_orders_open() or [])
+            open_orders = list(self.broker.get_orders_open() or [])
+            self.bridge.open_order_count = len(open_orders)
+            # G4: publish the ORDER IDENTITIES, not just a count. A
+            # session overlay cannot tell a pending entry from a
+            # protective reduce-only bracket child from a number, and
+            # guessing "everything is protective while a position is
+            # open" hides a simultaneous pending entry.
+            self.bridge.open_order_inventory = tuple(
+                _describe_order(order, float(self.position.size))
+                for order in open_orders)
         except Exception:
             self.bridge.open_order_count = None
+            # unavailable inventory is UNAVAILABLE, never an empty
+            # tuple that would read as "no pending entries"
+            self.bridge.open_order_inventory = None
         self.bridge.price = float(self.data.close[0])
         self.bridge.bar_index = bar_index
         self.bridge.last_trade_cost = float(self._order_cost_accum)
