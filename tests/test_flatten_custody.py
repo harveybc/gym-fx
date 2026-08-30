@@ -14,14 +14,15 @@ import stat
 import subprocess
 import sys
 import textwrap
+import time
 from pathlib import Path
 
 import pytest
 
 from app.flatten_custody import (
-    DIGEST_FIELD, FILE_MODE, ROOT_MODE, FlattenDispositionRequired,
-    FlattenIntegrityError, FlattenObligationError,
-    FlattenObligationStore, _digest)
+    ACK_PENDING, DIGEST_FIELD, FILE_MODE, ROOT_MODE,
+    FlattenDispositionRequired, FlattenIntegrityError,
+    FlattenObligationError, FlattenObligationStore, _digest, read_ack)
 
 
 REPO = str(Path(__file__).resolve().parents[1])
@@ -55,6 +56,8 @@ class TestRecordIntegrity:
 
     @pytest.mark.parametrize("field", MUTABLE)
     def test_mutating_any_field_is_refused(self, tmp_path, field):
+        # the acknowledgement still names the ORIGINAL digest, so the
+        # refusal below is the record-content check
         store = _store(tmp_path)
         _open(store)
         path = store.root / "o-1.json"
@@ -77,11 +80,13 @@ class TestRecordIntegrity:
         with pytest.raises(FlattenIntegrityError):
             store.read("o-1")
 
-    def test_a_consistently_reforged_record_still_needs_the_content(
+    def test_a_reforged_record_still_fails_the_acknowledgement(
             self, tmp_path):
-        """Recomputing the digest over altered content makes the file
-        self-consistent -- the digest is an integrity check, not an
-        authenticity one, and this test states that limit plainly."""
+        """Recomputing the digest over altered content makes the FILE
+        self-consistent, but the acknowledgement still names the
+        digest of the record that was actually written, so the forgery
+        is refused. The remaining limit is stated in the next test:
+        these are integrity checks, not authenticity ones."""
         store = _store(tmp_path)
         _open(store)
         path = store.root / "o-1.json"
@@ -89,6 +94,25 @@ class TestRecordIntegrity:
         record["signed_exposure_at_request"] = 999.0
         record[DIGEST_FIELD] = _digest(record)
         path.write_text(json.dumps(record))
+        with pytest.raises(FlattenIntegrityError,
+                           match="never acknowledged"):
+            store.read("o-1")
+
+    def test_the_stated_limit_is_integrity_not_authenticity(self,
+                                                            tmp_path):
+        """An adversary with write access to BOTH the record and its
+        acknowledgement can produce a consistent forgery. Recorded
+        plainly rather than left to be assumed away: durable custody
+        here defends against damage and partial writes, not against a
+        writer who already owns the directory."""
+        store = _store(tmp_path)
+        _open(store)
+        path = store.root / "o-1.json"
+        record = json.loads(path.read_text())
+        record["signed_exposure_at_request"] = 999.0
+        record[DIGEST_FIELD] = _digest(record)
+        path.write_text(json.dumps(record))
+        (store.root / "o-1.json.ack").write_text(record[DIGEST_FIELD])
         assert store.read("o-1")["signed_exposure_at_request"] == 999.0
 
     def test_an_altered_record_counts_as_outstanding(self, tmp_path):
@@ -119,6 +143,9 @@ class TestRecordIntegrity:
         record["state"] = "definitely_closed_trust_me"
         record[DIGEST_FIELD] = _digest(record)
         path.write_text(json.dumps(record))
+        # acknowledge the forgery too, so the refusal proven here is
+        # the STATE check and not the acknowledgement check
+        (store.root / "o-1.json.ack").write_text(record[DIGEST_FIELD])
         with pytest.raises(FlattenIntegrityError,
                            match="unknown state"):
             store.read("o-1")
@@ -154,9 +181,10 @@ class TestPermissionsAndSymlinks:
                              episode_identity="ep-A")
         store.confirm("o-1", reconciliation={"flat_confirmed": True},
                       bar_index=7, episode_identity="ep-A")
-        leftovers = [p.name for p in store.root.iterdir()
-                     if p.name != "o-1.json"]
-        assert leftovers == [], leftovers
+        leftovers = sorted(p.name for p in store.root.iterdir())
+        assert leftovers == ["o-1.json", "o-1.json.ack"], leftovers
+        assert read_ack(store.root / "o-1.json").decode() == \
+            store.read("o-1")[DIGEST_FIELD]
 
     def test_a_symlinked_root_is_refused(self, tmp_path):
         real = _store(tmp_path, "real_root")
@@ -226,8 +254,33 @@ class TestDurabilityIsNeverAcknowledgedWithoutFsync:
         with pytest.raises(OSError):
             _open(store)
         monkeypatch.setattr(fc.os, "fsync", real_fsync)
-        assert list(store.root.iterdir()) == [], (
-            "a failed fsync must leave nothing behind")
+        # the identity claim precedes the acknowledgement, so a failed
+        # creation leaves a CLAIMED but unacknowledged record. It
+        # reads as unresolved, never as data, and it counts as an
+        # outstanding obligation.
+        assert not any(".tmp." in p.name
+                       for p in store.root.iterdir())
+        with pytest.raises(FlattenObligationError,
+                           match="never acknowledged|unreadable"):
+            store.read("o-1")
+        outstanding = store.outstanding()
+        assert len(outstanding) == 1
+        assert outstanding[0]["state"] == "integrity_failed"
+
+    def test_a_failed_creation_never_reads_as_data(self, tmp_path,
+                                                   monkeypatch):
+        import app.flatten_custody as fc
+        store = _store(tmp_path, "failed_create")
+        monkeypatch.setattr(
+            fc, "_fsync_dir",
+            lambda path: (_ for _ in ()).throw(OSError("boom")))
+        with pytest.raises(OSError):
+            _open(store)
+        monkeypatch.undo()
+        with pytest.raises(FlattenObligationError):
+            store.read("o-1")
+        assert [o["state"] for o in store.outstanding()] == [
+            "integrity_failed"]
 
     def test_a_failing_directory_fsync_does_not_acknowledge(
             self, tmp_path, monkeypatch):
@@ -244,13 +297,16 @@ class TestDurabilityIsNeverAcknowledgedWithoutFsync:
             store.mark_in_flight("o-1", bar_index=6,
                                  episode_identity="ep-A")
         monkeypatch.undo()
-        # the record content is unchanged AND the unacknowledged
-        # marker makes every later read refuse, so a half-durable
-        # transition can never be mistaken for a completed one
-        assert (store.root / "o-1.json").read_text() == before
+        # the rename may already have made the NEW content visible --
+        # os.replace is immediate -- but the acknowledgement is still
+        # PENDING, so every later read refuses. That is the guarantee:
+        # not that the bytes are unchanged, but that an unacknowledged
+        # write can never be consumed.
+        assert read_ack(store.root / "o-1.json") == ACK_PENDING
         with pytest.raises(FlattenIntegrityError,
                            match="never acknowledged"):
             store.read("o-1")
+        del before
         outstanding = store.outstanding()
         assert len(outstanding) == 1
         assert outstanding[0]["state"] == "integrity_failed"
@@ -270,11 +326,11 @@ class TestDurabilityIsNeverAcknowledgedWithoutFsync:
         leftovers = sorted(p.name for p in store.root.iterdir())
         assert not any(".tmp." in name for name in leftovers), (
             f"no temporary may survive: {leftovers}")
-        assert "o-1.json.unacknowledged" in leftovers, (
-            "the marker MUST survive: it is what stops an "
-            "unacknowledged write from reading as complete")
         assert not any(name.endswith(".lock")
                        for name in leftovers), leftovers
+        assert read_ack(store.root / "o-1.json") == ACK_PENDING, (
+            "the acknowledgement MUST stay PENDING: it is what stops "
+            "an unacknowledged write from reading as complete")
 
 
 # =================================================================== #
@@ -372,6 +428,56 @@ _ENV_RECOVERER = textwrap.dedent("""
 """)
 
 
+_CONTENDER = textwrap.dedent("""
+    import json, os, sys, time
+    sys.path.insert(0, {repo!r})
+    from app.flatten_custody import (FlattenObligationStore,
+                                     FlattenObligationError)
+    root, action, oid, bar, barrier, ready = sys.argv[1:7]
+    bar = int(bar)
+    store = FlattenObligationStore(root)
+    open(ready, "w").write("ready")
+    while not os.path.exists(barrier):      # park on the barrier
+        time.sleep(0.001)
+    result = {{"action": action, "bar": bar}}
+    try:
+        if action == "create":
+            store.open_obligation(
+                oid, venue="mt5_demo", account_fingerprint="fp-1",
+                symbol="ETHUSD", position_identity="pos-1",
+                episode_identity="ep-A", signed_exposure=float(bar),
+                requested_at_bar=bar, code_identity="code-1")
+            reached = "flatten_requested"
+        elif action == "in_flight":
+            store.mark_in_flight(oid, bar_index=bar,
+                                 episode_identity="ep-A")
+            reached = "flatten_in_flight"
+        elif action == "confirm":
+            store.confirm(oid,
+                          reconciliation={{"flat_confirmed": True}},
+                          bar_index=bar, episode_identity="ep-A")
+            reached = "flatten_confirmed"
+        elif action == "interrupt":
+            store.interrupt(oid, reason="race",
+                            episode_identity="ep-A")
+            reached = "interrupted_unresolved"
+        else:
+            store.fail(oid, incident="race",
+                       episode_identity="ep-A")
+            reached = "flatten_failed"
+        result.update(winner=True, reached=reached)
+    except FlattenObligationError as exc:
+        observed = None
+        try:
+            observed = store.read(oid)["state"]
+        except Exception:
+            pass
+        result.update(winner=False, error=str(exc)[:90],
+                      observed_after=observed)
+    print(json.dumps(result))
+""")
+
+
 def _run(script, *args):
     return subprocess.run(
         [sys.executable, "-c", script.format(repo=REPO), *args],
@@ -394,35 +500,125 @@ class TestRealProcesses:
         assert payload["states"] == ["flatten_in_flight"]
         assert payload["exposure"] == [42.5]
 
-    @pytest.mark.parametrize("transition,final,exclusive", [
-        ("confirm", "flatten_confirmed", True),
-        ("interrupt", "interrupted_unresolved", True),
-        ("fail", "flatten_failed", True),
-        # mark_in_flight is deliberately IDEMPOTENT: a retry must not
-        # fail. The exactly-once property there is that only ONE
-        # process WRITES the transition, which the recorded bar shows.
-        ("in_flight", "flatten_in_flight", False),
+    @pytest.mark.parametrize("transition,final", [
+        ("create", "flatten_requested"),
+        ("in_flight", "flatten_in_flight"),
+        ("confirm_vs_fail", None),
+        ("interrupt_vs_confirm", None),
     ])
-    def test_two_processes_racing_each_transition(self, tmp_path,
-                                                  transition, final,
-                                                  exclusive):
-        root = str(tmp_path / f"race_{transition}")
+    def test_two_processes_racing_concurrently(self, tmp_path,
+                                               transition, final):
+        """F2: both children are started with Popen, park on a common
+        barrier file, and are released together. The previous version
+        used subprocess.run, which BLOCKS until the first child
+        exits -- two distinct processes, but never a race."""
+        root = tmp_path / f"race_{transition}"
+        root.mkdir()
+        barrier = tmp_path / f"GO_{transition}"
+        if transition != "create":
+            store = FlattenObligationStore(root)
+            _open(store, "race-1")
+
+        pair = {
+            "create": ("create", "create"),
+            "in_flight": ("in_flight", "in_flight"),
+            "confirm_vs_fail": ("confirm", "fail"),
+            "interrupt_vs_confirm": ("interrupt", "confirm"),
+        }[transition]
+
+        procs = [
+            subprocess.Popen(
+                [sys.executable, "-c", _CONTENDER.format(repo=REPO),
+                 str(root), pair[i], "race-1", str(7 + i),
+                 str(barrier), str(tmp_path / f"ready_{transition}_{i}")],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True)
+            for i in (0, 1)]
+        try:
+            deadline = 60.0
+            waited = 0.0
+            while waited < deadline and not all(
+                    (tmp_path / f"ready_{transition}_{i}").exists()
+                    for i in (0, 1)):
+                time.sleep(0.01)
+                waited += 0.01
+            assert waited < deadline, "children never became ready"
+            barrier.write_text("go")          # released together
+            outputs = [p.communicate(timeout=120) for p in procs]
+        finally:
+            for proc in procs:
+                if proc.poll() is None:
+                    proc.kill()
+
+        results = []
+        for out, err in outputs:
+            assert out.strip(), err[-2000:]
+            results.append(json.loads(out.strip().splitlines()[-1]))
+        winners = [r for r in results if r["winner"]]
+        losers = [r for r in results if not r["winner"]]
+        assert len(winners) == 1, results
+        assert len(losers) == 1, results
+
         store = FlattenObligationStore(root)
-        _open(store, "race-1")
-        first = _run(_RACER, root, transition, "race-1", "7")
-        second = _run(_RACER, root, transition, "race-1", "8")
-        results = [json.loads(first.stdout), json.loads(second.stdout)]
         record = store.read("race-1")
-        assert record["state"] == final
-        if exclusive:
-            winners = [r for r in results if r["winner"]]
-            assert len(winners) == 1, results
-        else:
-            assert record["in_flight_at_bar"] in (7, 8), record
-            assert record["transitioned_by_episode"] == "ep-A"
-            # exactly one bar was recorded: the second process
-            # observed the state the first had already written
-            assert isinstance(record["in_flight_at_bar"], int)
+        expected = final or winners[0]["reached"]
+        assert record["state"] == expected, (record["state"], results)
+
+        # The loser never OVERWROTE the winner. It may legitimately
+        # have observed the pre-transition state -- it read while the
+        # winner still held the lock -- but the durable outcome is the
+        # winner's, and never the state the loser was trying to write.
+        loser_intent = {"create": "flatten_requested",
+                        "in_flight": "flatten_in_flight",
+                        "confirm": "flatten_confirmed",
+                        "fail": "flatten_failed",
+                        "interrupt": "interrupted_unresolved"}[
+            losers[0]["action"]]
+        assert losers[0]["observed_after"] in (
+            None, "flatten_requested", expected), losers
+        if loser_intent != expected:
+            assert record["state"] != loser_intent, (
+                "the loser's transition must not have landed")
+        # and a FRESH instance sees the same thing
+        assert FlattenObligationStore(root).read("race-1")["state"] \
+            == expected
+
+    def test_a_repeated_concurrent_race_is_still_single_winner(
+            self, tmp_path):
+        for attempt in range(3):
+            root = tmp_path / f"repeat_{attempt}"
+            root.mkdir()
+            barrier = tmp_path / f"GO_repeat_{attempt}"
+            store = FlattenObligationStore(root)
+            _open(store, "race-1")
+            procs = [
+                subprocess.Popen(
+                    [sys.executable, "-c",
+                     _CONTENDER.format(repo=REPO), str(root),
+                     "confirm", "race-1", str(7 + i), str(barrier),
+                     str(tmp_path / f"ready_r{attempt}_{i}")],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    text=True)
+                for i in (0, 1)]
+            try:
+                waited = 0.0
+                while waited < 60.0 and not all(
+                        (tmp_path / f"ready_r{attempt}_{i}").exists()
+                        for i in (0, 1)):
+                    time.sleep(0.01)
+                    waited += 0.01
+                barrier.write_text("go")
+                outputs = [p.communicate(timeout=120) for p in procs]
+            finally:
+                for proc in procs:
+                    if proc.poll() is None:
+                        proc.kill()
+            results = [json.loads(o.strip().splitlines()[-1])
+                       for o, _e in outputs]
+            assert len([r for r in results if r["winner"]]) == 1, (
+                attempt, results)
+            assert FlattenObligationStore(root).read("race-1")[
+                "state"] == "flatten_confirmed"
 
     def test_a_real_env_writer_and_a_real_env_recoverer(self,
                                                         tmp_path):
@@ -464,7 +660,10 @@ class TestRealProcesses:
         with pytest.raises(FlattenObligationError,
                            match="already claimed"):
             _open(store)
+        # a REJECTED duplicate must not damage the record it lost to
         assert store.read("o-1")["state"] == "flatten_requested"
+        assert read_ack(store.root / "o-1.json").decode() == \
+            store.read("o-1")[DIGEST_FIELD]
 
 
 # =================================================================== #

@@ -82,8 +82,11 @@ def _refuse_symlink(path: Path, what: str) -> None:
             f"{what} {path.name}: symlinked path refused")
 
 
-def _pending_path(path: Path) -> Path:
-    return path.with_suffix(path.suffix + ".unacknowledged")
+def _ack_path(path: Path) -> Path:
+    return path.with_suffix(path.suffix + ".ack")
+
+
+ACK_PENDING = b"PENDING"
 
 
 def _fsync_dir(path: Path) -> None:
@@ -94,14 +97,80 @@ def _fsync_dir(path: Path) -> None:
         os.close(fd)
 
 
+def _set_ack(ack: Path, value: bytes) -> None:
+    """Update an EXISTING acknowledgement IN PLACE.
+
+    An in-place content update needs only a file fsync: the directory
+    entry does not change, so no parent fsync is involved and there is
+    no later step whose failure could leave the update unacknowledged.
+    That is precisely why the acknowledgement lives in its own file
+    instead of in the record."""
+    fd = os.open(ack, os.O_WRONLY | os.O_TRUNC, FILE_MODE)
+    try:
+        os.write(fd, value)
+        os.fchmod(fd, FILE_MODE)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _ensure_ack(ack: Path) -> None:
+    _refuse_symlink(ack, "acknowledgement")
+    if ack.exists():
+        return
+    fd = os.open(ack, os.O_WRONLY | os.O_CREAT | os.O_EXCL, FILE_MODE)
+    try:
+        os.write(fd, ACK_PENDING)
+        os.fchmod(fd, FILE_MODE)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    _fsync_dir(ack.parent)
+
+
+def read_ack(path: Path) -> bytes:
+    ack = _ack_path(path)
+    _refuse_symlink(ack, "acknowledgement")
+    if not ack.is_file():
+        return b""
+    return ack.read_bytes().strip()
+
+
 def _durable_write(path: Path, payload: dict, *,
                    exclusive: bool) -> None:
-    """The ONE write protocol. Any failure -- including a failing
-    fsync of the file or of the parent directory -- leaves the final
-    path untouched, so a transition is never acknowledged unless it
-    reached stable storage."""
+    """The ONE write protocol, with a MONOTONE acknowledgement.
+
+    A record is trustworthy only while its acknowledgement file holds
+    that record's digest. The acknowledgement is set to PENDING before
+    the record changes and to the new digest only after the record is
+    durable, and both updates are IN-PLACE file writes whose
+    durability needs no directory fsync.
+
+    The previous version removed a marker and then fsynced the parent
+    directory; when that final fsync failed the marker was already
+    gone and a fresh reader accepted the new content -- exactly the
+    partial acknowledgement the marker existed to prevent. There is no
+    removal here: every failure leaves the acknowledgement holding
+    PENDING or the PREVIOUS digest, and read() refuses on both."""
     _refuse_symlink(path.parent, "custody root")
     _refuse_symlink(path, "record")
+    ack = _ack_path(path)
+    if exclusive:
+        # Claim the identity BEFORE touching the acknowledgement. My
+        # first version set it to PENDING first, so a REFUSED
+        # duplicate open invalidated the acknowledgement of a
+        # perfectly good existing record and made it unreadable — a
+        # rejected write must never damage the record it lost to.
+        try:
+            claim = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                            FILE_MODE)
+        except FileExistsError as exc:
+            raise FlattenObligationError(
+                f"{path.name}: already claimed") from exc
+        os.close(claim)
+    _ensure_ack(ack)
+    _set_ack(ack, ACK_PENDING)
+
     tmp = path.with_suffix(path.suffix + f".tmp.{os.getpid()}")
     _refuse_symlink(tmp, "temporary")
     try:
@@ -123,40 +192,7 @@ def _durable_write(path: Path, payload: dict, *,
             pass
         raise
     os.close(fd)
-    if exclusive:
-        try:
-            claim = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-                            FILE_MODE)
-        except FileExistsError as exc:
-            os.unlink(tmp)
-            raise FlattenObligationError(
-                f"{path.name}: already claimed") from exc
-        os.close(claim)
-    # An UNACKNOWLEDGED marker is planted BEFORE the rename and
-    # removed only after the parent directory fsync succeeds. The
-    # rename itself makes new content visible immediately, so without
-    # this a failing directory fsync -- or a crash between the rename
-    # and that fsync -- would leave a transition that looks complete
-    # but was never made durable. While the marker exists the record
-    # is refused on every read.
-    pending = _pending_path(path)
-    _refuse_symlink(pending, "unacknowledged marker")
     try:
-        marker_fd = os.open(pending, os.O_WRONLY | os.O_CREAT |
-                            os.O_EXCL, FILE_MODE)
-    except FileExistsError as exc:
-        os.unlink(tmp)
-        raise FlattenObligationError(
-            f"{path.name}: a previous write was never acknowledged; "
-            "the record is not trustworthy") from exc
-    try:
-        os.write(marker_fd, str(os.getpid()).encode())
-        os.fchmod(marker_fd, FILE_MODE)
-        os.fsync(marker_fd)
-    finally:
-        os.close(marker_fd)
-    try:
-        _fsync_dir(path.parent)
         os.replace(tmp, path)
         _fsync_dir(path.parent)
     except Exception:
@@ -165,8 +201,20 @@ def _durable_write(path: Path, payload: dict, *,
         except FileNotFoundError:
             pass
         raise
-    os.unlink(pending)
-    _fsync_dir(path.parent)
+    try:
+        _set_ack(ack, payload[DIGEST_FIELD].encode())
+    except Exception as exc:
+        # the acknowledgement could not be made durable. Force it back
+        # to PENDING so every reader refuses; if even that fails the
+        # state is genuinely undefined and is reported as such.
+        try:
+            _set_ack(ack, ACK_PENDING)
+        except Exception as restore:
+            raise FlattenObligationError(
+                f"{path.name}: acknowledgement could not be written "
+                f"({exc}) and could not be reset ({restore}) — the "
+                "record must be treated as unresolved") from exc
+        raise
 
 
 class FlattenObligationStore:
@@ -312,11 +360,14 @@ class FlattenObligationStore:
         if not path.is_file():
             raise FlattenObligationError(
                 f"{obligation_id}: no such obligation")
-        if _pending_path(path).exists():
+        acknowledgement = read_ack(path)
+        if acknowledgement == ACK_PENDING or not acknowledgement:
             raise FlattenIntegrityError(
-                f"{obligation_id}: a write was never acknowledged "
-                "(unacknowledged marker present) — the record is not "
-                "trustworthy and the obligation stays unresolved")
+                f"{obligation_id}: the write was never acknowledged "
+                f"(acknowledgement is "
+                f"{acknowledgement.decode() or 'absent'!r}) — the "
+                "record is not trustworthy and the obligation stays "
+                "unresolved")
         try:
             record = json.loads(path.read_text())
         except Exception as exc:
@@ -333,6 +384,12 @@ class FlattenObligationStore:
                 f"{obligation_id}: record digest mismatch — stored "
                 f"{str(stored)[:12]}… but the content hashes to "
                 f"{expected[:12]}… — the record was altered")
+        if acknowledgement.decode() != expected:
+            raise FlattenIntegrityError(
+                f"{obligation_id}: acknowledgement names digest "
+                f"{acknowledgement.decode()[:12]}… but the record "
+                f"hashes to {expected[:12]}… — the last write was "
+                "never acknowledged")
         if record.get("state") not in STATES:
             raise FlattenIntegrityError(
                 f"{obligation_id}: unknown state "
