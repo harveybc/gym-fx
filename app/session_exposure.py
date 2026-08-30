@@ -194,6 +194,16 @@ def validate_policy(config: dict[str, Any]) -> dict[str, Any]:
         raise SessionPolicyError(
             "allow_risk_increase_during_wind_down=true while "
             "demanding flat exposure is invalid (work plan 42 §4)")
+    # F3: an ENABLED weekly-flat policy MUST cancel risk-increasing
+    # pending entries at wind-down. The false cell is rejected at
+    # materialization, never launched.
+    if validated["enabled"] and not validated[
+            "cancel_pending_on_wind_down"]:
+        raise SessionPolicyError(
+            "cancel_pending_on_wind_down=false is invalid while the "
+            "policy is enabled: pending ENTRY orders must be "
+            "cancelled before closure (protective reduce-only "
+            "brackets are never cancelled by this rule)")
     return validated
 
 
@@ -203,13 +213,53 @@ def validate_policy(config: dict[str, Any]) -> dict[str, Any]:
 
 @dataclass(frozen=True)
 class SessionCalendar:
-    """Immutable validated closure intervals bound to an identity."""
+    """Immutable VALIDATED closure intervals bound to an identity.
+
+    F1: every invariant is enforced in ``__post_init__`` so a direct
+    constructor call cannot produce an invalid object. Frozen invalid
+    data is still invalid."""
 
     venue: str
     account_fingerprint: str
     symbol: str
     calendar_digest: str
     intervals: tuple  # ((close_at, reopen_at), ...) canonical UTC
+
+    def __post_init__(self):
+        require_identity("venue", self.venue)
+        require_identity("account_fingerprint",
+                         self.account_fingerprint)
+        require_identity("symbol", self.symbol)
+        require_identity("calendar_digest", self.calendar_digest)
+        if not isinstance(self.intervals, tuple):
+            raise SessionEvidenceError("intervals must be a tuple")
+        previous = None
+        for index, item in enumerate(self.intervals):
+            if not isinstance(item, tuple) or len(item) != 2:
+                raise SessionEvidenceError(
+                    f"interval[{index}]: (close_at, reopen_at) tuple "
+                    "required")
+            close_at = require_utc(f"interval[{index}].close_at",
+                                   item[0])
+            reopen_at = require_utc(f"interval[{index}].reopen_at",
+                                    item[1])
+            if close_at is not item[0] or reopen_at is not item[1]:
+                raise SessionEvidenceError(
+                    f"interval[{index}]: intervals must already be "
+                    "canonical UTC (use SessionCalendar.build)")
+            if not close_at < reopen_at:
+                raise SessionEvidenceError(
+                    f"interval[{index}]: close_at must precede "
+                    "reopen_at")
+            if previous is not None:
+                if close_at < previous[0]:
+                    raise SessionEvidenceError(
+                        "intervals must be sorted by close_at")
+                if close_at < previous[1]:
+                    raise SessionEvidenceError(
+                        "overlapping closure intervals are "
+                        "contradictory session evidence")
+            previous = (close_at, reopen_at)
 
     @staticmethod
     def build(*, venue: str, account_fingerprint: str, symbol: str,
@@ -236,14 +286,6 @@ class SessionCalendar:
                     "reopen_at (contradictory session evidence)")
             canonical.append((close_at, reopen_at))
         canonical.sort(key=lambda pair: pair[0])
-        for (a_close, a_reopen), (b_close, b_reopen) in zip(
-                canonical, canonical[1:]):
-            if b_close < a_reopen:
-                raise SessionEvidenceError(
-                    "overlapping closure intervals are contradictory "
-                    f"session evidence: {a_close.isoformat()}.."
-                    f"{a_reopen.isoformat()} overlaps "
-                    f"{b_close.isoformat()}")
         return SessionCalendar(venue=venue,
                                account_fingerprint=account,
                                symbol=symbol, calendar_digest=digest,
@@ -278,6 +320,16 @@ class ReopenEvidence:
     closed_bars_since_reopen: int
     stability_checks_passed: int
     hint_time_since_reopen_hours: Optional[float] = None
+
+    def __post_init__(self):
+        require_count("closed_bars_since_reopen",
+                      self.closed_bars_since_reopen, minimum=0)
+        require_count("stability_checks_passed",
+                      self.stability_checks_passed, minimum=0)
+        if self.hint_time_since_reopen_hours is not None:
+            require_real("hint_time_since_reopen_hours",
+                         self.hint_time_since_reopen_hours,
+                         nonnegative=True)
 
     @staticmethod
     def build(*, closed_bars_since_reopen: Any,
@@ -314,14 +366,47 @@ class ExposureFacts:
     pending_entry_size: float
     pending_orders: int
     action_mapping: str
+    protective_orders: int = 0
+
+    def __post_init__(self):
+        exposure = require_real("signed_exposure",
+                                self.signed_exposure)
+        derived = ("flat" if abs(exposure) <= EPSILON
+                   else ("long" if exposure > 0 else "short"))
+        require_enum("side", self.side, SIDES)
+        if self.side != derived:
+            raise SessionEvidenceError(
+                f"side {self.side!r} contradicts signed_exposure "
+                f"{exposure} (derived {derived!r})")
+        require_enum("action_mapping", self.action_mapping,
+                     ACTION_MAPPINGS)
+        require_real("pending_entry_size", self.pending_entry_size,
+                     nonnegative=True)
+        require_count("pending_orders", self.pending_orders,
+                      minimum=0)
+        require_count("protective_orders", self.protective_orders,
+                      minimum=0)
+        if self.protective_orders > self.pending_orders:
+            raise SessionEvidenceError(
+                "protective_orders cannot exceed pending_orders")
+        if self.pending_entry_side is not None:
+            require_enum("pending_entry_side",
+                         self.pending_entry_side, ("long", "short"))
+            if self.pending_entry_size <= 0.0:
+                raise SessionEvidenceError(
+                    "pending_entry_side declared with zero size")
+            if self.pending_orders < 1:
+                raise SessionEvidenceError(
+                    "pending_entry_side declared with zero pending "
+                    "orders")
 
     @staticmethod
     def build(*, signed_exposure: Any = 0.0, side: Any = None,
               pending_entry_side: Any = None,
               pending_entry_size: Any = 0.0,
               pending_orders: Any = 0,
-              action_mapping: Any = "target_exposure_v2"
-              ) -> "ExposureFacts":
+              action_mapping: Any = "target_exposure_v2",
+              protective_orders: Any = 0) -> "ExposureFacts":
         exposure = require_real("signed_exposure", signed_exposure)
         derived = ("flat" if abs(exposure) <= EPSILON
                    else ("long" if exposure > 0 else "short"))
@@ -339,6 +424,8 @@ class ExposureFacts:
                                     nonnegative=True)
         orders = require_count("pending_orders", pending_orders,
                                minimum=0)
+        protective = require_count("protective_orders",
+                                   protective_orders, minimum=0)
         if pending_entry_side is not None:
             pending_entry_side = require_enum(
                 "pending_entry_side", pending_entry_side,
@@ -354,11 +441,19 @@ class ExposureFacts:
                              pending_entry_side=pending_entry_side,
                              pending_entry_size=pending_size,
                              pending_orders=orders,
-                             action_mapping=mapping)
+                             action_mapping=mapping,
+                             protective_orders=protective)
 
     @property
     def has_position(self) -> bool:
         return abs(self.signed_exposure) > EPSILON
+
+    @property
+    def entry_orders(self) -> int:
+        """Pending orders that would INCREASE risk. Protective
+        reduce-only brackets are excluded: native SL/TP protection is
+        never cancelled by the weekly overlay (F3)."""
+        return max(0, self.pending_orders - self.protective_orders)
 
 
 def classify_action(raw_action: Any,
@@ -411,7 +506,10 @@ def classify_action(raw_action: Any,
 
 def session_state(policy: dict, *, now: Any,
                   calendar: Optional[SessionCalendar],
-                  reopen_evidence: Optional[ReopenEvidence] = None
+                  reopen_evidence: Optional[ReopenEvidence] = None,
+                  expected_venue: Optional[str] = None,
+                  expected_account_fingerprint: Optional[str] = None,
+                  expected_symbol: Optional[str] = None
                   ) -> dict[str, Any]:
     """The five-state machine as a pure function over VALIDATED
     values. ``calendar=None`` means session evidence is unavailable:
@@ -430,9 +528,36 @@ def session_state(policy: dict, *, now: Any,
                 "time_to_next_close_hours": None,
                 "time_since_reopen_hours": None,
                 "wind_down": True, "forced_flatten": False}
+    # F2: the policy's calendar identity MUST equal the calendar's
+    # digest before any state derives from it. A valid but WRONG
+    # calendar can never govern the strategy.
+    if not isinstance(calendar, SessionCalendar):
+        raise SessionEvidenceError(
+            "calendar must be a validated SessionCalendar")
+    if policy["calendar_identity"] != calendar.calendar_digest:
+        raise SessionEvidenceError(
+            f"calendar identity mismatch: policy declares "
+            f"{policy['calendar_identity']!r} but the calendar "
+            f"carries {calendar.calendar_digest!r} — cross-calendar "
+            "substitution refuses")
+    for label, expected, actual in (
+            ("venue", expected_venue, calendar.venue),
+            ("account_fingerprint", expected_account_fingerprint,
+             calendar.account_fingerprint),
+            ("symbol", expected_symbol, calendar.symbol)):
+        if expected is not None and expected != actual:
+            raise SessionEvidenceError(
+                f"{label} mismatch: adapter expects {expected!r}, "
+                f"calendar carries {actual!r} — cross-{label} "
+                "substitution refuses")
+    if reopen_evidence is not None and not isinstance(
+            reopen_evidence, ReopenEvidence):
+        raise SessionEvidenceError(
+            "reopen_evidence must be a validated ReopenEvidence")
     base = {"policy_enabled": True, "evidence_ok": True,
             "calendar_identity": calendar.calendar_digest,
-            "venue": calendar.venue, "symbol": calendar.symbol}
+            "venue": calendar.venue, "symbol": calendar.symbol,
+            "account_fingerprint": calendar.account_fingerprint}
     current = calendar.current_closure(now)
     if current is not None:
         return {**base, "state": "EXPECTED_MARKET_CLOSED",
@@ -532,15 +657,18 @@ def overlay_action(policy: dict, state_block: dict,
         return decision
     if state == "WIND_DOWN":
         if policy["cancel_pending_on_wind_down"] and \
-                exposure.pending_orders > 0:
+                exposure.entry_orders > 0:
             decision["cancel_pending"] = True
+            decision["cancel_scope"] = "pending_entry_orders_only"
         if classification["risk_increasing"]:
             decision["overlay"] = "masked_risk_increase"
             decision["final_action"] = 0.0 if not \
                 exposure.has_position else exposure.signed_exposure
         return decision
     if state == "FORCED_FLATTEN":
-        decision["cancel_pending"] = exposure.pending_orders > 0
+        decision["cancel_pending"] = exposure.entry_orders > 0
+        if exposure.entry_orders > 0:
+            decision["cancel_scope"] = "pending_entry_orders_only"
         if exposure.has_position:
             decision["overlay"] = "forced_close"
             decision["final_action"] = "CLOSE"
@@ -601,41 +729,98 @@ class CarriedPositionMigration:
     normalizes future weekend exposure (C3)."""
 
     migration_id: str
-    opened_before: datetime
+    venue: str
+    account_fingerprint: str
     symbol: str
+    position_identity: str
+    opened_before: datetime
     covers_closure_started_at: datetime
-    consumed: bool = False
+    native_protection_confirmed: bool
 
-    @staticmethod
-    def build(*, migration_id: str, opened_before: Any, symbol: str,
-              covers_closure_started_at: Any
-              ) -> "CarriedPositionMigration":
-        opened = require_utc("opened_before", opened_before)
-        closure = require_utc("covers_closure_started_at",
-                              covers_closure_started_at)
-        if opened > closure:
+    def __post_init__(self):
+        for name in ("migration_id", "venue", "account_fingerprint",
+                     "symbol", "position_identity"):
+            require_identity(name, getattr(self, name))
+        require_utc("opened_before", self.opened_before)
+        require_utc("covers_closure_started_at",
+                    self.covers_closure_started_at)
+        if not isinstance(self.native_protection_confirmed, bool):
+            raise SessionEvidenceError(
+                "native_protection_confirmed must be a bool")
+        if self.opened_before > self.covers_closure_started_at:
             raise SessionEvidenceError(
                 "a carried position must predate the closure it is "
                 "migrated across")
-        return CarriedPositionMigration(
-            migration_id=require_identity("migration_id",
-                                          migration_id),
-            opened_before=opened,
-            symbol=require_identity("symbol", symbol),
-            covers_closure_started_at=closure)
 
-    def covers(self, state_block: dict, now: datetime) -> bool:
-        """ONE-USE and bound to ONE closure interval: a later closure
-        is never normalized by the same record."""
-        if self.consumed:
-            return False
+    @staticmethod
+    def build(*, migration_id: str, venue: str,
+              account_fingerprint: str, symbol: str,
+              position_identity: str, opened_before: Any,
+              covers_closure_started_at: Any,
+              native_protection_confirmed: bool
+              ) -> "CarriedPositionMigration":
+        return CarriedPositionMigration(
+            migration_id=migration_id, venue=venue,
+            account_fingerprint=account_fingerprint, symbol=symbol,
+            position_identity=position_identity,
+            opened_before=require_utc("opened_before", opened_before),
+            covers_closure_started_at=require_utc(
+                "covers_closure_started_at",
+                covers_closure_started_at),
+            native_protection_confirmed=native_protection_confirmed)
+
+
+class MigrationLedger:
+    """F4: DURABLE one-use custody. A record is consumed by an atomic
+    transition and can never normalize a second closure, another
+    symbol/account/venue/position, or a future weekend."""
+
+    def __init__(self):
+        self._consumed: dict[str, str] = {}
+
+    def is_consumed(self, migration_id: str) -> bool:
+        return migration_id in self._consumed
+
+    def consume(self, migration_id: str, closure_key: str) -> None:
+        require_identity("migration_id", migration_id)
+        existing = self._consumed.get(migration_id)
+        if existing is not None and existing != closure_key:
+            raise SessionEvidenceError(
+                f"migration {migration_id!r} was already consumed "
+                f"for closure {existing!r} — one-use custody refuses "
+                "reuse")
+        self._consumed[migration_id] = closure_key
+
+    def authorize(self, migration: CarriedPositionMigration,
+                  state_block: dict, exposure: "ExposureFacts",
+                  position_identity: str) -> bool:
+        """Every identity must match exactly and native protection
+        must be confirmed; the record is then CONSUMED."""
         closure_started = state_block.get("closure_started_at")
         if closure_started is None:
             return False
         started = datetime.fromisoformat(closure_started)
-        if started != self.covers_closure_started_at:
+        if started != migration.covers_closure_started_at:
             return False
-        return self.opened_before <= started
+        if migration.opened_before > started:
+            return False
+        if state_block.get("symbol") != migration.symbol:
+            return False
+        if state_block.get("venue") != migration.venue:
+            return False
+        if state_block.get("account_fingerprint") != \
+                migration.account_fingerprint:
+            return False
+        if position_identity != migration.position_identity:
+            return False
+        if not migration.native_protection_confirmed:
+            return False
+        closure_key = started.isoformat()
+        if self.is_consumed(migration.migration_id) and \
+                self._consumed[migration.migration_id] != closure_key:
+            return False
+        self.consume(migration.migration_id, closure_key)
+        return True
 
 
 def watchdog_state(state_block: dict, *, bars_fresh: bool,
@@ -646,6 +831,8 @@ def watchdog_state(state_block: dict, *, bars_fresh: bool,
                    flatten_incident: Optional[str] = None,
                    carried_migration:
                        Optional[CarriedPositionMigration] = None,
+                   migration_ledger: Optional["MigrationLedger"] = None,
+                   position_identity: Optional[str] = None,
                    now: Any = None) -> str:
     """Expected closure suppresses ONLY bar staleness. Terminal,
     account, bracket, pending-order and exposure-policy incidents
@@ -667,10 +854,12 @@ def watchdog_state(state_block: dict, *, bars_fresh: bool,
     exposed = exposure.has_position or exposure.pending_orders > 0
     if state == "EXPECTED_MARKET_CLOSED":
         if exposed:
-            moment = require_utc("now", now) if now is not None \
-                else None
-            if (carried_migration is not None and moment is not None
-                    and carried_migration.covers(state_block, moment)):
+            if (carried_migration is not None
+                    and migration_ledger is not None
+                    and position_identity is not None
+                    and migration_ledger.authorize(
+                        carried_migration, state_block, exposure,
+                        position_identity)):
                 return "CARRIED_POSITION_RECOVERY_ACTIVE"
             return "UNEXPECTED_EXPOSURE_DURING_CLOSURE"
         return "EXPECTED_MARKET_CLOSED"
