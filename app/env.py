@@ -400,10 +400,12 @@ class GymFxEnv(gym.Env):
         self._session_carried_migration = None
         self._session_cancel_requested = set()
         self._session_last_evidence_bar = None
-        # R3: reset does NOT clear a pending obligation. It re-reads
-        # durable custody, so an in-flight close is recovered rather
-        # than forgotten.
+        # R3/D1: reset does NOT clear a pending obligation, and the
+        # NEW episode gets a NEW identity, so a fresh empty account
+        # can never be mistaken for evidence about the old one.
         self._session_flatten = None
+        if self.session_exposure_enabled:
+            self._session_episode_ordinal += 1
         self._session_recover_obligations()
 
         bt_feed = self.data_feed_plugin.build_bt_feed(self.dataframe, self.config)
@@ -760,6 +762,7 @@ class GymFxEnv(gym.Env):
         self._flatten_store = None
         self._session_recovery: Optional[Dict[str, Any]] = None
         self._session_obligation_seq = 0
+        self._session_episode_ordinal = 0
         import os as _os
         GymFxEnv._SESSION_ENV_ORDINAL += 1
         self._session_run_token = (
@@ -1241,9 +1244,11 @@ class GymFxEnv(gym.Env):
                         or "unknown_account"),
                     symbol=self.session_symbol or "unknown_symbol",
                     position_identity=f"pos-{obligation_id}",
+                    episode_identity=self._session_episode_identity(),
                     signed_exposure=exposure.signed_exposure,
                     requested_at_bar=int(step_idx),
-                    code_identity=self._session_code_identity())
+                    code_identity=self._session_code_identity(),
+                    checkpoint_identity=None)
                 self._session_flatten = {
                     "obligation_id": obligation_id,
                     "phase": "flatten_requested",
@@ -1323,48 +1328,101 @@ class GymFxEnv(gym.Env):
             type(self)._apply_session_exposure_overlay).encode()
         return hashlib.sha256(source).hexdigest()[:16]
 
-    def _session_recover_obligations(self) -> None:
-        """R3: a restart may NOT start clean by forgetting.
+    def _session_episode_identity(self) -> str:
+        """D1/D3: the identity a confirmation must match. It changes
+        on every reset, because every reset creates a NEW bridge and
+        broker whose emptiness says nothing about the old exposure."""
+        return (f"{self._session_run_token}"
+                f"-ep{self._session_episode_ordinal}")
 
-        Every obligation still open in durable custody is read back.
-        If any exists, a typed RECOVERY state is entered which blocks
-        every risk increase until fresh evidence shows zero positions
-        AND zero orders; only then is the obligation discharged."""
+    def _session_recover_obligations(self) -> None:
+        """R3/D1: a restart may NOT start clean by forgetting, and
+        it may NOT certify the old close with a new empty account.
+
+        The obligation is read back from durable custody. If it
+        belongs to a PREVIOUS episode it is recorded terminal as
+        ``interrupted_unresolved`` -- a fact that the episode was
+        abandoned, explicitly not a claim that anything was closed --
+        and a blocking recovery state is raised for this episode. Only
+        an obligation from THIS episode can still be discharged by
+        this episode's evidence.
+
+        Several open obligations have no safe automatic resolution, so
+        the store refuses and the refusal blocks everything until an
+        operator disposes of them."""
         if not self.session_exposure_enabled or \
                 self._flatten_store is None:
             return
-        outstanding = self._flatten_store.outstanding()
-        if not outstanding:
+        from app.flatten_custody import FlattenDispositionRequired
+        episode = self._session_episode_identity()
+        try:
+            record = self._flatten_store.require_single_open()
+        except FlattenDispositionRequired as exc:
+            self._session_recovery = {
+                "active": True,
+                "reason": "multiple_open_obligations",
+                "requires_operator_disposition": True,
+                "detail": str(exc),
+                "obligations": [
+                    {"obligation_id": o.get("obligation_id"),
+                     "state": o.get("state")}
+                    for o in self._flatten_store.outstanding()],
+                "blocks_risk_increase": True,
+            }
+            self._session_flatten = None
+            return
+        if record is None:
             self._session_recovery = None
             return
+        obligation_id = record.get("obligation_id")
+        if record.get("episode_identity") == episode:
+            # same episode: the pending close may still be verified
+            self._session_recovery = {
+                "active": True,
+                "reason": "outstanding_flatten_obligation",
+                "requires_operator_disposition": False,
+                "obligations": [{"obligation_id": obligation_id,
+                                 "state": record.get("state")}],
+                "blocks_risk_increase": True,
+            }
+            self._session_flatten = {
+                "obligation_id": obligation_id,
+                "phase": record.get("state", "flatten_in_flight"),
+                "requested_at_bar": record.get("requested_at_bar"),
+                "confirmed_at_bar": None,
+                "confirmed": False,
+                "reconciliation": None,
+                "incident": "RECOVERED_FROM_DURABLE_CUSTODY",
+            }
+            return
+        # a PREVIOUS episode's obligation: this account never observed
+        # that exposure, so it is abandoned, not closed
+        self._flatten_store.interrupt(
+            obligation_id,
+            reason=(f"episode {record.get('episode_identity')!r} was "
+                    f"abandoned with the obligation open; episode "
+                    f"{episode!r} starts with a different account "
+                    "state and cannot certify the close"),
+            episode_identity=episode)
         self._session_recovery = {
             "active": True,
-            "reason": "outstanding_flatten_obligation",
-            "obligations": [
-                {"obligation_id": record.get("obligation_id"),
-                 "state": record.get("state"),
-                 "requested_at_bar": record.get("requested_at_bar"),
-                 "signed_exposure_at_request": record.get(
-                     "signed_exposure_at_request")}
-                for record in outstanding],
+            "reason": "interrupted_unresolved_from_previous_episode",
+            "requires_operator_disposition": True,
+            "obligations": [{"obligation_id": obligation_id,
+                             "state": "interrupted_unresolved"}],
+            "closure_claimed": False,
             "blocks_risk_increase": True,
         }
-        # resume the most recent obligation rather than opening a new
-        # one, so the pending close is VERIFIED, not replaced
-        latest = outstanding[-1]
-        self._session_flatten = {
-            "obligation_id": latest.get("obligation_id"),
-            "phase": latest.get("state", "flatten_in_flight"),
-            "requested_at_bar": latest.get("requested_at_bar"),
-            "confirmed_at_bar": None,
-            "confirmed": False,
-            "reconciliation": None,
-            "incident": "RECOVERED_FROM_DURABLE_CUSTODY",
-        }
+        self._session_flatten = None
 
     def _session_release_recovery(self, obligation_id) -> None:
+        """Only a DISCHARGED obligation lifts its own recovery. A
+        recovery that requires an operator disposition is never lifted
+        by this path."""
         recovery = self._session_recovery
         if not recovery or not obligation_id:
+            return
+        if recovery.get("requires_operator_disposition"):
             return
         remaining = [o for o in recovery["obligations"]
                      if o.get("obligation_id") != obligation_id]
@@ -1487,7 +1545,8 @@ class GymFxEnv(gym.Env):
                 self._flatten_store.mark_in_flight(
                     attempt["obligation_id"],
                     bar_index=int(getattr(self.bridge, "bar_index",
-                                          0)))
+                                          0)),
+                    episode_identity=self._session_episode_identity())
         try:
             signed = self._session_signed_exposure()
             entries, protective = self._session_order_inventory()
@@ -1514,7 +1573,8 @@ class GymFxEnv(gym.Env):
             if attempt.get("obligation_id"):
                 self._flatten_store.confirm(
                     attempt["obligation_id"], reconciliation=gate,
-                    bar_index=attempt["confirmed_at_bar"])
+                    bar_index=attempt["confirmed_at_bar"],
+                    episode_identity=self._session_episode_identity())
             # discharging the obligation also lifts any recovery it
             # was responsible for
             self._session_release_recovery(attempt.get(

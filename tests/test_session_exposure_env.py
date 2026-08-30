@@ -840,37 +840,63 @@ class TestC3PostFillFlattenLifecycle:
 
     def test_a_restart_recovers_the_obligation_it_must_not_forget(
             self, tmp_path):
-        """INVERTED. The previous test asserted that reset() cleared
-        the attempt and the next episode knew nothing about it. That
-        is not recovery: a pending close obligation simply vanished,
-        and the test encoded the defect as correct behaviour."""
+        """The obligation survives reset and BLOCKS the new episode."""
         env = _env(tmp_path)
         frames = _drive(env, LONG[:6])
         assert frames[-1]["info"]["session_flatten_phase"] == \
             "flatten_in_flight"
         outstanding = env._flatten_store.outstanding()
-        assert len(outstanding) == 1, (
-            "the obligation must be DURABLE before the restart")
+        assert len(outstanding) == 1
+        obligation_id = outstanding[0]["obligation_id"]
 
         env.reset(seed=7)
-        assert env._session_flatten is not None, (
-            "reset must not forget a pending close")
-        assert env._session_flatten["incident"] == \
-            "RECOVERED_FROM_DURABLE_CUSTODY"
         assert env._session_recovery is not None
         assert env._session_recovery["blocks_risk_increase"] is True
 
         _o, _r, _t, _tr, first = env.step([1.0])
         assert first["session_recovery_active"] is True
         assert first["session_overlay"] == "blocked_by_flatten_recovery"
-        assert first["session_final_action"] == 0, (
-            "a risk increase must be blocked until fresh evidence of "
-            "zero positions and zero orders")
+        assert first["session_final_action"] == 0
+        record = env._flatten_store.read(obligation_id)
+        assert record["state"] == "interrupted_unresolved"
+        assert record["closure_claimed"] is False
+
+    def test_a_new_empty_account_can_never_certify_the_old_close(
+            self, tmp_path):
+        """FROZEN COUNTEREXAMPLE. reset() builds a new bridge and
+        broker that are born flat. That zero/zero is a fact about the
+        NEW episode and says nothing about whether the PREVIOUS
+        exposure was ever closed, so it must never discharge the
+        obligation."""
+        env = _env(tmp_path)
+        _drive(env, LONG[:6])
+        outstanding = env._flatten_store.outstanding()
+        obligation_id = outstanding[0]["obligation_id"]
+        assert outstanding[0]["signed_exposure_at_request"] != 0.0, (
+            "the obligation must name a REAL open exposure")
+
+        env.reset(seed=7)
+        assert env.bridge.position_units == 0.0, (
+            "the new episode really is born flat")
+        infos = []
+        for _ in range(6):
+            _o, _r, term, _t, info = env.step([1.0])
+            infos.append(info)
+            if term:
+                break
+        record = env._flatten_store.read(obligation_id)
+        assert record["state"] == "interrupted_unresolved", record
+        assert record["closure_claimed"] is False
+        assert all(i["session_recovery_active"] for i in infos), (
+            "the new episode stays blocked; an empty account is not a "
+            "discharge")
+        assert all(i["session_final_action"] == 0 for i in infos
+                   if i["session_mapped_action"]["risk_increasing"])
 
     def test_a_process_restart_recovers_the_same_obligation(self,
                                                             tmp_path):
-        """A brand-new env object reading the same custody root -- the
-        simulation of a process restart -- must find the obligation."""
+        """A brand-new env object over the same custody root finds the
+        obligation and is blocked by it."""
         first_env = _env(tmp_path)
         _drive(first_env, LONG[:6])
         root = first_env.config["session_flatten_custody_root"]
@@ -882,88 +908,74 @@ class TestC3PostFillFlattenLifecycle:
         assert reborn._flatten_store.outstanding()
         reborn.reset(seed=7)
         assert reborn._session_recovery is not None
-        assert {o["obligation_id"]
-                for o in reborn._session_recovery["obligations"]} == ids
         _o, _r, _t, _tr, info = reborn.step([1.0])
         assert info["session_recovery_active"] is True
         assert info["session_final_action"] == 0
+        for obligation_id in ids:
+            assert reborn._flatten_store.read(obligation_id)[
+                "state"] == "interrupted_unresolved"
 
-    def test_recovery_lifts_only_on_fresh_zero_zero_evidence(self,
-                                                             tmp_path):
-        env = _env(tmp_path)
-        _drive(env, LONG[:6])
-        env.reset(seed=7)
-        assert env._session_recovery is not None
-        recovered = env._session_flatten["obligation_id"]
-        frames = []
-        for _ in range(6):
-            _o, _r, term, _t, info = env.step([1.0])
-            frames.append(info)
-            if term:
-                break
-        lifted = [f for f in frames if not f["session_recovery_active"]]
-        assert lifted, "the recovery must be dischargeable"
-        first_lift = lifted[0]
-        gate = first_lift["session_flatten_reconciliation"]
-        assert gate["flat_confirmed"] is True
-        assert gate["positions"] == 0 and gate["orders"] == 0
-        recovered_id = env._session_flatten["obligation_id"] \
-            if env._session_flatten else None
-        still_open = {o["obligation_id"]
-                      for o in env._flatten_store.outstanding()}
-        assert recovered not in still_open, (
-            "the RECOVERED obligation must be discharged in DURABLE "
-            f"custody, not only in memory; still open: {still_open}")
-
-    def test_an_unreadable_record_still_counts_as_outstanding(
-            self, tmp_path):
-        from app.flatten_custody import FlattenObligationStore
-        store = FlattenObligationStore(tmp_path / "corrupt")
-        (store.root / "broken.json").write_text("{ not json")
-        outstanding = store.outstanding()
-        assert len(outstanding) == 1
-        assert outstanding[0]["state"] == "unreadable", (
-            "a record that cannot be read is not evidence that the "
-            "obligation was discharged")
-
-    def test_a_confirmation_requires_evidence_that_says_flat(self,
-                                                             tmp_path):
+    def test_the_store_itself_refuses_a_foreign_episode(self,
+                                                        tmp_path):
         from app.flatten_custody import (FlattenObligationError,
                                          FlattenObligationStore)
-        store = FlattenObligationStore(tmp_path / "store")
+        store = FlattenObligationStore(tmp_path / "foreign")
         store.open_obligation(
             "o-1", venue="mt5_demo", account_fingerprint="fp-1",
             symbol="ETHUSD", position_identity="pos-1",
-            signed_exposure=99.8, requested_at_bar=5,
-            code_identity="code-1")
-        for bad in ({"flat_confirmed": False}, {}, None,
-                    {"flat_confirmed": "yes"}):
-            with pytest.raises(FlattenObligationError,
-                               match="flat_confirmed=True"):
-                store.confirm("o-1", reconciliation=bad, bar_index=6)
-        assert store.read("o-1")["state"] == "flatten_requested"
-
-    def test_a_terminal_obligation_is_immutable(self, tmp_path):
-        from app.flatten_custody import (FlattenObligationError,
-                                         FlattenObligationStore)
-        store = FlattenObligationStore(tmp_path / "store2")
-        store.open_obligation(
-            "o-2", venue="mt5_demo", account_fingerprint="fp-1",
-            symbol="ETHUSD", position_identity="pos-1",
-            signed_exposure=1.0, requested_at_bar=1,
-            code_identity="code-1")
-        store.confirm("o-2", reconciliation={"flat_confirmed": True},
-                      bar_index=2)
-        with pytest.raises(FlattenObligationError):
-            store.fail("o-2", incident="late failure")
-        assert store.read("o-2")["state"] == "flatten_confirmed"
+            episode_identity="ep-A", signed_exposure=99.8,
+            requested_at_bar=5, code_identity="code-1")
         with pytest.raises(FlattenObligationError,
-                           match="already claimed"):
+                           match="cannot be advanced by episode"):
+            store.confirm("o-1",
+                          reconciliation={"flat_confirmed": True},
+                          bar_index=6, episode_identity="ep-B")
+        assert store.read("o-1")["state"] == "flatten_requested"
+        store.confirm("o-1", reconciliation={"flat_confirmed": True},
+                      bar_index=6, episode_identity="ep-A")
+        assert store.read("o-1")["state"] == "flatten_confirmed"
+
+    def test_a_same_episode_obligation_still_discharges(self,
+                                                        tmp_path):
+        """The normal path is untouched: within ONE episode the close
+        is confirmed on post-fill evidence."""
+        env = _env(tmp_path)
+        frames = _drive(env, LONG[:7])
+        assert [f for f in frames
+                if f["info"].get("session_flatten_confirmed")]
+        assert env._flatten_store.outstanding() == ()
+        ids = [p.stem for p in env._flatten_store.root.glob("*.json")]
+        assert len(ids) == 1
+        assert env._flatten_store.read(ids[0])["state"] == \
+            "flatten_confirmed"
+
+    def test_multiple_open_obligations_require_an_operator(self,
+                                                           tmp_path):
+        from app.flatten_custody import (FlattenDispositionRequired,
+                                         FlattenObligationStore)
+        root = tmp_path / "multi_custody"
+        store = FlattenObligationStore(root)
+        for i in (1, 2, 3):
             store.open_obligation(
-                "o-2", venue="mt5_demo", account_fingerprint="fp-1",
-                symbol="ETHUSD", position_identity="pos-1",
-                signed_exposure=1.0, requested_at_bar=1,
-                code_identity="code-1")
+                f"m-{i}", venue="mt5_demo",
+                account_fingerprint="fp-1", symbol="ETHUSD",
+                position_identity=f"pos-{i}",
+                episode_identity=f"ep-{i}", signed_exposure=float(i),
+                requested_at_bar=i, code_identity="code-1")
+        with pytest.raises(FlattenDispositionRequired,
+                           match="no automatic resolution"):
+            store.require_single_open()
+
+        env = _env(tmp_path, session_flatten_custody_root=str(root))
+        env.reset(seed=7)
+        assert env._session_recovery["reason"] == \
+            "multiple_open_obligations"
+        assert env._session_recovery[
+            "requires_operator_disposition"] is True
+        _o, _r, _t, _tr, info = env.step([1.0])
+        assert info["session_recovery_active"] is True
+        assert info["session_final_action"] == 0
+        assert len(env._flatten_store.outstanding()) == 3
 
     def test_the_final_state_is_exactly_flat_with_one_close_event(
             self, tmp_path):
