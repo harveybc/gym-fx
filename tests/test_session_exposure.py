@@ -13,11 +13,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.session_exposure import (  # noqa: E402
-    CarriedPositionMigration, ExposureFacts, MigrationLedger,
-    ReopenEvidence, SessionCalendar, SessionEvidenceError,
-    SessionPolicyError, classify_action, overlay_action,
-    reconciliation_gate, session_state, validate_policy,
-    watchdog_state)
+    CarriedPositionMigration, ExposureFacts, ReopenEvidence,
+    SessionCalendar, SessionEvidenceError, SessionPolicyError,
+    classify_action, overlay_action, reconciliation_gate,
+    session_state, validate_policy, watchdog_state)
 
 UTC = timezone.utc
 CLOSE = datetime(2026, 8, 28, 17, 0, tzinfo=UTC)
@@ -167,44 +166,17 @@ class TestFinalAuditBypasses:
                                raw_action=1.0)
         assert quiet["cancel_pending"] is False
 
-    def test_f4_migration_is_one_use(self):
-        """WAS: the same record returned RECOVERY_ACTIVE repeatedly
-        for the same closure and for other symbols."""
-        closed = session_state(policy(),
-                               now=CLOSE + timedelta(hours=30),
-                               calendar=calendar())
-        ledger = MigrationLedger()
-        migration = migration_record()
-        first = watchdog_state(
-            closed, bars_fresh=False, terminal_connected=True,
-            exposure=short_position(), carried_migration=migration,
-            migration_ledger=ledger, position_identity="pos-1",
-            now=CLOSE + timedelta(hours=30))
-        assert first == "CARRIED_POSITION_RECOVERY_ACTIVE"
-        assert ledger.is_consumed(migration.migration_id)
-
-    def test_f4_wrong_symbol_account_position_refuse(self):
-        closed = session_state(policy(),
-                               now=CLOSE + timedelta(hours=30),
-                               calendar=calendar())
-        for record, position in (
-                (migration_record(symbol="BTCUSD"), "pos-1"),
-                (migration_record(account="fp-OTHER"), "pos-1"),
-                (migration_record(), "pos-OTHER"),
-                (migration_record(protected=False), "pos-1")):
-            assert watchdog_state(
-                closed, bars_fresh=False, terminal_connected=True,
-                exposure=short_position(), carried_migration=record,
-                migration_ledger=MigrationLedger(),
-                position_identity=position,
-                now=CLOSE + timedelta(hours=30)) == \
-                "UNEXPECTED_EXPOSURE_DURING_CLOSURE"
-
-    def test_f4_ledger_refuses_reuse_across_closures(self):
-        ledger = MigrationLedger()
-        ledger.consume("mig-1", CLOSE.isoformat())
-        with pytest.raises(SessionEvidenceError, match="one-use"):
-            ledger.consume("mig-1", NEXT_CLOSE.isoformat())
+    def test_f4_authority_moved_to_durable_custody(self):
+        """WAS: an in-memory ledger authorized inside the watchdog.
+        Durable one-use custody now lives in app.migration_custody
+        and is proven by tests/test_migration_custody.py (D3)."""
+        import inspect
+        params = inspect.signature(watchdog_state).parameters
+        assert "migration_ledger" not in params
+        assert "recovery_claim_active" in params
+        source = (Path(__file__).resolve().parents[1]
+                  / "app/session_exposure.py").read_text()
+        assert "class MigrationLedger" not in source
 
 
 # ================= AUDIT-PRE counterexamples ==================== #
@@ -447,23 +419,18 @@ class TestWatchdogPrecedence:
 
     def test_carried_position_recovery_is_one_use_and_scoped(self):
         closed = self._closed()
-        migration = migration_record()
-        ledger = MigrationLedger()
+        # D1: the claim is a durable FACT produced by the recovery
+        # controller; the watchdog only reports it
         assert watchdog_state(
             closed, bars_fresh=False, terminal_connected=True,
-            exposure=short_position(), carried_migration=migration,
-            migration_ledger=ledger, position_identity="pos-1",
-            now=CLOSE + timedelta(hours=30)) == \
+            exposure=short_position(),
+            recovery_claim_active=True) == \
             "CARRIED_POSITION_RECOVERY_ACTIVE"
-        # a FUTURE closure is NOT normalized by the same record
-        future_block = session_state(
-            policy(), now=NEXT_CLOSE + timedelta(hours=5),
-            calendar=calendar())
+        # without an active claim the exposure is UNEXPECTED
         assert watchdog_state(
-            future_block, bars_fresh=False, terminal_connected=True,
-            exposure=short_position(), carried_migration=migration,
-            migration_ledger=ledger, position_identity="pos-1",
-            now=NEXT_CLOSE + timedelta(hours=5)) == \
+            closed, bars_fresh=False, terminal_connected=True,
+            exposure=short_position(),
+            recovery_claim_active=False) == \
             "UNEXPECTED_EXPOSURE_DURING_CLOSURE"
 
     def test_open_window_staleness_still_alerts(self):

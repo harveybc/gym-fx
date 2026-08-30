@@ -770,73 +770,21 @@ class CarriedPositionMigration:
             native_protection_confirmed=native_protection_confirmed)
 
 
-class MigrationLedger:
-    """F4: DURABLE one-use custody. A record is consumed by an atomic
-    transition and can never normalize a second closure, another
-    symbol/account/venue/position, or a future weekend."""
-
-    def __init__(self):
-        self._consumed: dict[str, str] = {}
-
-    def is_consumed(self, migration_id: str) -> bool:
-        return migration_id in self._consumed
-
-    def consume(self, migration_id: str, closure_key: str) -> None:
-        require_identity("migration_id", migration_id)
-        existing = self._consumed.get(migration_id)
-        if existing is not None and existing != closure_key:
-            raise SessionEvidenceError(
-                f"migration {migration_id!r} was already consumed "
-                f"for closure {existing!r} — one-use custody refuses "
-                "reuse")
-        self._consumed[migration_id] = closure_key
-
-    def authorize(self, migration: CarriedPositionMigration,
-                  state_block: dict, exposure: "ExposureFacts",
-                  position_identity: str) -> bool:
-        """Every identity must match exactly and native protection
-        must be confirmed; the record is then CONSUMED."""
-        closure_started = state_block.get("closure_started_at")
-        if closure_started is None:
-            return False
-        started = datetime.fromisoformat(closure_started)
-        if started != migration.covers_closure_started_at:
-            return False
-        if migration.opened_before > started:
-            return False
-        if state_block.get("symbol") != migration.symbol:
-            return False
-        if state_block.get("venue") != migration.venue:
-            return False
-        if state_block.get("account_fingerprint") != \
-                migration.account_fingerprint:
-            return False
-        if position_identity != migration.position_identity:
-            return False
-        if not migration.native_protection_confirmed:
-            return False
-        closure_key = started.isoformat()
-        if self.is_consumed(migration.migration_id) and \
-                self._consumed[migration.migration_id] != closure_key:
-            return False
-        self.consume(migration.migration_id, closure_key)
-        return True
-
-
 def watchdog_state(state_block: dict, *, bars_fresh: bool,
                    terminal_connected: bool,
                    exposure: ExposureFacts,
                    brackets_ok: bool = True,
                    account_ok: bool = True,
                    flatten_incident: Optional[str] = None,
-                   carried_migration:
-                       Optional[CarriedPositionMigration] = None,
-                   migration_ledger: Optional["MigrationLedger"] = None,
-                   position_identity: Optional[str] = None,
+                   recovery_claim_active: bool = False,
                    now: Any = None) -> str:
     """Expected closure suppresses ONLY bar staleness. Terminal,
     account, bracket, pending-order and exposure-policy incidents
-    take precedence (C3)."""
+    take precedence (C3).
+
+    STRICTLY READ-ONLY (D1): ``recovery_claim_active`` is a FACT read
+    from durable custody (``MigrationCustody.is_active``), never an
+    authorization performed here."""
     if not isinstance(bars_fresh, bool) or not isinstance(
             terminal_connected, bool):
         raise SessionEvidenceError(
@@ -854,12 +802,14 @@ def watchdog_state(state_block: dict, *, bars_fresh: bool,
     exposed = exposure.has_position or exposure.pending_orders > 0
     if state == "EXPECTED_MARKET_CLOSED":
         if exposed:
-            if (carried_migration is not None
-                    and migration_ledger is not None
-                    and position_identity is not None
-                    and migration_ledger.authorize(
-                        carried_migration, state_block, exposure,
-                        position_identity)):
+            # D1: the watchdog OBSERVES; it never authorizes. The
+            # recovery controller claims durable custody BEFORE any
+            # action, and this read simply reports the resulting
+            # state — repeatable and non-mutating.
+            if not isinstance(recovery_claim_active, bool):
+                raise SessionEvidenceError(
+                    "recovery_claim_active must be a bool")
+            if recovery_claim_active:
                 return "CARRIED_POSITION_RECOVERY_ACTIVE"
             return "UNEXPECTED_EXPOSURE_DURING_CLOSURE"
         return "EXPECTED_MARKET_CLOSED"
