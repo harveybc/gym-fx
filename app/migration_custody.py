@@ -200,7 +200,7 @@ class MigrationCustody:
 
     def claim(self, migration, state_block: dict,
               position_identity: str, *,
-              protection_evidence,
+              protection_evidence, evidence_policy,
               policy_identity: str,
               code_identity: str, now: Any = None) -> dict:
         """prepared -> active by EXACTLY ONE claimant (D2).
@@ -208,31 +208,23 @@ class MigrationCustody:
         Every identity must match the state block; a second claim, a
         terminal record, another closure/position/symbol/account/
         venue, or missing/stale protection evidence REFUSE."""
-        from app.direct_evidence import NativeProtectionEvidence
+        from app.direct_evidence import DirectEvidence
         from app.session_exposure import require_identity, require_utc
 
-        # E2: only a TYPED, IDENTITY-BOUND, FRESH, re-hashed envelope
-        # authorizes. A string is not evidence.
-        if not isinstance(protection_evidence,
-                          NativeProtectionEvidence):
+        # B1/B2: only PARSER-DERIVED evidence verified against a
+        # POLICY-OWNED freshness/source contract authorizes.
+        if not isinstance(protection_evidence, DirectEvidence):
             raise MigrationCustodyError(
-                "native protection must be a validated "
-                "NativeProtectionEvidence envelope — a digest string "
+                "native protection must be parser-derived "
+                "DirectEvidence — a string or a hand-built object "
                 "can never authorize")
-        if protection_evidence.rehash() != \
-                protection_evidence.raw_digest:
-            raise MigrationCustodyError(
-                "protection evidence digest does not re-hash to its "
-                "raw payload")
-        protection_evidence.verify_identity(
-            venue=migration.venue,
-            account_fingerprint=migration.account_fingerprint,
-            symbol=migration.symbol,
+        protection_evidence.verify(
+            evidence_policy,
+            now=now if now is not None
+            else datetime.now(timezone.utc),
             position_identity=position_identity)
-        protection_evidence.verify_fresh(
-            now if now is not None
-            else datetime.now(timezone.utc))
-        native_protection_digest = protection_evidence.raw_digest
+        protection_facts = protection_evidence.require_protection()
+        native_protection_digest = protection_evidence.payload_sha256
         require_identity("policy_identity", policy_identity)
         require_identity("code_identity", code_identity)
         require_identity("position_identity", position_identity)
@@ -289,6 +281,14 @@ class MigrationCustody:
                 "closure_reopens_at"),
             "opened_before": migration.opened_before.isoformat(),
             "native_protection_digest": native_protection_digest,
+            "protection_source": protection_evidence.source,
+            "protection_evidence_id":
+                protection_evidence.evidence_id,
+            "protection_schema_version":
+                protection_evidence.schema_version,
+            "protection_parser_digest":
+                protection_evidence.parser_digest,
+            "protection_facts": dict(protection_facts),
             "policy_identity": policy_identity,
             "code_identity": code_identity,
             "state": "active",
@@ -301,14 +301,14 @@ class MigrationCustody:
         return record
 
     def finish(self, migration_id: str, terminal_state: str, *,
-               reconciliation, now: Any = None) -> dict:
+               reconciliation, evidence_policy,
+               now: Any = None) -> dict:
         """active -> completed | failed under an ATOMIC transition
         with expected-state identity (E1). ``completed`` requires a
         typed envelope proving STRICT zero positions AND zero orders;
         ``failed`` PRESERVES the non-flat/stale evidence and can
         never later become completed (E2)."""
-        from app.direct_evidence import (EvidenceError,
-                                         ReconciliationEvidence)
+        from app.direct_evidence import DirectEvidence, EvidenceError
         if terminal_state not in TERMINAL_STATES:
             raise MigrationCustodyError(
                 f"illegal terminal state {terminal_state!r}")
@@ -320,26 +320,21 @@ class MigrationCustody:
             raise MigrationCustodyError(
                 f"{migration_id}: already {record['state']} — "
                 "terminal states are immutable")
-        if not isinstance(reconciliation, ReconciliationEvidence):
+        if not isinstance(reconciliation, DirectEvidence):
             raise MigrationCustodyError(
-                f"{migration_id}: a validated ReconciliationEvidence "
-                "envelope is required — a dict of truthy strings can "
-                "never finish custody")
-        if reconciliation.rehash() != reconciliation.raw_digest:
-            raise MigrationCustodyError(
-                f"{migration_id}: reconciliation digest does not "
-                "re-hash to its raw payload")
-        reconciliation.verify_identity(
-            venue=record["venue"],
-            account_fingerprint=record["account_fingerprint"],
-            symbol=record["symbol"],
-            position_identity=record["position_identity"])
+                f"{migration_id}: parser-derived DirectEvidence is "
+                "required — a dict of truthy strings can never "
+                "finish custody")
         moment = now if now is not None else datetime.now(
             timezone.utc)
         stale_reason = None
         try:
-            reconciliation.verify_fresh(moment)
+            reconciliation.verify(
+                evidence_policy, now=moment,
+                position_identity=record["position_identity"])
         except EvidenceError as exc:
+            if "stale" not in str(exc):
+                raise MigrationCustodyError(str(exc)) from exc
             stale_reason = str(exc)
         if terminal_state == "completed":
             if stale_reason is not None:
@@ -347,13 +342,16 @@ class MigrationCustody:
                     f"{migration_id}: completion requires FRESH "
                     f"evidence ({stale_reason})")
             reconciliation.require_flat()
+        facts = reconciliation.facts
         evidence_block = {
             "evidence_id": reconciliation.evidence_id,
             "source": reconciliation.source,
+            "schema_version": reconciliation.schema_version,
+            "parser_digest": reconciliation.parser_digest,
             "observed_at": reconciliation.observed_at.isoformat(),
-            "positions_total": reconciliation.positions_total,
-            "orders_total": reconciliation.orders_total,
-            "raw_digest": reconciliation.raw_digest,
+            "positions_total": facts["positions_total"],
+            "orders_total": facts["orders_total"],
+            "payload_sha256": reconciliation.payload_sha256,
             "stale_reason": stale_reason,
         }
         updated = {k: v for k, v in record.items()
