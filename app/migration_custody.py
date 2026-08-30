@@ -288,6 +288,10 @@ class MigrationCustody:
                 protection_evidence.schema_version,
             "protection_parser_digest":
                 protection_evidence.parser_digest,
+            "protection_raw_sha256": protection_evidence.raw_sha256,
+            # P3: the COMPLETE policy identity is bound at claim and
+            # re-verified at finish; arbitrary substitution refuses
+            "evidence_policy_digest": evidence_policy.policy_digest,
             "protection_facts": dict(protection_facts),
             "policy_identity": policy_identity,
             "code_identity": code_identity,
@@ -325,6 +329,19 @@ class MigrationCustody:
                 f"{migration_id}: parser-derived DirectEvidence is "
                 "required — a dict of truthy strings can never "
                 "finish custody")
+        # P3: the SAME policy identity must govern claim and finish
+        if not hasattr(evidence_policy, "policy_digest"):
+            raise MigrationCustodyError(
+                f"{migration_id}: a validated EvidencePolicy is "
+                "required to finish custody")
+        bound = record.get("evidence_policy_digest")
+        if bound is not None and \
+                evidence_policy.policy_digest != bound:
+            raise MigrationCustodyError(
+                f"{migration_id}: evidence policy substitution "
+                f"refused — claim was bound to {bound[:12]}… and "
+                f"finish presents "
+                f"{evidence_policy.policy_digest[:12]}…")
         moment = now if now is not None else datetime.now(
             timezone.utc)
         stale_reason = None
@@ -352,6 +369,7 @@ class MigrationCustody:
             "positions_total": facts["positions_total"],
             "orders_total": facts["orders_total"],
             "payload_sha256": reconciliation.payload_sha256,
+            "raw_sha256": reconciliation.raw_sha256,
             "stale_reason": stale_reason,
         }
         updated = {k: v for k, v in record.items()

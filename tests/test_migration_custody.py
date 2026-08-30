@@ -16,8 +16,14 @@ import pytest
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
+import json as _json  # noqa: E402
+
 from app.direct_evidence import (  # noqa: E402
     DirectEvidence, EvidenceError, EvidencePolicy)
+
+
+def _raw(payload) -> bytes:
+    return _json.dumps(payload).encode()
 from app.migration_custody import (  # noqa: E402
     MigrationCustody, MigrationCustodyError)
 from app.session_exposure import (  # noqa: E402
@@ -54,8 +60,10 @@ def protection(symbol="ETHUSD", account="fp-1", venue="mt5_demo",
         evidence_type="native_protection", schema_version=schema,
         observed_at=observed or (NOW - timedelta(seconds=10)),
         source=source, evidence_id="ev-prot-1",
-        payload=payload if payload is not None else
-        {"sl_accepted": sl, "tp_accepted": True, "ticket": "55"})
+        raw_bytes=payload if isinstance(payload, bytes) else
+        _raw(payload if payload is not None else
+             {"sl_accepted": sl, "tp_accepted": True,
+              "ticket": "55"}))
 
 
 def reconciliation(positions=0, orders=0, observed=None,
@@ -67,8 +75,10 @@ def reconciliation(positions=0, orders=0, observed=None,
         evidence_type="reconciliation", schema_version="v1",
         observed_at=observed or (NOW - timedelta(seconds=5)),
         source=source, evidence_id="ev-rec-1",
-        payload=payload if payload is not None else
-        {"positions_total": positions, "orders_total": orders})
+        raw_bytes=payload if isinstance(payload, bytes) else
+        _raw(payload if payload is not None else
+             {"positions_total": positions,
+              "orders_total": orders}))
 
 
 def policy():
@@ -398,7 +408,8 @@ class TestE3ConcurrencyAndFabrication:
             evidence_type="reconciliation", schema_version="v1",
             observed_at=NOW - timedelta(seconds=1),
             source="mt5_bridge_report", evidence_id="ev-rec-OTHER",
-            payload={"positions_total": 0, "orders_total": 0})
+            raw_bytes=_raw({"positions_total": 0,
+                            "orders_total": 0}))
         with pytest.raises(MigrationCustodyError):
             custody.finish("mig-1", "completed",
                            reconciliation=other,
@@ -458,7 +469,8 @@ class TestE3ConcurrencyAndFabrication:
                 good.venue, good.account_fingerprint, good.symbol,
                 good.position_identity, good.evidence_type,
                 good.schema_version, good.observed_at, good.source,
-                good.evidence_id, good.canonical_payload, "0" * 64,
+                good.evidence_id, good.raw_payload_bytes,
+                good.raw_sha256, good.canonical_payload, "0" * 64,
                 good.parser_digest, good._facts)
 
     def test_e3_6b_string_yes_reconciliation_refuses(self, tmp_path):
@@ -530,6 +542,7 @@ class TestB3EvidenceBinding:
         # and DirectEvidence.parse takes NO interpreted arguments
         import inspect
         params = inspect.signature(DirectEvidence.parse).parameters
+        assert "raw_bytes" in params and "payload" not in params
         for forbidden in ("stop_loss_accepted", "positions_total",
                           "orders_total", "take_profit_accepted"):
             assert forbidden not in params
@@ -583,19 +596,20 @@ class TestB3EvidenceBinding:
         """The envelope holds canonical BYTES, so mutating the source
         dict afterwards changes nothing."""
         payload = {"positions_total": 0, "orders_total": 0}
-        evidence = reconciliation(payload=payload)
+        evidence = reconciliation(payload=dict(payload))
         payload["positions_total"] = 99
         assert evidence.facts["positions_total"] == 0
         assert evidence.is_flat is True
 
     def test_b3_7_parser_substitution_refuses(self):
         good = protection()
-        with pytest.raises(EvidenceError, match="parser digest"):
+        with pytest.raises(EvidenceError, match="parser identity"):
             DirectEvidence(
                 good.venue, good.account_fingerprint, good.symbol,
                 good.position_identity, good.evidence_type,
                 good.schema_version, good.observed_at, good.source,
-                good.evidence_id, good.canonical_payload,
+                good.evidence_id, good.raw_payload_bytes,
+                good.raw_sha256, good.canonical_payload,
                 good.payload_sha256, "f" * 32, good._facts)
 
     def test_b3_8_identity_and_time_boundaries(self, tmp_path):
@@ -619,7 +633,8 @@ class TestB3EvidenceBinding:
                 good.venue, good.account_fingerprint, good.symbol,
                 good.position_identity, good.evidence_type,
                 good.schema_version, good.observed_at, good.source,
-                good.evidence_id, good.canonical_payload,
+                good.evidence_id, good.raw_payload_bytes,
+                good.raw_sha256, good.canonical_payload,
                 good.payload_sha256, good.parser_digest,
                 (("stop_loss_accepted", True),
                  ("take_profit_accepted", True), ("ticket", "55"),
@@ -633,3 +648,119 @@ class TestB3EvidenceBinding:
         assert len(record["protection_parser_digest"]) == 32
         assert record["protection_facts"][
             "stop_loss_accepted"] is True
+
+
+# ===== P1-P3: raw bytes, parser identity, policy lifecycle ====== #
+
+class TestP1P3RawEvidenceAndParserIdentity:
+    """The three facts reproduced against gym-fx@7d50ddb."""
+
+    def test_p2_1_executing_parser_replacement_refuses(self,
+                                                       monkeypatch):
+        """PRE: replacing PARSERS[key] with a forging function
+        produced evidence ACCEPTED under the original cached digest
+        with forged true facts. My previous test only changed the
+        digest FIELD — it never substituted the executing parser."""
+        import app.direct_evidence as de
+
+        def forging_parser(payload):
+            return {"stop_loss_accepted": True,
+                    "take_profit_accepted": True, "ticket": "55"}
+        key = ("mt5_demo", "native_protection", "v1")
+        # the registry itself is now IMMUTABLE
+        with pytest.raises(TypeError):
+            de.PARSERS[key] = forging_parser
+        # and even a monkeypatched module-level registry refuses,
+        # because identity is recomputed from the EXECUTING source
+        monkeypatch.setattr(de, "PARSERS",
+                            {**dict(de.PARSERS), key: forging_parser})
+        with pytest.raises(EvidenceError, match="substitution"):
+            protection(payload={"sl_accepted": False,
+                                "tp_accepted": False,
+                                "ticket": "55"})
+
+    def test_p2_2_same_name_different_code_refuses(self,
+                                                  monkeypatch):
+        import app.direct_evidence as de
+        key = ("mt5_demo", "reconciliation", "v1")
+        original = dict(de.PARSERS)[key]
+        identity_before = de.parser_identity(key, original)
+
+        def _parse_mt5_reconciliation_v1(payload):  # SAME name
+            return {"positions_total": 0, "orders_total": 0}
+        identity_after = de.parser_identity(
+            key, _parse_mt5_reconciliation_v1)
+        assert identity_before != identity_after, (
+            "identity must cover parser CODE, not its name")
+
+    def test_p1_3_duplicate_json_authority_keys_refuse(self):
+        """PRE: {"positions_total":7,"positions_total":0,...} became
+        flat because the duplicate was collapsed before parsing."""
+        raw = b'{"positions_total":7,"positions_total":0,' \
+              b'"orders_total":0}'
+        with pytest.raises(EvidenceError, match="duplicate"):
+            reconciliation(payload=raw)
+
+    def test_p1_4_nan_infinity_and_invalid_bytes_refuse(self):
+        for bad in (b'{"positions_total":NaN,"orders_total":0}',
+                    b'{"positions_total":Infinity,"orders_total":0}'):
+            with pytest.raises(EvidenceError, match="non-finite"):
+                reconciliation(payload=bad)
+        with pytest.raises(EvidenceError, match="invalid JSON"):
+            reconciliation(payload=b'{"positions_total":0,')
+        with pytest.raises(EvidenceError, match="encoding"):
+            reconciliation(payload=b'\xff\xfe{"a":1}')
+        with pytest.raises(EvidenceError, match="JSON object"):
+            reconciliation(payload=b'[1,2,3]')
+
+    def test_p1_5_pre_parsed_mapping_refused_on_authority_path(self):
+        with pytest.raises(EvidenceError, match="original JSON"):
+            DirectEvidence.parse(
+                venue="mt5_demo", account_fingerprint="fp-1",
+                symbol="ETHUSD", position_identity="pos-1",
+                evidence_type="reconciliation", schema_version="v1",
+                observed_at=NOW, source="mt5_bridge_report",
+                evidence_id="e",
+                raw_bytes={"positions_total": 0, "orders_total": 0})
+
+    def test_p3_6_policy_substitution_between_claim_and_finish(
+            self, tmp_path):
+        """PRE: a loose policy at finish accepted month-old evidence
+        after a strict policy governed the claim."""
+        custody = MigrationCustody(tmp_path / "custody")
+        claim(custody)  # strict policy: 120s, one source
+        loose = evidence_policy(max_age=99_999_999.0,
+                                sources=("mt5_bridge_report",
+                                         "anything"))
+        with pytest.raises(MigrationCustodyError,
+                           match="policy substitution"):
+            custody.finish("mig-1", "completed", now=NOW,
+                           reconciliation=reconciliation(
+                               observed=NOW - timedelta(days=30)),
+                           evidence_policy=loose)
+        assert MigrationCustody(
+            custody.root).read("mig-1")["state"] == "active"
+
+    def test_p3_7_allowlist_or_maxage_change_changes_identity(self):
+        base = evidence_policy()
+        assert evidence_policy().policy_digest == base.policy_digest
+        assert evidence_policy(max_age=121.0).policy_digest != \
+            base.policy_digest
+        assert evidence_policy(
+            sources=("mt5_bridge_report", "other")).policy_digest != \
+            base.policy_digest
+
+    def test_p3_policy_digest_persisted_at_claim(self, tmp_path):
+        custody = MigrationCustody(tmp_path / "custody")
+        record = claim(custody)
+        assert record["evidence_policy_digest"] == \
+            evidence_policy().policy_digest
+        assert len(record["protection_raw_sha256"]) == 64
+
+    def test_p1_both_digests_persisted_and_distinct_roles(self):
+        # raw bytes carry whitespace and key order; canonical form
+        # does not — so the two digests play DISTINCT roles
+        evidence = reconciliation(
+            payload=b'{"orders_total": 0, "positions_total": 0}')
+        assert evidence.raw_sha256 != evidence.payload_sha256
+        assert evidence.facts["positions_total"] == 0
