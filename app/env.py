@@ -16,6 +16,7 @@ import threading
 from typing import Any, Dict, Optional
 
 import numpy as np
+import pandas as pd
 
 try:
     import gymnasium as gym
@@ -349,6 +350,13 @@ class GymFxEnv(gym.Env):
             )
         )
 
+        # --- C5: weekly session-exposure overlay -----------------------------
+        # Opt-in. The five-state machine of app/session_exposure.py governs
+        # the REAL env path here: it is the only place where a session state
+        # can change what reaches the broker. Disabled by default so every
+        # pre-existing config keeps its exact observation space and behaviour.
+        self._session_exposure_init()
+
         # --- runtime handles -------------------------------------------------
         self.bridge: Optional[BTBridge] = None
         self._runner: Optional[threading.Thread] = None
@@ -371,6 +379,8 @@ class GymFxEnv(gym.Env):
         self.bridge.reset(initial_cash=self.initial_cash, total_bars=self.total_bars)
         self._reset_action_diagnostics()
         self._last_recap_debt = 0.0
+        self._last_session_info = {}
+        self._session_carried_migration = None
 
         bt_feed = self.data_feed_plugin.build_bt_feed(self.dataframe, self.config)
         broker = self.broker_plugin.build_bt_broker(self.config)
@@ -399,6 +409,7 @@ class GymFxEnv(gym.Env):
         a = self._coerce_action(action)
         a, event_context_info = self._apply_event_context_overlay(a)
         self._last_event_context_info = event_context_info
+        a, session_info = self._apply_session_exposure_overlay(a)
         self._record_action(raw_action, a)
 
         if self.bridge.terminated:
@@ -433,6 +444,12 @@ class GymFxEnv(gym.Env):
         force_close_penalty = self._force_close_reward_penalty(self.bridge.bar_index)
         reward = base_reward - force_close_penalty
 
+        # C5: a closed interval offers NO ACTIONABLE STEP, so no reward
+        # is attributed to it. Account state still carries forward --
+        # the bar advanced and equity/position were never reset.
+        if session_info.get("session_no_actionable_step"):
+            reward = 0.0
+
         terminated = bool(
             self.bridge.terminated
             or (self.solvency_mode == "normal_realistic"
@@ -457,6 +474,8 @@ class GymFxEnv(gym.Env):
                 self.bridge.would_margin_call_events),
             termination_cause=self.bridge.termination_cause,
         )
+        if self.session_exposure_enabled and terminated:
+            info.update(self._session_termination_record())
 
         if terminated:
             self.bridge.stop_requested = True
@@ -671,6 +690,289 @@ class GymFxEnv(gym.Env):
             "event_context_position_before_overlay": position,
         }
 
+    # ------------------------------------------------------------------
+    # C5: weekly session exposure through the REAL env path
+    # ------------------------------------------------------------------
+    SESSION_OBSERVATION_NAMES = (
+        "session_wind_down",
+        "session_forced_flatten",
+        "session_market_closed",
+        "session_reopen_blackout",
+        "session_hours_to_next_close",
+        "session_hours_since_reopen",
+    )
+
+    def _session_exposure_init(self) -> None:
+        from app.session_exposure import (
+            SessionCalendar, validate_policy)
+
+        self.session_exposure_enabled = bool(
+            self.config.get("session_exposure_enabled", False))
+        self._session_policy: Optional[Dict[str, Any]] = None
+        self._session_calendar = None
+        self._session_calendar_error: Optional[str] = None
+        self._last_session_info: Dict[str, Any] = {}
+        self._session_carried_migration: Optional[Dict[str, Any]] = None
+        if not self.session_exposure_enabled:
+            return
+
+        # The policy is VALIDATED, never defaulted. A malformed policy
+        # is a construction-time refusal: an env that cannot state its
+        # own session contract must not run at all.
+        self._session_policy = validate_policy(
+            dict(self.config.get("session_exposure_policy") or {}))
+        self.session_venue = str(self.config.get("session_venue", ""))
+        self.session_account_fingerprint = str(
+            self.config.get("session_account_fingerprint", ""))
+        self.session_symbol = str(self.config.get("session_symbol", ""))
+
+        intervals_raw = self.config.get("session_calendar_intervals")
+        if intervals_raw is None:
+            # Fail CLOSED, and say so. Unlike the OANDA-calendar and
+            # event-context helpers, missing session evidence is never
+            # degraded to neutral zeros: session_state(calendar=None)
+            # returns WIND_DOWN with evidence_failed_closed=True.
+            self._session_calendar_error = (
+                "no session_calendar_intervals configured")
+        else:
+            try:
+                self._session_calendar = SessionCalendar.build(
+                    venue=self.session_venue,
+                    account_fingerprint=self.session_account_fingerprint,
+                    symbol=self.session_symbol,
+                    calendar_digest=str(
+                        self._session_policy["calendar_identity"]),
+                    intervals=[
+                        (self._session_utc(item[0]),
+                         self._session_utc(item[1]))
+                        for item in intervals_raw])
+            except Exception as exc:
+                self._session_calendar = None
+                self._session_calendar_error = (
+                    f"{type(exc).__name__}: {exc}")
+
+        self.observation_space = spaces.Dict(
+            {
+                **self.observation_space.spaces,
+                "session_wind_down": spaces.Box(
+                    low=0.0, high=1.0, shape=(1,), dtype=np.float32),
+                "session_forced_flatten": spaces.Box(
+                    low=0.0, high=1.0, shape=(1,), dtype=np.float32),
+                "session_market_closed": spaces.Box(
+                    low=0.0, high=1.0, shape=(1,), dtype=np.float32),
+                "session_reopen_blackout": spaces.Box(
+                    low=0.0, high=1.0, shape=(1,), dtype=np.float32),
+                "session_hours_to_next_close": spaces.Box(
+                    low=0.0, high=np.inf, shape=(1,), dtype=np.float32),
+                "session_hours_since_reopen": spaces.Box(
+                    low=0.0, high=np.inf, shape=(1,), dtype=np.float32),
+            }
+        )
+
+    @staticmethod
+    def _session_utc(value):
+        """Canonical UTC as a STDLIB datetime. session_exposure's
+        require_utc returns value.astimezone(timezone.utc), and
+        SessionCalendar.__post_init__ asserts object identity against
+        that result — a pandas Timestamp always allocates a new object
+        under astimezone and would be refused as non-canonical."""
+        from datetime import timezone
+        stamp = pd.Timestamp(value)
+        if stamp.tzinfo is None:
+            stamp = stamp.tz_localize("UTC")
+        return stamp.to_pydatetime().astimezone(timezone.utc)
+
+    def _session_now(self, step_idx: int):
+        """UTC timestamp of the current bar. Naive stamps are read as
+        UTC, matching oanda_calendar._to_ny."""
+        idx = max(0, min(int(step_idx), len(self.dataframe) - 1))
+        try:
+            if self._date_column in self.dataframe.columns:
+                ts = pd.Timestamp(
+                    self.dataframe.iloc[idx][self._date_column])
+            elif isinstance(self.dataframe.index, pd.DatetimeIndex):
+                # The default data feed promotes the date column to the
+                # INDEX. Reading only .columns is why the pre-existing
+                # OANDA-calendar helper degrades to neutral zeros under
+                # that feed; session evidence must not repeat it.
+                ts = pd.Timestamp(self.dataframe.index[idx])
+            else:
+                return None
+        except Exception:
+            return None
+        if ts is None or pd.isna(ts):
+            return None
+        return self._session_utc(ts)
+
+    def _session_exposure_facts(self):
+        from app.session_exposure import ExposureFacts
+        signed = float(getattr(self.bridge, "position_units", 0.0) or 0.0)
+        if signed == 0.0:
+            signed = float(getattr(self.bridge, "position", 0) or 0)
+        open_orders = int(
+            getattr(self.bridge, "open_order_count", 0) or 0)
+        # F3: native SL/TP brackets are PROTECTIVE and must never be
+        # counted as entry orders the overlay may cancel. With a
+        # position open, the bracket children are the open orders.
+        protective = open_orders if abs(signed) > 0.0 else 0
+        return ExposureFacts.build(
+            signed_exposure=signed, pending_orders=open_orders,
+            protective_orders=protective,
+            action_mapping=str(self.config.get(
+                "session_action_mapping", "target_exposure_v2")))
+
+    def _apply_session_exposure_overlay(
+            self, action: int) -> tuple[int, Dict[str, Any]]:
+        """Raw / mapped / overlay / final are recorded SEPARATELY and
+        never collapsed into one another."""
+        if not self.session_exposure_enabled or self.bridge is None:
+            return int(action), {}
+        from app.session_exposure import (
+            session_state, overlay_action, SessionEvidenceError,
+            SessionPolicyError)
+
+        step_idx = max(0, min(
+            int(getattr(self.bridge, "bar_index", 0) or 0),
+            self.total_bars))
+        now = self._session_now(step_idx)
+        if now is None:
+            # No timestamp is no session evidence. Fail closed.
+            state_block = {"state": "WIND_DOWN", "policy_enabled": True,
+                           "evidence_ok": False,
+                           "evidence_failed_closed": True,
+                           "time_to_next_close_hours": None,
+                           "time_since_reopen_hours": None,
+                           "wind_down": True, "forced_flatten": False}
+        else:
+            state_block = session_state(
+                self._session_policy, now=now,
+                calendar=self._session_calendar,
+                expected_venue=self.session_venue or None,
+                expected_account_fingerprint=(
+                    self.session_account_fingerprint or None),
+                expected_symbol=self.session_symbol or None)
+
+        exposure = self._session_exposure_facts()
+        before = int(action)
+        decision = overlay_action(self._session_policy, state_block,
+                                  exposure, float(before))
+
+        final = decision["final_action"]
+        state = state_block["state"]
+        no_actionable_step = (state == "EXPECTED_MARKET_CLOSED")
+        if no_actionable_step:
+            # The market is closed: no decision is executed and no
+            # reward is attributed. The bar still advances so account
+            # state CARRIES FORWARD across the closed interval.
+            after = 0
+        elif final == "CLOSE":
+            # Forced close travels the SHARED cost/fill envelope as
+            # action 3 (bridge.action_slot -> Plugin.apply_action).
+            # It must NOT use flatten_step: force_flat_request returns
+            # before the plugin dispatch and would settle outside the
+            # envelope, producing no close event and no trade cost.
+            after = 3
+        elif decision["overlay"] in ("masked_risk_increase",
+                                     "masked_entry_during_blackout"):
+            after = 0 if not exposure.has_position else before
+        else:
+            after = before
+
+        if after != before or no_actionable_step:
+            diag = getattr(self.bridge, "execution_diagnostics", {}) or {}
+            diag["session_overlay_overrides"] = (
+                diag.get("session_overlay_overrides", 0) + 1)
+            key = ("session_no_actionable_steps" if no_actionable_step
+                   else f"session_{decision['overlay']}_actions")
+            diag[key] = diag.get(key, 0) + 1
+            self.bridge.execution_diagnostics = diag
+
+        mapped = decision["mapped_action"]
+        info = {
+            "session_state": state,
+            "session_wind_down": bool(state_block.get("wind_down")),
+            "session_forced_flatten": bool(
+                state_block.get("forced_flatten")),
+            "session_evidence_ok": bool(state_block.get("evidence_ok")),
+            "session_evidence_failed_closed": bool(
+                state_block.get("evidence_failed_closed", False)),
+            "session_calendar_error": self._session_calendar_error,
+            "session_time_to_next_close_hours": state_block.get(
+                "time_to_next_close_hours"),
+            "session_time_since_reopen_hours": state_block.get(
+                "time_since_reopen_hours"),
+            # the four DISTINCT records the overlay contract requires
+            "session_raw_model_action": decision["raw_model_action"],
+            "session_mapped_action": (
+                None if mapped is None else dict(mapped)),
+            "session_overlay": decision["overlay"],
+            "session_final_action": final,
+            # what the env actually submitted, kept separate again
+            "session_action_before_overlay": before,
+            "session_action_after_overlay": after,
+            "session_cancel_pending": bool(decision["cancel_pending"]),
+            "session_cancel_scope": decision.get("cancel_scope"),
+            "session_no_actionable_step": no_actionable_step,
+            "session_signed_exposure": exposure.signed_exposure,
+            "session_entry_orders": exposure.entry_orders,
+            "session_protective_orders": exposure.protective_orders,
+        }
+        self._last_session_info = info
+        return after, info
+
+    def _session_termination_record(self) -> Dict[str, Any]:
+        """Episode termination is an EPISODE boundary, not a venue
+        event. If exposure is open when the episode ends, it survives
+        and is reported as a carried position requiring migration --
+        never silently zeroed by reset()."""
+        signed = float(getattr(self.bridge, "position_units", 0.0) or 0.0)
+        if signed == 0.0:
+            signed = float(getattr(self.bridge, "position", 0) or 0)
+        if signed == 0.0:
+            return {"session_exposure_survived_termination": False,
+                    "session_carried_exposure": 0.0}
+        record = {
+            "session_exposure_survived_termination": True,
+            "session_carried_exposure": signed,
+            "session_carried_position_requires_migration": True,
+            "session_carried_episode_seq": int(
+                getattr(self.bridge, "episode_seq", 0) or 0),
+            "session_carried_bar_index": int(
+                getattr(self.bridge, "bar_index", 0) or 0),
+            "termination_does_not_close_exposure": True,
+        }
+        self._session_carried_migration = record
+        return record
+
+    def _session_observation(self) -> Dict[str, np.ndarray]:
+        info = self._last_session_info or {}
+
+        def _hours(key):
+            value = info.get(key)
+            return 0.0 if value is None else max(0.0, float(value))
+
+        state = info.get("session_state")
+        return {
+            "session_wind_down": np.array(
+                [1.0 if info.get("session_wind_down") else 0.0],
+                dtype=np.float32),
+            "session_forced_flatten": np.array(
+                [1.0 if info.get("session_forced_flatten") else 0.0],
+                dtype=np.float32),
+            "session_market_closed": np.array(
+                [1.0 if state == "EXPECTED_MARKET_CLOSED" else 0.0],
+                dtype=np.float32),
+            "session_reopen_blackout": np.array(
+                [1.0 if state == "REOPEN_BLACKOUT" else 0.0],
+                dtype=np.float32),
+            "session_hours_to_next_close": np.array(
+                [_hours("session_time_to_next_close_hours")],
+                dtype=np.float32),
+            "session_hours_since_reopen": np.array(
+                [_hours("session_time_since_reopen_hours")],
+                dtype=np.float32),
+        }
+
     def _run_cerebro(self):
         try:
             result = self._cerebro.run(maxcpus=1, stdstats=False)
@@ -740,6 +1042,9 @@ class GymFxEnv(gym.Env):
             obs["margin_available_norm"] = np.array(
                 [self._safe_margin_available_norm()], dtype=np.float32
             )
+        if getattr(self, "session_exposure_enabled", False):
+            obs = dict(obs)
+            obs.update(self._session_observation())
         if getattr(self, "execution_cost_observation_enabled", False):
             obs = dict(obs)
             for name, value in zip(
@@ -963,6 +1268,9 @@ class GymFxEnv(gym.Env):
             "execution_diagnostics": dict(getattr(self.bridge, "execution_diagnostics", {}) or {}),
         }
         info.update(dict(getattr(self, "_last_event_context_info", {}) or {}))
+        if getattr(self, "session_exposure_enabled", False):
+            info.update(dict(getattr(self, "_last_session_info", {}) or {}))
+            info["session_policy_enabled"] = True
         if getattr(self, "execution_cost_observation_enabled", False):
             info["execution_cost_context"] = dict(self._execution_cost_context)
         if self.stage_b_force_close_obs:
