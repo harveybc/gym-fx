@@ -1,15 +1,20 @@
 {
  "bar_hours": 4.0,
  "cell_id": "w1_wd12_ff8",
- "digest": "7e318038c813fd9a9d4a291dba5ac9f152600adb7b4cf3146ee60e57da77c431",
+ "digest": "cfacfd0de4c68393f57dd7c4b32beb7607fd743909316267914d2555465afca5",
  "family": "W1",
  "identity": {
-  "authority_files": "REFROZEN post F1-F3 (see driver constants)",
-  "f1_f3_order": "agent-multi@4ad4937b",
   "gymfx_branch": "satoshi/trade-reconciliation-20260828",
-  "plan42": "agent-multi@45c49003",
-  "wp3_executor": "lts@83dff62"
+  "orders": [
+   "agent-multi@4ad4937b",
+   "agent-multi@a678fd55",
+   "agent-multi@22218df1"
+  ],
+  "plan42": "agent-multi@45c49003 + amendment A1 @ea7533f8",
+  "wp3_executor": "lts@a1a6c38"
  },
+ "live_safe_flatten": false,
+ "live_safety_note": "MECHANICS ONLY \u2014 execution-latency infeasible: the flatten first triggers 8.0h before close on the 4.0h grid; after 0 latency bars, the first fill and 1 retry fills, the final fill lands 0.0h before the closure and the contract demands a positive margin of 1.0h \u2014 the worst-case close cannot fill and reconcile before the closure",
  "min_open_window_hours": 104.0,
  "reopen_policy": "frozen_at_section4_defaults",
  "session_exposure_policy": {
@@ -23,6 +28,7 @@
   "max_gap_sigma": 3.0,
   "max_realized_vol_relative_to_baseline": 2.0,
   "max_spread_relative_to_baseline": 2.0,
+  "release_probation_factor": 2,
   "reopen_baseline_bars": 4,
   "reopen_gap_sigma_bars": 4,
   "reopen_min_closed_bars": 1,

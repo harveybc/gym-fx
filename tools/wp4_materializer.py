@@ -80,48 +80,100 @@ EXECUTION_CONTRACT = {
     "safety_margin_hours": 0.0,
 }
 
+# F8 (order agent-multi@22218df1): the LIVE contract. Mechanics
+# admissibility (retry 0, margin 0) is NOT live safety: one rejected
+# or delayed close would leave no second executable fill before the
+# closure. The live contract demands ONE full retry opportunity
+# after an observed rejection/non-fill, reconciliation before the
+# closure, and a POSITIVE safety margin tied to the venue boundary.
+# All latencies are measured in bars.
+LIVE_EXECUTION_CONTRACT = {
+    "decision_at": "bar_close",
+    "submission_latency_bars": 0,
+    "fill_at": "next_bar_open",
+    "reconcile_at": "fill_bar_step",
+    "close_retry_budget_bars": 1,
+    "safety_margin_hours": 1.0,
+}
+
+# F8: the mechanical extension of the predeclared flatten domain —
+# the smallest grid values that can satisfy the live contract on H4
+# (12h: first fill, observed verdict, retry fill and reconciliation
+# all before closure with the margin; 16h adds one bar of headroom).
+W1_FORCED_FLATTEN_LIVE_EXTENSION = (12.0, 16.0)
+
 
 def flatten_deadline_admissible(ff_hours: float, bar_hours: float,
                                 *, contract: dict) -> tuple:
     """Mechanical admissibility of a forced-flatten window.
 
     The flatten first triggers at the largest bar-grid multiple of
-    hours-to-close that is <= ff_hours; the close submitted at that
-    decision fills 1 + submission_latency_bars bars later, plus up
-    to close_retry_budget_bars retries; the fill bar must itself be
-    an OPEN bar strictly before the closure, with the safety margin
-    on top. Everything is derived, nothing is tuned."""
+    hours-to-close that is <= ff_hours. The worst-case sequence is:
+    trigger decision, submission (+latency bars), first fill at the
+    next bar open, an observed verdict, and up to
+    close_retry_budget_bars retry fills — the FINAL fill bar must
+    open strictly before the closure and leave at least the safety
+    margin between that fill and the closure boundary. Everything is
+    derived, nothing is tuned. (F8 refactor of the F4 rule to the
+    slack form; every F4 verdict is unchanged — the suite proves
+    it — and retry/margin now participate correctly.)"""
     import math
-    trigger = math.floor(float(ff_hours) / float(bar_hours))         * float(bar_hours)
-    needed = ((2 + contract["submission_latency_bars"]
-               + contract["close_retry_budget_bars"])
-              * float(bar_hours)
-              + float(contract["safety_margin_hours"]))
+    trigger = math.floor(float(ff_hours) / float(bar_hours)) \
+        * float(bar_hours)
     if trigger <= 0.0:
         return False, (
             f"flatten window {ff_hours}h never reaches a decision "
             f"bar on the {bar_hours}h grid — the close could never "
             "even be submitted before the closure")
-    if trigger < needed:
+    fills = (1 + contract["submission_latency_bars"]
+             + contract["close_retry_budget_bars"])
+    slack = trigger - fills * float(bar_hours)
+    margin = float(contract["safety_margin_hours"])
+    if slack <= 0.0 or slack < margin:
         return False, (
             f"execution-latency infeasible: the flatten first "
             f"triggers {trigger}h before close on the {bar_hours}h "
-            f"grid, but the contract (fill at next bar open, "
-            f"{contract['submission_latency_bars']} latency bars, "
-            f"{contract['close_retry_budget_bars']} retry bars, "
-            f"{contract['safety_margin_hours']}h margin) needs "
-            f"{needed}h — the worst-case close cannot fill and "
-            "reconcile before the closure")
+            f"grid; after {contract['submission_latency_bars']} "
+            f"latency bars, the first fill and "
+            f"{contract['close_retry_budget_bars']} retry fills, "
+            f"the final fill lands {slack}h before the closure and "
+            f"the contract demands a positive margin of {margin}h "
+            "— the worst-case close cannot fill and reconcile "
+            "before the closure")
+    return True, None
+
+
+def closure_budget_fits(open_window_hours: float, policy: dict,
+                        bar_hours: float, *,
+                        contract: dict) -> tuple:
+    """F8: a holiday-shortened session that cannot fit the flatten
+    budget FAILS CLOSED — the trigger bar must exist inside the open
+    stretch before the closure, or exposure there can never be
+    flattened in time."""
+    import math
+    trigger = math.floor(
+        float(policy["forced_flatten_hours"]) / float(bar_hours)) \
+        * float(bar_hours)
+    if float(open_window_hours) <= trigger:
+        return False, (
+            f"holiday-shortened session: the open stretch is "
+            f"{open_window_hours}h but the flatten budget needs the "
+            f"trigger bar {trigger}h before the closure — the "
+            "budget cannot fit and entries there must fail closed")
     return True, None
 
 
 def corrected_flatten_default(bar_hours: float, *,
                               contract: dict) -> float:
     """The live-safe flatten default MUST come from an eligible
-    value: the smallest predeclared grid value that is admissible
-    under the execution contract. It may not silently remain the
-    section-4 four hours."""
-    for candidate in sorted(W1_FORCED_FLATTEN_HOURS):
+    value: the smallest value of the predeclared grid PLUS its
+    mechanical live extension that is admissible under the given
+    contract. It may not silently remain the section-4 four hours.
+    F8: enabled arms default under the LIVE contract (H4 -> 12h);
+    8h stays admissible for mechanics only."""
+    domain = sorted(set(W1_FORCED_FLATTEN_HOURS)
+                    | set(W1_FORCED_FLATTEN_LIVE_EXTENSION))
+    for candidate in domain:
         ok, _reason = flatten_deadline_admissible(
             candidate, bar_hours, contract=contract)
         if ok:
@@ -172,13 +224,13 @@ def base_policy(calendar_identity: str, *,
     policy = dict(SECTION4_DEFAULTS)
     policy["calendar_identity"] = calendar_identity
     policy.update(G2_BASELINE_BARS)
-    # F4: the section-4 forced_flatten_hours=4 default is
-    # structurally ineligible for H4 under the next-bar-fill
-    # contract (the reproduced failure); every enabled arm uses the
-    # smallest ADMISSIBLE predeclared value instead, and the
-    # correction is ledgered on the manifest
+    # F4/F8: the section-4 forced_flatten_hours=4 default is
+    # structurally ineligible for H4 under next-bar fills, and the
+    # 8h mechanics value is NOT live-safe (no retry, no margin).
+    # Every enabled arm defaults to the smallest LIVE-safe value
+    # (H4 -> 12h) and the correction is ledgered on the manifest.
     policy["forced_flatten_hours"] = corrected_flatten_default(
-        bar_hours, contract=EXECUTION_CONTRACT)
+        bar_hours, contract=LIVE_EXECUTION_CONTRACT)
     return policy
 
 
@@ -267,15 +319,27 @@ def materialize(*, calendar_identity: str, bar_hours: float,
     admit("W0", "w0_overlay_enabled", base_policy(calendar_identity),
           {"role": "full_accepted_overlay_at_section4_defaults"})
 
-    # -- W1: wind-down timing family (plan 42 §7 W1) ----------------
+    # -- W1: wind-down timing family (plan 42 §7 W1 + F8 live
+    # extension). Every admitted cell is labelled with its LIVE
+    # safety under the live contract; mechanics-only values stay
+    # runnable but can never be called live-safe.
     for wind in W1_WIND_DOWN_HOURS:
-        for flatten in W1_FORCED_FLATTEN_HOURS:
+        for flatten in (tuple(W1_FORCED_FLATTEN_HOURS)
+                        + tuple(W1_FORCED_FLATTEN_LIVE_EXTENSION)):
             policy = base_policy(calendar_identity)
             policy["wind_down_hours"] = wind
             policy["forced_flatten_hours"] = flatten
+            live_ok, live_why = flatten_deadline_admissible(
+                flatten, bar_hours,
+                contract=LIVE_EXECUTION_CONTRACT)
             admit("W1",
                   f"w1_wd{wind:g}_ff{flatten:g}", policy,
-                  {"reopen_policy": "frozen_at_section4_defaults"})
+                  {"reopen_policy": "frozen_at_section4_defaults",
+                   "live_safe_flatten": bool(live_ok),
+                   "live_safety_note": (
+                       "satisfies the LIVE contract (retry + "
+                       "margin)" if live_ok else
+                       f"MECHANICS ONLY — {live_why}")})
 
     # -- W2a: reopen mechanism screen (plan 42 §7 W2, C6 split) -----
     W2_TIMING_BLOCK = {
@@ -364,15 +428,21 @@ def materialize(*, calendar_identity: str, bar_hours: float,
         "min_open_window_hours": min_open_window_hours,
         "g2_baseline_bars_provisional": G2_BASELINE_BARS,
         "execution_contract": EXECUTION_CONTRACT,
+        "live_execution_contract": LIVE_EXECUTION_CONTRACT,
+        "w1_flatten_live_extension":
+            list(W1_FORCED_FLATTEN_LIVE_EXTENSION),
         "flatten_default_correction": {
             "section4_value_hours": 4.0,
             "status": "STRUCTURALLY_INELIGIBLE_FOR_H4_NEXT_BAR",
-            "corrected_eligible_default_hours":
-                corrected_flatten_default(
-                    bar_hours, contract=EXECUTION_CONTRACT),
-            "rule": "the live-safe default must come from an "
-                    "eligible value and may not silently remain "
-                    "four hours"},
+            "mechanics_only_hours": corrected_flatten_default(
+                bar_hours, contract=EXECUTION_CONTRACT),
+            "live_safe_default_hours": corrected_flatten_default(
+                bar_hours, contract=LIVE_EXECUTION_CONTRACT),
+            "rule": "no value is called live-safe unless the first "
+                    "attempt, terminal verdict, retry fill and "
+                    "reconciliation all fit before the closure "
+                    "with a positive margin; the plan-42 section-4 "
+                    "text is amended in the same return"},
         "cells": len(cells),
         "rejections": len(rejections),
         "families": {

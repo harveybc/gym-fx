@@ -1,14 +1,17 @@
 {
  "bar_hours": 4.0,
  "cell_id": "g2b_base2",
- "digest": "62c97ece6a82161213f1a1b840dbf09585d576a369c61723aad229a85afd5f7f",
+ "digest": "87595236d104e0865ca2fbc91ac694f29c2ddbe6fecb325a4edd9850b1e81e63",
  "family": "G2B",
  "identity": {
-  "authority_files": "REFROZEN post F1-F3 (see driver constants)",
-  "f1_f3_order": "agent-multi@4ad4937b",
   "gymfx_branch": "satoshi/trade-reconciliation-20260828",
-  "plan42": "agent-multi@45c49003",
-  "wp3_executor": "lts@83dff62"
+  "orders": [
+   "agent-multi@4ad4937b",
+   "agent-multi@a678fd55",
+   "agent-multi@22218df1"
+  ],
+  "plan42": "agent-multi@45c49003 + amendment A1 @ea7533f8",
+  "wp3_executor": "lts@a1a6c38"
  },
  "min_open_window_hours": 104.0,
  "rationale": "the provisional value 4 has a mechanical rationale (three dispersion degrees of freedom inside the shortest post-reopen stretch) but no optimality claim; this bounded ablation carries the burden",
@@ -19,11 +22,12 @@
   "cancel_pending_on_wind_down": true,
   "carried_position_recovery": "protected_opportunistic_then_forced",
   "enabled": true,
-  "forced_flatten_hours": 4.0,
+  "forced_flatten_hours": 12.0,
   "holiday_policy": "same_as_weekly",
   "max_gap_sigma": 3.0,
   "max_realized_vol_relative_to_baseline": 2.0,
   "max_spread_relative_to_baseline": 2.0,
+  "release_probation_factor": 2,
   "reopen_baseline_bars": 2,
   "reopen_gap_sigma_bars": 2,
   "reopen_min_closed_bars": 1,

@@ -1,15 +1,20 @@
 {
  "bar_hours": 4.0,
- "cell_id": "w1_wd48_ff2",
- "digest": "2a8be84890ec7bd273b8708e47e9e86d096536fb7a9b75acc2e8bb65482b6816",
+ "cell_id": "w1_wd24_ff12",
+ "digest": "23cfb851f69c9d45a5d3d4cbca8224eaa169f90b843f53f6320f55e80a72bd1d",
  "family": "W1",
  "identity": {
-  "authority_files": "REFROZEN post F1-F3 (see driver constants)",
-  "f1_f3_order": "agent-multi@4ad4937b",
   "gymfx_branch": "satoshi/trade-reconciliation-20260828",
-  "plan42": "agent-multi@45c49003",
-  "wp3_executor": "lts@83dff62"
+  "orders": [
+   "agent-multi@4ad4937b",
+   "agent-multi@a678fd55",
+   "agent-multi@22218df1"
+  ],
+  "plan42": "agent-multi@45c49003 + amendment A1 @ea7533f8",
+  "wp3_executor": "lts@a1a6c38"
  },
+ "live_safe_flatten": true,
+ "live_safety_note": "satisfies the LIVE contract (retry + margin)",
  "min_open_window_hours": 104.0,
  "reopen_policy": "frozen_at_section4_defaults",
  "session_exposure_policy": {
@@ -18,11 +23,12 @@
   "cancel_pending_on_wind_down": true,
   "carried_position_recovery": "protected_opportunistic_then_forced",
   "enabled": true,
-  "forced_flatten_hours": 2.0,
+  "forced_flatten_hours": 12.0,
   "holiday_policy": "same_as_weekly",
   "max_gap_sigma": 3.0,
   "max_realized_vol_relative_to_baseline": 2.0,
   "max_spread_relative_to_baseline": 2.0,
+  "release_probation_factor": 2,
   "reopen_baseline_bars": 4,
   "reopen_gap_sigma_bars": 4,
   "reopen_min_closed_bars": 1,
@@ -30,6 +36,6 @@
   "reopen_realized_vol_bars": 4,
   "session_source": "venue_symbol_sessions_v1",
   "stability_consecutive_checks": 3,
-  "wind_down_hours": 48.0
+  "wind_down_hours": 24.0
  }
 }

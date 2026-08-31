@@ -63,9 +63,9 @@ class TestMaterialization:
         H4 next-bar fills and live in the rejection ledger; F5 adds
         the bounded probation ablation."""
         assert mat["manifest"]["families"] == {
-            "W0": 2, "W1": 4, "W2a": 45, "W2b": 27, "G2B": 3,
+            "W0": 2, "W1": 10, "W2a": 45, "W2b": 27, "G2B": 3,
             "PROB": 3}
-        assert mat["manifest"]["rejections"] == 12
+        assert mat["manifest"]["rejections"] == 14
 
     def test_w0_is_the_paired_comparison(self, mat):
         control = _cell(mat, "w0_control_disabled")
@@ -107,7 +107,7 @@ class TestMaterialization:
     def test_manifest_is_the_external_binding(self, mat):
         manifest = mat["manifest"]
         index = manifest["cell_index"]
-        assert len(index) == 84
+        assert len(index) == 90
         assert sorted(index) == manifest["trial_ledger"]
         for cell in mat["cells"]:
             assert index[cell["cell_id"]] == cell["digest"]
@@ -525,8 +525,11 @@ class TestC5DerivedConservation:
         rejected = {r["cell_id"]: r["reason"]
                     for r in mat["rejections"]}
         assert any("ff4" in cid for cid in rejected)
-        assert all("infeasible" in why
-                   or "never reaches" in why
+        # F8 adds validator rejections for wd12 x live-extension
+        # pairs (flatten after wind-down begins); every reason is
+        # one of the TYPED mechanical refusals
+        assert all("infeasible" in why or "never reaches" in why
+                   or "forced flatten must occur AFTER" in why
                    for why in rejected.values())
 
 
@@ -1029,7 +1032,8 @@ class TestF4ExecutionLatencyFeasibility:
         assert correction["section4_value_hours"] == 4.0
         assert correction["status"] == \
             "STRUCTURALLY_INELIGIBLE_FOR_H4_NEXT_BAR"
-        assert correction["corrected_eligible_default_hours"] == 8.0
+        assert correction["mechanics_only_hours"] == 8.0
+        assert correction["live_safe_default_hours"] == 12.0
         for cell in mat["cells"]:
             policy = cell["session_exposure_policy"]
             if policy["enabled"]:
@@ -1118,3 +1122,85 @@ class TestF5ExplicitProbation:
                 info_b.get("session_state")
             if ta or tb:
                 break
+
+
+# ================================================================== #
+# F8: the live flatten budget includes failure recovery              #
+# ================================================================== #
+
+class TestF8LiveFlattenBudget:
+
+    def test_live_contract_demands_retry_and_margin(self):
+        from tools.wp4_materializer import LIVE_EXECUTION_CONTRACT
+        assert LIVE_EXECUTION_CONTRACT[
+            "close_retry_budget_bars"] >= 1
+        assert LIVE_EXECUTION_CONTRACT["safety_margin_hours"] > 0.0
+
+    def test_h4_live_verdicts(self):
+        from tools.wp4_materializer import (
+            EXECUTION_CONTRACT, LIVE_EXECUTION_CONTRACT,
+            flatten_deadline_admissible)
+        cases = {4.0: (False, False), 8.0: (True, False),
+                 12.0: (True, True), 16.0: (True, True)}
+        for ff, (mech, live) in cases.items():
+            m, _ = flatten_deadline_admissible(
+                ff, 4.0, contract=EXECUTION_CONTRACT)
+            l, why = flatten_deadline_admissible(
+                ff, 4.0, contract=LIVE_EXECUTION_CONTRACT)
+            assert (m, l) == (mech, live), (ff, m, l)
+        # 8h fails live for the ORDERED reason: no second executable
+        # fill before closure
+        _, why = flatten_deadline_admissible(
+            8.0, 4.0, contract=LIVE_EXECUTION_CONTRACT)
+        assert "retry fills" in why
+
+    def test_f4_verdicts_unchanged_by_the_slack_refactor(self):
+        from tools.wp4_materializer import (EXECUTION_CONTRACT,
+                                            flatten_deadline_admissible)
+        assert flatten_deadline_admissible(
+            8.0, 4.0, contract=EXECUTION_CONTRACT)[0]
+        assert not flatten_deadline_admissible(
+            7.9, 4.0, contract=EXECUTION_CONTRACT)[0]
+        assert not flatten_deadline_admissible(
+            4.0, 4.0, contract=EXECUTION_CONTRACT)[0]
+        assert flatten_deadline_admissible(
+            4.0, 1.0, contract=EXECUTION_CONTRACT)[0]
+
+    def test_enabled_arms_default_to_the_live_value(self, mat):
+        for cell in mat["cells"]:
+            policy = cell["session_exposure_policy"]
+            if policy["enabled"] and cell["family"] != "W1":
+                assert policy["forced_flatten_hours"] == 12.0, \
+                    cell["cell_id"]
+
+    def test_w1_labels_live_safety_and_never_promotes_8h(self, mat):
+        w1 = [c for c in mat["cells"] if c["family"] == "W1"]
+        for cell in w1:
+            ff = cell["session_exposure_policy"][
+                "forced_flatten_hours"]
+            if ff == 8.0:
+                assert cell["live_safe_flatten"] is False
+                assert "MECHANICS ONLY" in cell["live_safety_note"]
+            else:
+                assert cell["live_safe_flatten"] is True
+
+    def test_holiday_shortened_session_fails_closed(self, mat):
+        """The REAL Christmas stretch (Dec-24 16:00 reopen to
+        Dec-25 04:00 close = 12h open) cannot fit the live 12h
+        budget — the helper refuses, exactly the fail-closed the
+        order demands."""
+        from tools.wp4_materializer import (LIVE_EXECUTION_CONTRACT,
+                                            closure_budget_fits)
+        policy = _cell(mat, "w0_overlay_enabled")[
+            "session_exposure_policy"]
+        ok, why = closure_budget_fits(12.0, policy, 4.0,
+                                      contract=LIVE_EXECUTION_CONTRACT)
+        assert not ok and "fail closed" in why
+        ok, _ = closure_budget_fits(120.0, policy, 4.0,
+                                    contract=LIVE_EXECUTION_CONTRACT)
+        assert ok
+
+    def test_infeasible_live_extension_pairs_are_ledgered(self, mat):
+        rejected = {r["cell_id"] for r in mat["rejections"]}
+        assert "w1_wd12_ff12" in rejected
+        assert "w1_wd12_ff16" in rejected

@@ -1,9 +1,8 @@
 {
  "bar_hours": 4.0,
- "cell_id": "w2a_h8_b2_c1",
- "completeness_claim": "NONE \u2014 the spread/gap/volatility thresholds are frozen PROVISIONALLY at section-4 values; W2b calibrates them and W2 is not complete until it does",
- "digest": "d3c5e859789dc73e505dd14328dc90880dd864d6a3c9d7d5f50fdf46fd36e6db",
- "family": "W2a",
+ "cell_id": "prob_factor3",
+ "digest": "cab49de6175f9ef4d7561d50747c2356a3c15cc2892385c8235d2370f02ec1bb",
+ "family": "PROB",
  "identity": {
   "gymfx_branch": "satoshi/trade-reconciliation-20260828",
   "orders": [
@@ -14,8 +13,10 @@
   "plan42": "agent-multi@45c49003 + amendment A1 @ea7533f8",
   "wp3_executor": "lts@a1a6c38"
  },
+ "live_eligible": true,
+ "live_note": "live-capable at the provisional minimum or above",
  "min_open_window_hours": 104.0,
- "role": "provisional_mechanism_screen",
+ "role": "release_probation_ablation",
  "session_exposure_policy": {
   "allow_risk_increase_during_wind_down": false,
   "calendar_identity": "cal-weekly-v1",
@@ -27,17 +28,16 @@
   "max_gap_sigma": 3.0,
   "max_realized_vol_relative_to_baseline": 2.0,
   "max_spread_relative_to_baseline": 2.0,
-  "release_probation_factor": 2,
+  "release_probation_factor": 3,
   "reopen_baseline_bars": 4,
   "reopen_gap_sigma_bars": 4,
-  "reopen_min_closed_bars": 2,
-  "reopen_min_hours": 8.0,
+  "reopen_min_closed_bars": 1,
+  "reopen_min_hours": 4.0,
   "reopen_realized_vol_bars": 4,
   "session_source": "venue_symbol_sessions_v1",
-  "stability_consecutive_checks": 1,
+  "stability_consecutive_checks": 3,
   "wind_down_hours": 36.0
  },
- "thresholds": "provisionally_frozen_at_section4",
  "w1_timing": {
   "economic_execution": "BLOCKED",
   "mechanics_smoke_timing": "section4_defaults_zero_economic_authority",

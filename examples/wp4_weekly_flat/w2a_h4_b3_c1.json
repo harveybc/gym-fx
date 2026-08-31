@@ -2,14 +2,17 @@
  "bar_hours": 4.0,
  "cell_id": "w2a_h4_b3_c1",
  "completeness_claim": "NONE \u2014 the spread/gap/volatility thresholds are frozen PROVISIONALLY at section-4 values; W2b calibrates them and W2 is not complete until it does",
- "digest": "df70dac0460a80dbdfdd379bbb57f5557d48e3434bf7c44abb63057e8748a9ce",
+ "digest": "72a924820a763a423061b7e0d002e5397b5fb6a9b6960717755297aa4cd375af",
  "family": "W2a",
  "identity": {
-  "authority_files": "REFROZEN post F1-F3 (see driver constants)",
-  "f1_f3_order": "agent-multi@4ad4937b",
   "gymfx_branch": "satoshi/trade-reconciliation-20260828",
-  "plan42": "agent-multi@45c49003",
-  "wp3_executor": "lts@83dff62"
+  "orders": [
+   "agent-multi@4ad4937b",
+   "agent-multi@a678fd55",
+   "agent-multi@22218df1"
+  ],
+  "plan42": "agent-multi@45c49003 + amendment A1 @ea7533f8",
+  "wp3_executor": "lts@a1a6c38"
  },
  "min_open_window_hours": 104.0,
  "role": "provisional_mechanism_screen",
@@ -19,11 +22,12 @@
   "cancel_pending_on_wind_down": true,
   "carried_position_recovery": "protected_opportunistic_then_forced",
   "enabled": true,
-  "forced_flatten_hours": 4.0,
+  "forced_flatten_hours": 12.0,
   "holiday_policy": "same_as_weekly",
   "max_gap_sigma": 3.0,
   "max_realized_vol_relative_to_baseline": 2.0,
   "max_spread_relative_to_baseline": 2.0,
+  "release_probation_factor": 2,
   "reopen_baseline_bars": 4,
   "reopen_gap_sigma_bars": 4,
   "reopen_min_closed_bars": 3,

@@ -1,15 +1,18 @@
 {
  "bar_hours": 4.0,
  "cell_id": "w2b_s2.5_g2_v2",
- "digest": "3b80f437afde7ad71c01158aa1810af9b731beb211ca6333743488bd53fb2596",
+ "digest": "49bc1da865f929c0f5feabd32bc0aa9a166214f182d59a85c5744566a4feb7ac",
  "family": "W2b",
  "gated_on": "the frozen W1 timing AND the W2a mechanism screen",
  "identity": {
-  "authority_files": "REFROZEN post F1-F3 (see driver constants)",
-  "f1_f3_order": "agent-multi@4ad4937b",
   "gymfx_branch": "satoshi/trade-reconciliation-20260828",
-  "plan42": "agent-multi@45c49003",
-  "wp3_executor": "lts@83dff62"
+  "orders": [
+   "agent-multi@4ad4937b",
+   "agent-multi@a678fd55",
+   "agent-multi@22218df1"
+  ],
+  "plan42": "agent-multi@45c49003 + amendment A1 @ea7533f8",
+  "wp3_executor": "lts@a1a6c38"
  },
  "min_open_window_hours": 104.0,
  "reopen_counts": "frozen_at_section4_defaults",
@@ -20,11 +23,12 @@
   "cancel_pending_on_wind_down": true,
   "carried_position_recovery": "protected_opportunistic_then_forced",
   "enabled": true,
-  "forced_flatten_hours": 4.0,
+  "forced_flatten_hours": 12.0,
   "holiday_policy": "same_as_weekly",
   "max_gap_sigma": 2.0,
   "max_realized_vol_relative_to_baseline": 2.0,
   "max_spread_relative_to_baseline": 2.5,
+  "release_probation_factor": 2,
   "reopen_baseline_bars": 4,
   "reopen_gap_sigma_bars": 4,
   "reopen_min_closed_bars": 1,
