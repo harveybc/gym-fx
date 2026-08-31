@@ -182,7 +182,14 @@ class TestPermissionsAndSymlinks:
         store.confirm("o-1", reconciliation={"flat_confirmed": True},
                       bar_index=7, episode_identity="ep-A")
         leftovers = sorted(p.name for p in store.root.iterdir())
-        assert leftovers == ["o-1.json", "o-1.json.ack"], leftovers
+        # F3: transition CLAIMS are durable and never unlinked — one
+        # per won transition; no temporary and no legacy .lock
+        claims = [n for n in leftovers if ".claim." in n]
+        assert len(claims) == 2, leftovers
+        assert [n for n in leftovers if ".claim." not in n] == \
+            ["o-1.json", "o-1.json.ack"], leftovers
+        assert not any(".tmp." in n or n.endswith(".lock")
+                       for n in leftovers), leftovers
         assert read_ack(store.root / "o-1.json").decode() == \
             store.read("o-1")[DIGEST_FIELD]
 
@@ -224,11 +231,12 @@ class TestPermissionsAndSymlinks:
             _open(store, "o-9")
         assert not target.exists(), "the symlink target was written"
 
-    def test_a_planted_lock_symlink_is_refused(self, tmp_path):
+    def test_a_planted_claim_symlink_is_refused(self, tmp_path):
         store = _store(tmp_path)
         _open(store)
-        os.symlink(tmp_path / "lock_target",
-                   store.root / "o-1.json.lock")
+        record = store.read("o-1")
+        claim = store._claim_path(store.root / "o-1.json", record)
+        os.symlink(tmp_path / "claim_target", claim)
         with pytest.raises(FlattenObligationError,
                            match="symlinked path refused"):
             store.mark_in_flight("o-1", bar_index=6,
@@ -297,19 +305,16 @@ class TestDurabilityIsNeverAcknowledgedWithoutFsync:
             store.mark_in_flight("o-1", bar_index=6,
                                  episode_identity="ep-A")
         monkeypatch.undo()
-        # the rename may already have made the NEW content visible --
-        # os.replace is immediate -- but the acknowledgement is still
-        # PENDING, so every later read refuses. That is the guarantee:
-        # not that the bytes are unchanged, but that an unacknowledged
-        # write can never be consumed.
-        assert read_ack(store.root / "o-1.json") == ACK_PENDING
+        # F3: the CLAIM's directory fsync fails before any record
+        # write begins, so the record is untouched and still valid;
+        # the crashed claim itself keeps the version unresolved:
+        # a retry of the SAME transition refuses fail-closed.
+        assert store.read("o-1")["state"] == "flatten_requested"
         with pytest.raises(FlattenIntegrityError,
-                           match="never acknowledged"):
-            store.read("o-1")
-        del before
-        outstanding = store.outstanding()
-        assert len(outstanding) == 1
-        assert outstanding[0]["state"] == "integrity_failed"
+                           match="never completed"):
+            store.mark_in_flight("o-1", bar_index=6,
+                                 episode_identity="ep-A")
+        assert read_ack(store.root / "o-1.json") != ACK_PENDING
 
     def test_a_failing_transition_leaves_no_temporary(self, tmp_path,
                                                       monkeypatch):
@@ -328,9 +333,10 @@ class TestDurabilityIsNeverAcknowledgedWithoutFsync:
             f"no temporary may survive: {leftovers}")
         assert not any(name.endswith(".lock")
                        for name in leftovers), leftovers
-        assert read_ack(store.root / "o-1.json") == ACK_PENDING, (
-            "the acknowledgement MUST stay PENDING: it is what stops "
-            "an unacknowledged write from reading as complete")
+        # F3: the failure struck at the claim boundary — the record
+        # was never touched, so it still reads as its valid earlier
+        # state and the crashed claim blocks a silent retry
+        assert store.read("o-1")["state"] == "flatten_requested"
 
 
 # =================================================================== #
@@ -641,14 +647,18 @@ class TestRealProcesses:
         assert set(payload["states"].values()) == {
             "interrupted_unresolved"}, payload
 
-    def test_a_held_lock_blocks_a_competing_transition(self,
-                                                       tmp_path):
+    def test_a_crashed_claim_blocks_a_silent_retry(self,
+                                                   tmp_path):
+        """F3: a claim that exists for the CURRENT record version
+        while the record never advanced means the claim holder
+        crashed mid-transition — fail closed, operator disposes."""
         store = _store(tmp_path, "held")
         _open(store)
-        lock = store.root / "o-1.json.lock"
-        lock.touch(mode=FILE_MODE)
-        with pytest.raises(FlattenObligationError,
-                           match="competing transition holds the lock"):
+        record = store.read("o-1")
+        claim = store._claim_path(store.root / "o-1.json", record)
+        claim.touch(mode=FILE_MODE)
+        with pytest.raises(FlattenIntegrityError,
+                           match="never completed"):
             store.mark_in_flight("o-1", bar_index=6,
                                  episode_identity="ep-A")
         assert store.read("o-1")["state"] == "flatten_requested"

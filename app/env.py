@@ -1542,11 +1542,18 @@ class GymFxEnv(gym.Env):
         if attempt["phase"] == "flatten_requested":
             attempt["phase"] = "flatten_in_flight"
             if attempt.get("obligation_id"):
-                self._flatten_store.mark_in_flight(
-                    attempt["obligation_id"],
-                    bar_index=int(getattr(self.bridge, "bar_index",
-                                          0)),
-                    episode_identity=self._session_episode_identity())
+                from app.flatten_custody import (
+                    FlattenTransitionObserved)
+                try:
+                    self._flatten_store.mark_in_flight(
+                        attempt["obligation_id"],
+                        bar_index=int(getattr(self.bridge,
+                                              "bar_index", 0)),
+                        episode_identity=(
+                            self._session_episode_identity()))
+                except FlattenTransitionObserved:
+                    pass    # F3: the winner already advanced it —
+                            # observed, never overwritten
         try:
             signed = self._session_signed_exposure()
             entries, protective = self._session_order_inventory()
@@ -1571,10 +1578,17 @@ class GymFxEnv(gym.Env):
                 getattr(self.bridge, "bar_index", 0))
             attempt["reconciliation"] = dict(gate)
             if attempt.get("obligation_id"):
-                self._flatten_store.confirm(
-                    attempt["obligation_id"], reconciliation=gate,
-                    bar_index=attempt["confirmed_at_bar"],
-                    episode_identity=self._session_episode_identity())
+                from app.flatten_custody import (
+                    FlattenTransitionObserved)
+                try:
+                    self._flatten_store.confirm(
+                        attempt["obligation_id"],
+                        reconciliation=gate,
+                        bar_index=attempt["confirmed_at_bar"],
+                        episode_identity=(
+                            self._session_episode_identity()))
+                except FlattenTransitionObserved:
+                    pass    # F3: already confirmed by the winner
             # discharging the obligation also lifts any recovery it
             # was responsible for
             self._session_release_recovery(attempt.get(

@@ -340,8 +340,20 @@ class TestCalendarAuthority:
         assert session_state(policy(), now=late, calendar=calendar(),
                              reopen_evidence=fresh_reopen(checks=1)
                              )["state"] == "REOPEN_BLACKOUT"
+        # F2 (order agent-multi@4ad4937b): the declared consecutive
+        # count alone no longer releases — the predeclared probation
+        # doubles the required run, so one qualification pass cannot
+        # authorize an entry
+        from app.session_exposure import RELEASE_PROBATION_FACTOR
+        base = policy()["stability_consecutive_checks"]
         assert session_state(policy(), now=late, calendar=calendar(),
-                             reopen_evidence=fresh_reopen()
+                             reopen_evidence=fresh_reopen(
+                                 checks=base)
+                             )["state"] == "REOPEN_BLACKOUT"
+        assert session_state(policy(), now=late, calendar=calendar(),
+                             reopen_evidence=fresh_reopen(
+                                 checks=base
+                                 * RELEASE_PROBATION_FACTOR)
                              )["state"] == "NORMAL_TRADING"
 
     def test_adapter_hint_cannot_authorize_trading(self):

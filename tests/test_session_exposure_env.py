@@ -368,8 +368,14 @@ class TestG2CausalReopenEvidence:
         exit_at = first_blackout + tail.index("NORMAL_TRADING")
         prior = frames[exit_at - 1]["info"]
         first = frames[exit_at]["info"]
-        assert prior["session_reopen_stability_streak"] < 2
-        assert first["session_reopen_stability_streak"] >= 2
+        # F2: the release requirement is the declared count times
+        # the predeclared probation factor
+        from app.session_exposure import RELEASE_PROBATION_FACTOR
+        requirement = (policy()["stability_consecutive_checks"]
+                       * RELEASE_PROBATION_FACTOR)
+        assert prior["session_reopen_stability_streak"] < requirement
+        assert first["session_reopen_stability_streak"] >= \
+            requirement
         assert first["session_reopen_closed_bars"] >= 2
         assert first["session_time_since_reopen_hours"] >= 8.0
 

@@ -477,26 +477,43 @@ class TestC5DerivedConservation:
         assert cons["pending_entries_at_end"] == 0
         assert run["rows_sha256"] and run["trades_sha256"]
 
-    def test_blackout_precedence_finding_is_frozen(self, mat,
-                                                   window, tape,
-                                                   tmp_path):
-        """AUTHORITY FINDING, frozen as evidence: on the holiday
-        cluster, REOPEN_BLACKOUT takes precedence over WIND_DOWN /
-        FORCED_FLATTEN in the accepted machine, so exposure held
-        through a blackout crosses the next closure with no flatten
-        attempt. The run must therefore read INELIGIBLE with the
-        crossing invariant NAMED — never weakened to pass."""
+    def test_the_blackout_precedence_counterexample_is_dead(
+            self, mat, window, tape, tmp_path):
+        """F1 REGRESSION (order agent-multi@4ad4937b): this exact
+        holiday-cluster run used to cross TWO closures because
+        REOPEN_BLACKOUT outranked the closure duties. Under the
+        corrected precedence contract the same cell on the same
+        window is fully ELIGIBLE: forced flatten fires from within
+        the lingering blackout and NO exposure crosses any governed
+        closure."""
+        run = drv.recorded_run(_cell(mat, "w1_wd48_ff8"),
+                               mat["manifest"],
+                               mat["manifest"]["digest"], tape,
+                               window, tmp_dir=tmp_path,
+                               repo_root=REPO_ROOT)
+        cons = run["conservation"]
+        assert cons["exposure_across_closure"] == []
+        assert cons["verdict"] == "ELIGIBLE", cons[
+            "failed_invariants"]
+
+    def test_one_bar_flatten_windows_still_refuse_truthfully(
+            self, mat, window, tape, tmp_path):
+        """STRUCTURAL FACT, reported not weakened: the section-4
+        default forced_flatten_hours=4 is ONE 4h bar, and this
+        simulator fills at next-bar open, so the deadline close
+        lands after the gap. The run raises the typed
+        FORCED_FLATTEN_FAILED incident and conservation refuses
+        with the crossing NAMED."""
         run = drv.recorded_run(_cell(mat, "w0_overlay_enabled"),
                                mat["manifest"],
                                mat["manifest"]["digest"], tape,
                                window, tmp_dir=tmp_path,
                                repo_root=REPO_ROOT)
         cons = run["conservation"]
-        assert cons["verdict"] == "INELIGIBLE"
         assert "no_exposure_across_closure" in \
             cons["failed_invariants"]
-        assert cons["exposure_across_closure"], (
-            "the crossing rows must be published")
+        assert any("FORCED_FLATTEN_FAILED" in i
+                   for i in cons["transient_incidents"])
 
     def test_a_suppressed_reward_would_be_detected(self):
         rows = [{"index": 0, "reward": 0.0, "pnl": 5.0}]

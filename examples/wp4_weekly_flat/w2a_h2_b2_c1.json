@@ -2,18 +2,14 @@
  "bar_hours": 4.0,
  "cell_id": "w2a_h2_b2_c1",
  "completeness_claim": "NONE \u2014 the spread/gap/volatility thresholds are frozen PROVISIONALLY at section-4 values; W2b calibrates them and W2 is not complete until it does",
- "digest": "c0dec1044e2f3979bb6fb755c6cd640983e9b47f50f1e6d56cc615ace9b47c59",
+ "digest": "ee510e2860eea536f65c9c607cefdca91b498be068a508fc44afbdddf142a0d0",
  "family": "W2a",
  "identity": {
-  "authority_code_identity": "25dec77ad836f63212cd496a3b312e5aea0f2be9fa1a58f59225644c574b5da5",
-  "correction_orders": [
-   "agent-multi@051ef265",
-   "agent-multi@c4b0ecf9"
-  ],
-  "gymfx_commit": "2c60b84",
+  "authority_files": "REFROZEN post F1-F3 (see driver constants)",
+  "f1_f3_order": "agent-multi@4ad4937b",
+  "gymfx_branch": "satoshi/trade-reconciliation-20260828",
   "plan42": "agent-multi@45c49003",
-  "wp3_executor": "lts@83dff62",
-  "wp40_freeze": "agent-multi@ec0fd35b"
+  "wp3_executor": "lts@83dff62"
  },
  "min_open_window_hours": 104.0,
  "role": "provisional_mechanism_screen",

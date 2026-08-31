@@ -63,21 +63,24 @@ from tools.wp4_materializer import (canonical_bytes, sha256_hex,
 # C1: complete executable identity                                   #
 # ------------------------------------------------------------------ #
 
+# F1-F3 (order agent-multi@4ad4937b) corrected three
+# of these files; the freeze below is the CORRECTED
+# identity set, superseding the WP4.0 digests
 # every WP4.0-frozen gym-fx file this driver CONSUMES (all six are
 # imported through app.env / app.session_exposure)
 FROZEN_AUTHORITY_SHA256 = {
     "app/session_exposure.py":
-        "0a33065805b3304372a3b58a018506214aecfc3879d5a556b029e30b8"
-        "27132e2",
+        "284f2c829d12b6ddabf5b0cdf85be5fd1d8fb94198c7d8a8db745064d"
+        "e5ef660",
     "app/flatten_custody.py":
-        "689a3e5c54692bf3273ea269fb94dd46f0bd7f5f9506e2d81e0d237bf"
-        "f5c7012",
+        "4143060d46d7d2fa0987f0591ef0f6205b3d1592a9de91174b084b8b3"
+        "cb397ab",
     "app/oanda_calendar.py":
         "f433d5a0ddcabbed6ba7bcaf26c101012b575524971b51372551a42cc"
         "a332e11",
     "app/env.py":
-        "994c83888a1831b9164c0dab2a408828d7463ddcf85b05c97c56ed959"
-        "10c70b1",
+        "247cf9e934ebab9b12409b7188f4655dc5d83932cb93c6b26a9395595"
+        "3c7e1f2",
     "app/direct_evidence.py":
         "afdcb3a57393dd6a0552a253a27e711a7b5df3c222682dc6f60d610e6"
         "bb66ec6",

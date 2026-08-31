@@ -1,18 +1,14 @@
 {
  "bar_hours": 4.0,
  "cell_id": "w1_wd48_ff4",
- "digest": "512a46492c98f176f7ad0414c310d23ec64439724e6a3b466ee866f58ec88953",
+ "digest": "c106bace960e6d76cc1004699eb9445f7bff56167f446324c0bd993ccc2b52dd",
  "family": "W1",
  "identity": {
-  "authority_code_identity": "25dec77ad836f63212cd496a3b312e5aea0f2be9fa1a58f59225644c574b5da5",
-  "correction_orders": [
-   "agent-multi@051ef265",
-   "agent-multi@c4b0ecf9"
-  ],
-  "gymfx_commit": "2c60b84",
+  "authority_files": "REFROZEN post F1-F3 (see driver constants)",
+  "f1_f3_order": "agent-multi@4ad4937b",
+  "gymfx_branch": "satoshi/trade-reconciliation-20260828",
   "plan42": "agent-multi@45c49003",
-  "wp3_executor": "lts@83dff62",
-  "wp40_freeze": "agent-multi@ec0fd35b"
+  "wp3_executor": "lts@83dff62"
  },
  "min_open_window_hours": 104.0,
  "reopen_policy": "frozen_at_section4_defaults",

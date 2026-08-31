@@ -132,6 +132,14 @@ def require_utc(name: str, value: Any) -> datetime:
 # C4/§4: typed policy contract                                      #
 # ---------------------------------------------------------------- #
 
+# F2 (order agent-multi@4ad4937b): the PREDECLARED release
+# probation. The blackout release sequence is the policy's declared
+# consecutive stability count for qualification plus the same count
+# again as probation — all consecutive closed bars, so one transient
+# pass can never authorize an entry. Declared here as a constant,
+# never tuned from a reproduced counterexample.
+RELEASE_PROBATION_FACTOR = 2
+
 REQUIRED_KEYS = (
     "enabled", "session_source", "wind_down_hours",
     "forced_flatten_hours", "cancel_pending_on_wind_down",
@@ -649,39 +657,61 @@ def session_state(policy: dict, *, now: Any,
     last_reopen = calendar.most_recent_reopen(now)
     since_reopen = (None if last_reopen is None else
                     (now - last_reopen).total_seconds() / 3600.0)
+    # ---------------------------------------------------------- #
+    # F1 (order agent-multi@4ad4937b): ONE explicit precedence      #
+    # contract. Closure safety OUTRANKS a lingering reopen          #
+    # blackout:                                                     #
+    #   1. EXPECTED_MARKET_CLOSED during a known closure;           #
+    #   2. FORCED_FLATTEN, then WIND_DOWN, before the next closure  #
+    #      — even when a blackout inherited from the prior reopen   #
+    #      is still active, because cancel/close/flatten duties may #
+    #      never be suppressed by an entry restriction;             #
+    #   3. REOPEN_BLACKOUT blocks risk-increasing entries only;     #
+    #   4. NORMAL_TRADING only when nothing above applies.          #
+    # A blackout that overlaps wind-down/flatten is REPORTED on the #
+    # state (reopen_blackout_also_active) so entry masking stays    #
+    # the union of both restrictions.                               #
+    # ---------------------------------------------------------- #
+    blackout_pending = False
+    blackout_fields: dict[str, Any] = {}
     if last_reopen is not None:
         if reopen_evidence is None:
             # missing reopen evidence after a KNOWN closure fails
-            # closed: no entries until direct evidence exists
-            return {**base, "state": "REOPEN_BLACKOUT",
-                    "evidence_failed_closed": True,
-                    "time_to_next_close_hours": (
-                        None if hours_to_close is None
-                        else round(hours_to_close, 6)),
-                    "time_since_reopen_hours": round(since_reopen, 6),
-                    "reopen_evidence_missing": True,
-                    "wind_down": False, "forced_flatten": False}
-        hint = reopen_evidence.hint_time_since_reopen_hours
-        hint_disagrees = (hint is not None
-                          and abs(hint - since_reopen) > 1.0)
-        blackout = (
-            since_reopen < policy["reopen_min_hours"]
-            or reopen_evidence.closed_bars_since_reopen
-            < policy["reopen_min_closed_bars"]
-            or reopen_evidence.stability_checks_passed
-            < policy["stability_consecutive_checks"])
-        if blackout:
-            return {**base, "state": "REOPEN_BLACKOUT",
-                    "time_to_next_close_hours": (
-                        None if hours_to_close is None
-                        else round(hours_to_close, 6)),
-                    "time_since_reopen_hours": round(since_reopen, 6),
-                    "closed_bars_since_reopen":
-                        reopen_evidence.closed_bars_since_reopen,
-                    "stability_checks_passed":
-                        reopen_evidence.stability_checks_passed,
-                    "adapter_hint_disagrees": hint_disagrees,
-                    "wind_down": False, "forced_flatten": False}
+            # closed for entries — but it cannot suppress the
+            # closure duties below
+            blackout_pending = True
+            blackout_fields = {"evidence_failed_closed": True,
+                               "reopen_evidence_missing": True}
+        else:
+            hint = reopen_evidence.hint_time_since_reopen_hours
+            hint_disagrees = (hint is not None
+                              and abs(hint - since_reopen) > 1.0)
+            # F2: the release latch. Exit requires every predicate
+            # AND a consecutive stability run covering the DECLARED
+            # release sequence: stability_consecutive_checks bars of
+            # qualification plus the same again as probation, all
+            # consecutive, committed only at closed-bar boundaries
+            # (the evidence counts only fully closed bars). A single
+            # transient pass can never authorize an entry, and a
+            # failing check resets the whole sequence. The factor is
+            # PREDECLARED here, not tuned from any counterexample.
+            release_requirement = (policy["stability_consecutive_checks"]
+                                   * RELEASE_PROBATION_FACTOR)
+            blackout_pending = (
+                since_reopen < policy["reopen_min_hours"]
+                or reopen_evidence.closed_bars_since_reopen
+                < policy["reopen_min_closed_bars"]
+                or reopen_evidence.stability_checks_passed
+                < release_requirement)
+            blackout_fields = {
+                "closed_bars_since_reopen":
+                    reopen_evidence.closed_bars_since_reopen,
+                "stability_checks_passed":
+                    reopen_evidence.stability_checks_passed,
+                "release_requirement": release_requirement,
+                "release_probation_factor":
+                    RELEASE_PROBATION_FACTOR,
+                "adapter_hint_disagrees": hint_disagrees}
     if hours_to_close is not None:
         if hours_to_close <= policy["forced_flatten_hours"]:
             return {**base, "state": "FORCED_FLATTEN",
@@ -690,6 +720,7 @@ def session_state(policy: dict, *, now: Any,
                     "time_since_reopen_hours": (
                         None if since_reopen is None
                         else round(since_reopen, 6)),
+                    "reopen_blackout_also_active": blackout_pending,
                     "wind_down": True, "forced_flatten": True}
         if hours_to_close <= policy["wind_down_hours"]:
             return {**base, "state": "WIND_DOWN",
@@ -698,7 +729,18 @@ def session_state(policy: dict, *, now: Any,
                     "time_since_reopen_hours": (
                         None if since_reopen is None
                         else round(since_reopen, 6)),
+                    "reopen_blackout_also_active": blackout_pending,
                     "wind_down": True, "forced_flatten": False}
+    if blackout_pending:
+        return {**base, "state": "REOPEN_BLACKOUT",
+                "time_to_next_close_hours": (
+                    None if hours_to_close is None
+                    else round(hours_to_close, 6)),
+                "time_since_reopen_hours": (
+                    None if since_reopen is None
+                    else round(since_reopen, 6)),
+                **blackout_fields,
+                "wind_down": False, "forced_flatten": False}
     return {**base, "state": "NORMAL_TRADING",
             "time_to_next_close_hours": (
                 None if hours_to_close is None

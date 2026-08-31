@@ -61,6 +61,16 @@ class FlattenIntegrityError(FlattenObligationError):
     """A record does not match its own digest — typed refusal."""
 
 
+class FlattenTransitionObserved(FlattenObligationError):
+    """F3: the transition was already WON by another process. The
+    caller OBSERVED the winner; it did not win, and nothing was
+    overwritten. The winner's record rides on the exception."""
+
+    def __init__(self, message: str, record: dict):
+        super().__init__(message)
+        self.record = record
+
+
 class FlattenDispositionRequired(FlattenObligationError):
     """Several open obligations: only an operator may dispose."""
 
@@ -276,6 +286,10 @@ class FlattenObligationStore:
         record = {
             "obligation_id": obligation_id,
             "state": "flatten_requested",
+            # F3: a fresh generation binds every transition claim to
+            # THIS incarnation of the obligation — an ABA record
+            # cannot inherit another incarnation's claims
+            "generation": os.urandom(16).hex(),
             **values,
             "checkpoint_identity": checkpoint_identity,
             "signed_exposure_at_request": float(signed_exposure),
@@ -439,60 +453,99 @@ class FlattenObligationStore:
         return open_records[0]
 
     # -- internals --------------------------------------------------
+    def _claim_path(self, path: Path, record: dict) -> Path:
+        """F3: the claim is keyed by the DIGEST of the exact record
+        version being transitioned (which covers the generation), so
+        it is a durable compare-and-swap token: one winner per
+        version, never unlinked, useless against any other version
+        or incarnation."""
+        return path.with_suffix(
+            f".claim.{record[DIGEST_FIELD][:32]}")
+
     def _transition(self, obligation_id: str, *, expected: tuple,
                     episode_identity: str, changes: dict,
                     require_same_episode: bool = False) -> dict:
+        """F3 (order agent-multi@4ad4937b): the COMPLETE
+        read/verify/expected-state/write/ack transaction is
+        serialized by one durable generation-bound claim. Exactly
+        one process wins a given transition; every loser gets a
+        TYPED refusal carrying the winner (FlattenTransitionObserved)
+        or a fail-closed integrity refusal — never a silent success
+        and never an overwrite. Claims are never unlinked."""
         if not isinstance(episode_identity, str) or \
                 not episode_identity.strip():
             raise FlattenObligationError(
                 f"episode_identity must be a nonempty string, got "
                 f"{episode_identity!r}")
         path = self._path(obligation_id)
-        lock = self._lock_path(path)
-        _refuse_symlink(lock, "lock")
-        try:
-            lock_fd = os.open(lock, os.O_WRONLY | os.O_CREAT |
-                              os.O_EXCL, FILE_MODE)
-        except FileExistsError as exc:
+        record = self.read(obligation_id)
+        if record["state"] in TERMINAL_STATES:
             raise FlattenObligationError(
-                f"{obligation_id}: a competing transition holds the "
-                "lock — the winner is preserved, never overwritten") \
-                from exc
+                f"{obligation_id}: already terminal in state "
+                f"{record['state']!r} — a terminal obligation is "
+                "immutable")
+        if changes.get("state") == record["state"]:
+            raise FlattenTransitionObserved(
+                f"{obligation_id}: already in state "
+                f"{record['state']!r} — the transition was won by "
+                "another process and is observed, not won again",
+                record)
+        if record["state"] not in expected:
+            raise FlattenObligationError(
+                f"{obligation_id}: expected one of {list(expected)}"
+                f" but found {record['state']!r}")
+        if require_same_episode and \
+                record["episode_identity"] != episode_identity:
+            raise FlattenObligationError(
+                f"{obligation_id}: opened by episode "
+                f"{record['episode_identity']!r} and cannot be "
+                f"advanced by episode {episode_identity!r} — a "
+                "different account state never observed the "
+                "exposure this obligation names")
+        claim = self._claim_path(path, record)
+        _refuse_symlink(claim, "transition claim")
         try:
-            os.write(lock_fd, str(os.getpid()).encode())
-            os.fchmod(lock_fd, FILE_MODE)
-            os.fsync(lock_fd)
-        finally:
-            os.close(lock_fd)
-        try:
-            # expected state and integrity re-verified UNDER the lock
-            record = self.read(obligation_id)
-            if record["state"] in TERMINAL_STATES:
-                raise FlattenObligationError(
-                    f"{obligation_id}: already terminal in state "
-                    f"{record['state']!r} — a terminal obligation is "
-                    "immutable")
-            if record["state"] not in expected:
-                raise FlattenObligationError(
-                    f"{obligation_id}: expected one of {list(expected)}"
-                    f" but found {record['state']!r}")
-            if require_same_episode and \
-                    record["episode_identity"] != episode_identity:
-                raise FlattenObligationError(
-                    f"{obligation_id}: opened by episode "
-                    f"{record['episode_identity']!r} and cannot be "
-                    f"advanced by episode {episode_identity!r} — a "
-                    "different account state never observed the "
-                    "exposure this obligation names")
-            if changes.get("state") == record["state"]:
-                return record
-            payload = {**record, **changes,
-                       "transitioned_by_episode": episode_identity}
-            payload[DIGEST_FIELD] = _digest(payload)
-            _durable_write(path, payload, exclusive=False)
-            return payload
-        finally:
+            fd = os.open(claim, os.O_WRONLY | os.O_CREAT |
+                         os.O_EXCL | os.O_NOFOLLOW, FILE_MODE)
+        except FileExistsError:
+            # a claim for THIS record version already exists: either
+            # the winner has finished (state advanced -> observed) or
+            # it is mid-flight/crashed (state unchanged -> unresolved)
             try:
-                os.unlink(lock)
-            except FileNotFoundError:
-                pass
+                current = self.read(obligation_id)
+            except FlattenObligationError as exc:
+                raise FlattenIntegrityError(
+                    f"{obligation_id}: a transition claim exists and "
+                    f"the record is unreadable ({exc}) — unresolved, "
+                    "an operator disposes") from exc
+            if current[DIGEST_FIELD] != record[DIGEST_FIELD]:
+                raise FlattenTransitionObserved(
+                    f"{obligation_id}: the transition on this "
+                    f"version was won by another process (now "
+                    f"{current['state']!r}) — observed, not won",
+                    current)
+            raise FlattenIntegrityError(
+                f"{obligation_id}: a transition claim exists for "
+                "this exact record version but the transition never "
+                "completed — the claim holder crashed or is "
+                "mid-flight; unresolved, an operator disposes")
+        try:
+            os.write(fd, f"{os.getpid()}:{episode_identity}".encode())
+            os.fchmod(fd, FILE_MODE)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        _fsync_dir(path.parent)
+        # the claim is DURABLE and this process owns this version's
+        # transition exclusively: re-verify under the claim, write.
+        current = self.read(obligation_id)
+        if current[DIGEST_FIELD] != record[DIGEST_FIELD]:
+            raise FlattenIntegrityError(
+                f"{obligation_id}: the record changed under a "
+                "freshly won claim — refused, an operator disposes")
+        payload = {**current, **changes,
+                   "transitioned_by_episode": episode_identity,
+                   "transition_claim": claim.name}
+        payload[DIGEST_FIELD] = _digest(payload)
+        _durable_write(path, payload, exclusive=False)
+        return payload
