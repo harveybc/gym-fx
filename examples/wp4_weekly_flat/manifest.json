@@ -1,0 +1,26 @@
+{
+ "bar_hours": 4.0,
+ "cells": 63,
+ "digest": "8fb94de9b69808927612c4566b90b6c9640e0a95c3511c80027182f24dd1bab1",
+ "families": {
+  "W0": 2,
+  "W1": 16,
+  "W2": 45
+ },
+ "g2_baseline_bars_frozen_not_in_plan_s4": {
+  "reopen_baseline_bars": 4,
+  "reopen_gap_sigma_bars": 4,
+  "reopen_realized_vol_bars": 4
+ },
+ "identity": {
+  "authority_code_identity": "25dec77ad836f63212cd496a3b312e5aea0f2be9fa1a58f59225644c574b5da5",
+  "gymfx_commit": "2c60b84",
+  "plan42": "agent-multi@45c49003",
+  "wp3_executor": "lts@83dff62",
+  "wp40_freeze": "agent-multi@ec0fd35b"
+ },
+ "min_open_window_hours": 104.0,
+ "plan42_sha256": "26cfe85b15acbf286be8560669217f6ee5a6cf58311c161f2f48d5eb431bef2d",
+ "rejections": 0,
+ "schema": "gymfx.wp4.materialization.v1"
+}

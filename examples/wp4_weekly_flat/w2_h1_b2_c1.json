@@ -1,0 +1,41 @@
+{
+ "bar_hours": 4.0,
+ "cell_id": "w2_h1_b2_c1",
+ "digest": "404165b459127eb80abc93cdb5c01eb55a0e86ed1747642cb70a85d00e8fdba4",
+ "family": "W2",
+ "identity": {
+  "authority_code_identity": "25dec77ad836f63212cd496a3b312e5aea0f2be9fa1a58f59225644c574b5da5",
+  "gymfx_commit": "2c60b84",
+  "plan42": "agent-multi@45c49003",
+  "wp3_executor": "lts@83dff62",
+  "wp40_freeze": "agent-multi@ec0fd35b"
+ },
+ "min_open_window_hours": 104.0,
+ "session_exposure_policy": {
+  "allow_risk_increase_during_wind_down": false,
+  "calendar_identity": "cal-weekly-v1",
+  "cancel_pending_on_wind_down": true,
+  "carried_position_recovery": "protected_opportunistic_then_forced",
+  "enabled": true,
+  "forced_flatten_hours": 4.0,
+  "holiday_policy": "same_as_weekly",
+  "max_gap_sigma": 3.0,
+  "max_realized_vol_relative_to_baseline": 2.0,
+  "max_spread_relative_to_baseline": 2.0,
+  "reopen_baseline_bars": 4,
+  "reopen_gap_sigma_bars": 4,
+  "reopen_min_closed_bars": 2,
+  "reopen_min_hours": 1.0,
+  "reopen_realized_vol_bars": 4,
+  "session_source": "venue_symbol_sessions_v1",
+  "stability_consecutive_checks": 1,
+  "wind_down_hours": 36.0
+ },
+ "thresholds": "frozen_at_section4_defaults",
+ "w1_timing": {
+  "economic_execution": "BLOCKED",
+  "mechanics_smoke_timing": "section4_defaults_zero_economic_authority",
+  "rule": "W2 timing must be a W1 selection frozen from fit/calibration evidence under a predeclared rule; no such selection exists",
+  "status": "pending_w1_selection"
+ }
+}

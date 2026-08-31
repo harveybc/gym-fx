@@ -1,0 +1,37 @@
+{
+ "bar_hours": 4.0,
+ "cell_id": "w0_control_disabled",
+ "digest": "b1868b591167ee29e44bf4599976795cf9c4b6ce545729a1783c68c34fed5d8d",
+ "family": "W0",
+ "identity": {
+  "authority_code_identity": "25dec77ad836f63212cd496a3b312e5aea0f2be9fa1a58f59225644c574b5da5",
+  "gymfx_commit": "2c60b84",
+  "plan42": "agent-multi@45c49003",
+  "wp3_executor": "lts@83dff62",
+  "wp40_freeze": "agent-multi@ec0fd35b"
+ },
+ "live_deployable": false,
+ "min_open_window_hours": 104.0,
+ "note": "diagnostic only; owner policy requires flat weekends, so this arm can never deploy live",
+ "role": "diagnostic_control",
+ "session_exposure_policy": {
+  "allow_risk_increase_during_wind_down": false,
+  "calendar_identity": "cal-weekly-v1",
+  "cancel_pending_on_wind_down": true,
+  "carried_position_recovery": "protected_opportunistic_then_forced",
+  "enabled": false,
+  "forced_flatten_hours": 4.0,
+  "holiday_policy": "same_as_weekly",
+  "max_gap_sigma": 3.0,
+  "max_realized_vol_relative_to_baseline": 2.0,
+  "max_spread_relative_to_baseline": 2.0,
+  "reopen_baseline_bars": 4,
+  "reopen_gap_sigma_bars": 4,
+  "reopen_min_closed_bars": 1,
+  "reopen_min_hours": 4.0,
+  "reopen_realized_vol_bars": 4,
+  "session_source": "venue_symbol_sessions_v1",
+  "stability_consecutive_checks": 3,
+  "wind_down_hours": 36.0
+ }
+}
