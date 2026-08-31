@@ -2,11 +2,14 @@
  "bar_hours": 4.0,
  "cell_id": "w2a_h8_b1_c3",
  "completeness_claim": "NONE \u2014 the spread/gap/volatility thresholds are frozen PROVISIONALLY at section-4 values; W2b calibrates them and W2 is not complete until it does",
- "digest": "f2aa11b9fd2933b60de4a10b1a5082839323134e71a2d0fa61e8670f9032fa0c",
+ "digest": "debbd169bb8513c5a6a015d9849c82d44643f49b9ed250eeadaab07947cf51ba",
  "family": "W2a",
  "identity": {
   "authority_code_identity": "25dec77ad836f63212cd496a3b312e5aea0f2be9fa1a58f59225644c574b5da5",
-  "correction_order": "agent-multi@051ef265",
+  "correction_orders": [
+   "agent-multi@051ef265",
+   "agent-multi@c4b0ecf9"
+  ],
   "gymfx_commit": "2c60b84",
   "plan42": "agent-multi@45c49003",
   "wp3_executor": "lts@83dff62",

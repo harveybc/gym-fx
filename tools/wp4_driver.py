@@ -176,19 +176,27 @@ def action_tape(seed: int, length: int) -> dict:
     pair/family receives this identical tape for a given seed; the
     tape digest is recorded into each run so drift is checkable."""
     rng = np.random.default_rng(int(seed))
+    # BLOCK-directional: positions are held for stretches of bars,
+    # as real policies do, so protective brackets exist while the
+    # exposure does and the mechanics are not dominated by
+    # fill-boundary artefacts of bar-by-bar reversals.
     actions = []
-    for index in range(int(length)):
-        roll = rng.random()
-        if roll < 0.15:
-            actions.append(0.0)            # hold
-        elif roll < 0.60:
-            actions.append(1.0)            # long pressure
-        elif roll < 0.90:
-            actions.append(-1.0)           # short pressure
-        else:
-            actions.append(float(rng.uniform(-1.0, 1.0)))
-    tape = {"schema": "gymfx.wp4.action_tape.v1", "seed": int(seed),
-            "length": int(length), "actions": actions}
+    while len(actions) < int(length):
+        direction = float(rng.choice((1.0, -1.0, 0.0),
+                                     p=(0.45, 0.35, 0.20)))
+        block = int(rng.integers(5, 10))
+        actions.extend([direction] * block)
+    actions = actions[:int(length)]
+    # C9: the tape ends with an explicit FLATTEN phase (exact 0.0
+    # maps to model-requested close under the target-exposure
+    # contract), so an eligible completed mechanics run terminates
+    # FLAT instead of leaving unresolved exposure.
+    tail = min(8, max(1, int(length) // 4))
+    for i in range(tail):
+        actions[-(i + 1)] = 0.0
+    tape = {"schema": "gymfx.wp4.action_tape.v2", "seed": int(seed),
+            "length": int(length), "flatten_tail": tail,
+            "actions": actions}
     tape["digest"] = sha256_hex(canonical_bytes(tape))
     return tape
 
@@ -197,17 +205,59 @@ def action_tape(seed: int, length: int) -> dict:
 # C3: hashed historical fixture                                      #
 # ------------------------------------------------------------------ #
 
+# C11: zero topology — the public identity of the source is LOGICAL.
+# The concrete path resolves from the WP4_DATA_ROOT environment
+# variable at run time; absence or digest mismatch fails closed and
+# no path ever enters public evidence.
 HISTORICAL_SOURCE = {
-    "path": ("/home/harveybc/Documents/GitHub/financial-data/"
-             "market_data/forex/g10/eurusd/4h.parquet"),
+    "logical_id": ("financial_data_lake:market_data/forex/g10/"
+                   "eurusd/4h"),
+    "relative_path": "market_data/forex/g10/eurusd/4h.parquet",
     "sha256": ("359bd825708dd6906ccd0b2359e7f8dc7313fdcecf09629ee14"
                "e609ba6ecbd25"),
-    "role": ("historical market bars — HistData EURUSD, resampled "
-             "to 4h in the financial-data lake; read-only source "
-             "of truth for timestamps and prices"),
+    # C12: this fixture is a GENERIC GAP MECHANICS fixture ONLY. It
+    # is not MT5 ETHUSD session authority and may not calibrate,
+    # validate or stand in for venue session/holiday behaviour,
+    # spreads, gaps, volatility, costs or economic endpoints.
+    "role": "generic_gap_mechanics_fixture_only",
+    "not_authoritative_for": (
+        "MT5 ETHUSD sessions, holidays, spreads, gaps, volatility, "
+        "costs, economic endpoints"),
 }
+
+# C12: what the ETH-first ECONOMIC experiment requires before any
+# weekly-flat economic calibration may run. Until every binding
+# exists, economic calibration is VENUE_SESSION_HISTORY_UNAVAILABLE.
+ECONOMIC_DATA_BINDING = {
+    "status": "VENUE_SESSION_HISTORY_UNAVAILABLE",
+    "required": (
+        "ETH H4 market bars from the accepted experiment data "
+        "contract",
+        "historical-time MT5 ETHUSD session/calendar evidence or a "
+        "reviewed operator calendar valid at each origin",
+        "venue-specific spread/cost evidence and symbol identity"),
+    "rule": "an authoritative calendar is NEVER inferred from "
+            "missing bars; the mechanically derived fixture "
+            "intervals are mechanics instrumentation only",
+}
+
+
+def resolve_source_path() -> Path:
+    import os
+    root = os.environ.get("WP4_DATA_ROOT")
+    if not root:
+        raise Wp4IdentityError(
+            "WP4_DATA_ROOT is not set — the historical source "
+            "cannot be resolved and evidence is not fabricated in "
+            "its absence")
+    return Path(root) / HISTORICAL_SOURCE["relative_path"]
 WINDOW_START = "2023-12-12 00:00:00"
 WINDOW_END = "2024-01-10 00:00:00"
+# plain consecutive weekends, no holiday cluster — used to
+# demonstrate genuine eligibility where the blackout-
+# precedence pathology of short holiday windows is absent
+PLAIN_WINDOW_START = "2024-01-08 00:00:00"
+PLAIN_WINDOW_END = "2024-01-24 00:00:00"
 INSTRUMENTATION = {
     "SPREAD": ("constant 0.0002 — NOT historical: the source "
                "carries no spread; declared instrumentation for "
@@ -218,15 +268,18 @@ INSTRUMENTATION = {
 
 
 def load_historical_window(tmp_dir: Path, *,
-                           bar_hours: float = 4.0) -> dict:
+                           bar_hours: float = 4.0,
+                           start: str = None,
+                           end: str = None) -> dict:
     """Slice the bounded window from the hashed historical source,
     PRESERVING the real missing intervals, derive the closure
     intervals mechanically from the observed gaps, and classify
     weekend versus holiday/exception closures."""
-    source = Path(HISTORICAL_SOURCE["path"])
+    source = resolve_source_path()
     if not source.is_file():
         raise Wp4IdentityError(
-            f"historical source missing: {source} — evidence is "
+            f"historical source missing under WP4_DATA_ROOT "
+            f"({HISTORICAL_SOURCE['logical_id']}) — evidence is "
             "not fabricated in its absence")
     actual = hashlib.sha256(source.read_bytes()).hexdigest()
     if actual != HISTORICAL_SOURCE["sha256"]:
@@ -235,8 +288,8 @@ def load_historical_window(tmp_dir: Path, *,
             "match the published provenance — refused")
     frame = pd.read_parquet(source)
     ts = pd.to_datetime(frame["datetime"], utc=True)
-    mask = (ts >= pd.Timestamp(WINDOW_START, tz="UTC")) & \
-           (ts <= pd.Timestamp(WINDOW_END, tz="UTC"))
+    mask = (ts >= pd.Timestamp(start or WINDOW_START, tz="UTC")) & \
+           (ts <= pd.Timestamp(end or WINDOW_END, tz="UTC"))
     window = frame.loc[mask].reset_index(drop=True)
     stamps = pd.to_datetime(window["datetime"], utc=True)
     bar = pd.Timedelta(hours=bar_hours)
@@ -273,7 +326,11 @@ def load_historical_window(tmp_dir: Path, *,
     csv = Path(tmp_dir) / "wp4_historical_window.csv"
     fixture.to_csv(csv, index=False)
     meta = {
-        "source": HISTORICAL_SOURCE,
+        # public identity is logical only — no filesystem topology
+        "source": {k: HISTORICAL_SOURCE[k] for k in
+                   ("logical_id", "sha256", "role",
+                    "not_authoritative_for")},
+        "economic_data_binding": ECONOMIC_DATA_BINDING,
         "instrumentation_channels": INSTRUMENTATION,
         "window": {"start": str(stamps.iloc[0]),
                    "end": str(stamps.iloc[-1]), "bars": n},
@@ -361,6 +418,8 @@ def build_env(cell: dict, window: dict, *, tmp_dir: Path,
         "env_mode": "training", "commission": 0.0, "leverage": 1.0,
         "action_space_mode": "continuous",
         "continuous_action_threshold": 0.0,
+        "continuous_action_contract":
+            "target_exposure_hysteresis_v2",
         "execution_envelope": {
             "envelope_mode": "fixed_fraction",
             "sl_fraction": 0.50, "tp_fraction": 0.50,
@@ -396,6 +455,21 @@ def _obs_digest(obs, *, shared_only: bool) -> str:
     return hashlib.sha256(b"".join(parts)).hexdigest()
 
 
+def _decision_stamp(env, info) -> str:
+    """The venue timestamp of the DECISION bar. The session block
+    publishes its own decision index; the post-step bridge index is
+    one bar ahead and would misalign every closure analysis."""
+    index = info.get("session_decision_bar_index")
+    if index is None:
+        index = max(0, int(getattr(env.bridge, "bar_index", 1)) - 1)
+    index = min(int(index), len(env.dataframe) - 1)
+    frame = env.dataframe
+    column = env.config.get("date_column")
+    if column and column in frame.columns:
+        return str(frame.iloc[index][column])
+    return str(frame.index[index])
+
+
 def recorded_run(cell: dict, manifest: dict,
                  expected_manifest_digest: str, tape: dict,
                  window: dict, *, tmp_dir: Path, repo_root: Path,
@@ -424,6 +498,23 @@ def recorded_run(cell: dict, manifest: dict,
             "signed_exposure": info.get("session_signed_exposure"),
             "cancel_refs": list(
                 info.get("session_cancel_requested_refs") or ()),
+            "entry_orders": info.get("session_entry_orders"),
+            "protective_orders": info.get(
+                "session_protective_orders"),
+            "cancellation_incident": info.get(
+                "session_cancellation_incident"),
+            "flatten_incident": info.get("session_flatten_incident"),
+            "recovery_active": bool(info.get(
+                "session_recovery_active")),
+            "decision_bar_index": info.get(
+                "session_decision_bar_index"),
+            "bar_stamp": _decision_stamp(env, info),
+            # POST-fill truth: the broker position after this step's
+            # bar advanced — the pre-dispatch snapshot cannot see its
+            # own bar's fills
+            "position_after": float(
+                getattr(env.bridge, "position_units", None)
+                or getattr(env.bridge, "position", 0.0) or 0.0),
             "obs_digest_shared": _obs_digest(obs, shared_only=True),
             "obs_digest_full": _obs_digest(obs, shared_only=False),
         })
@@ -433,8 +524,10 @@ def recorded_run(cell: dict, manifest: dict,
     summary = env.summary()
     stream = [dict(e) for e in getattr(env.bridge,
                                        "closed_trade_stream", [])]
-    conservation = derive_conservation(env, rows, window, summary,
-                                       stream)
+    conservation = derive_conservation(
+        env, rows, window, summary, stream,
+        policy_enabled=bool(
+            cell["session_exposure_policy"]["enabled"]))
     rows_path = Path(tmp_dir) / f"{cell['cell_id']}_rows.json"
     rows_path.write_text(json.dumps(rows, indent=1))
     stream_path = Path(tmp_dir) / f"{cell['cell_id']}_trades.json"
@@ -480,7 +573,16 @@ def _count(rows, key):
 # C5: conservation DERIVED from executed artifacts                   #
 # ------------------------------------------------------------------ #
 
-def derive_conservation(env, rows, window, summary, stream) -> dict:
+def derive_conservation(env, rows, window, summary, stream,
+                        *, policy_enabled: bool = True) -> dict:
+    """C9: the ELIGIBILITY contract. An eligible completed mechanics
+    run requires flat terminal exposure, zero pending entries, valid
+    protective inventory while exposure existed, zero unresolved
+    flatten/cancellation incidents and EXACT equity/PnL/cost
+    reconciliation. Top-level `holds` is the conjunction of every
+    invariant — nothing is exempted because exposure remains, and an
+    intentionally interrupted recovery fixture can never read as a
+    conservation pass. Every failed invariant is published."""
     stamps = pd.to_datetime(
         pd.read_csv(window["csv"])["DATE_TIME"]).dt.tz_localize(
             "UTC")
@@ -504,13 +606,96 @@ def derive_conservation(env, rows, window, summary, stream) -> dict:
     open_at_end = bool(summary.get("open_position_at_end"))
     equity_gap = final - (initial + net_total)
     reasons = summary.get("close_reason_counts", {})
+    terminal_inventory = [
+        (int(r["ref"]), r["role"]) for r in
+        (getattr(env.bridge, "open_order_inventory", None) or ())]
+    pending_entries_at_end = sum(
+        1 for _ref, role in terminal_inventory if role == "entry")
+    transient_incidents = sorted({
+        r[key] for r in rows
+        for key in ("cancellation_incident", "flatten_incident")
+        if r.get(key)})
+    last = rows[-1] if rows else {}
+    # C9: UNRESOLVED means present at the TERMINAL state — an
+    # incident that was raised in flight and then resolved is
+    # reported (transparency) but does not fail eligibility;
+    # one still standing at the end does.
+    unresolved_incidents = sorted(
+        v for v in (last.get("cancellation_incident"),
+                    last.get("flatten_incident")) if v)
+    recovery_at_end = bool(last.get("recovery_active"))
+
+    def _sign(value):
+        if not value:
+            return 0
+        return 1 if value > 0 else -1
+    unprotected_exposure_steps = []
+    for i, row in enumerate(rows):
+        exposure = row.get("signed_exposure")
+        if not exposure or row.get("protective_orders") is None or                 row["protective_orders"] >= 1:
+            continue
+        previous = rows[i - 1].get("signed_exposure") if i else 0.0
+        if _sign(exposure) != _sign(previous):
+            # the pre-dispatch snapshot of the FIRST bar of a new
+            # exposure episode predates the bracket fill callback:
+            # a declared one-bar fill-boundary grace, never more
+            continue
+        after = row.get("position_after") or 0.0
+        if abs(after) == 0.0 or _sign(after) != _sign(exposure):
+            # close- or reversal-in-flight: the exposure this
+            # snapshot saw is retired within this very step (flat or
+            # flipped) — the mirrored one-bar exit-boundary grace,
+            # declared
+            continue
+        unprotected_exposure_steps.append(row["index"])
+    # exposure may NEVER cross a governed closure: the last recorded
+    # row before each closure must be flat
+    exposure_across_closure = []
+    if rows and rows[0].get("bar_stamp"):
+        row_stamps = [pd.Timestamp(r["bar_stamp"]).tz_localize("UTC")
+                      for r in rows]
+        for a, b in window["intervals"]:
+            start = pd.Timestamp(a)
+            before = [r for r, ts in zip(rows, row_stamps)
+                      if ts < start]
+            # judged POST-fill: the final pre-close step's broker
+            # position after its bar advanced
+            if before and abs(before[-1].get("position_after")
+                              or 0.0) > 0.0:
+                exposure_across_closure.append(
+                    {"closure_start": str(a),
+                     "last_pre_close_index": before[-1]["index"],
+                     "position_after":
+                         before[-1]["position_after"]})
+    invariants = {
+        "no_bar_inside_closure": inside == 0,
+        "no_suppressed_rewards": not suppressed,
+        "close_event_conservation":
+            trades_total == won + lost + breakeven,
+        "gross_minus_costs_equals_net": not gross_net_violations,
+        "flat_terminal_exposure": not open_at_end,
+        "zero_pending_entries_at_end": pending_entries_at_end == 0,
+        "protective_inventory_valid_while_exposed":
+            not unprotected_exposure_steps,
+        "zero_unresolved_incidents":
+            not unresolved_incidents and not recovery_at_end,
+        # the weekly-flat closure contract binds the ENABLED overlay;
+        # the diagnostic control exists precisely to measure carried
+        # exposure and is not judged by it
+        "no_exposure_across_closure":
+            (not exposure_across_closure) if policy_enabled
+            else True,
+        "exact_equity_reconciliation":
+            not open_at_end and abs(equity_gap) < 1e-4,
+    }
+    failed = sorted(k for k, ok in invariants.items() if not ok)
     return {
         "bar_timestamps_inside_closures": inside,
         "suppressed_reward_steps": suppressed,
         "close_event_conservation": {
             "trades_total": trades_total, "won": won, "lost": lost,
             "breakeven": breakeven,
-            "holds": trades_total == won + lost + breakeven},
+            "holds": invariants["close_event_conservation"]},
         "gross_minus_costs_equals_net": {
             "violations": len(gross_net_violations)},
         "equity_reconciliation": {
@@ -518,14 +703,24 @@ def derive_conservation(env, rows, window, summary, stream) -> dict:
             "net_pnl_total": round(net_total, 6),
             "open_position_at_end": open_at_end,
             "gap": round(equity_gap, 6),
-            "holds_when_flat": (not open_at_end
-                                and abs(equity_gap) < 1e-4)
-                               or open_at_end},
+            "exact": invariants["exact_equity_reconciliation"]},
+        "terminal_order_inventory": terminal_inventory,
+        "pending_entries_at_end": pending_entries_at_end,
+        "unprotected_exposure_steps": unprotected_exposure_steps,
+        "transient_incidents": transient_incidents,
+        "unresolved_incidents": unresolved_incidents,
+        "recovery_active_at_end": recovery_at_end,
+        "exposure_across_closure": exposure_across_closure,
+        "crossing_applicability": ("enabled_overlay_contract"
+                                   if policy_enabled else
+                                   "not_applicable_diagnostic_"
+                                   "control_measures_carrying"),
         "close_reason_counts": reasons,
         "trade_costs_total": summary.get("trade_costs_total"),
-        "holds": (inside == 0 and not suppressed
-                  and trades_total == won + lost + breakeven
-                  and not gross_net_violations),
+        "invariants": invariants,
+        "failed_invariants": failed,
+        "verdict": "ELIGIBLE" if not failed else "INELIGIBLE",
+        "holds": not failed,
     }
 
 
@@ -647,5 +842,7 @@ def benchmark(cell: dict, manifest: dict,
                   "update throughput is unmeasured and no GPU "
                   "hours are extrapolated from this number"),
         "session_state_counts": base["session_state_counts"],
-        "conservation_holds": base["conservation"]["holds"],
+        "conservation_verdict": base["conservation"]["verdict"],
+        "failed_invariants":
+            base["conservation"]["failed_invariants"],
     }

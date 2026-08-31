@@ -272,10 +272,108 @@ def materialize(*, calendar_identity: str, bar_hours: float,
         "cell_index": {c["cell_id"]: c["digest"] for c in cells},
         # C7: every attempted cell is a recorded trial
         "trial_ledger": sorted(c["cell_id"] for c in cells),
+        # C13: the joint confirmation is PREDECLARED here — its
+        # cells are constructible only once W1/W2a/W2b/G2B
+        # selections exist, and they enter this same ledger
+        "joint_confirmation_predeclaration": {
+            "constructor": "materialize_joint_confirmation",
+            "contents": "selected combination + section-4 control "
+                        "+ bounded one-step neighbours of the "
+                        "selected W2a coordinates inside the "
+                        "predeclared grids",
+            "rule": "no W2 candidate is promotion-eligible before "
+                    "the joint confirmation on untouched data; "
+                    "every joint cell enters the multiplicity "
+                    "ledger",
+        },
     }
     manifest["digest"] = sha256_hex(canonical_bytes(manifest))
     return {"manifest": manifest, "cells": cells,
             "rejections": rejections}
+
+
+def materialize_joint_confirmation(*, calendar_identity: str,
+                                   bar_hours: float,
+                                   min_open_window_hours: float,
+                                   identity: dict,
+                                   selected_w1: dict,
+                                   selected_w2a: dict,
+                                   selected_w2b: dict,
+                                   selected_g2b: int) -> dict:
+    """WP4-C13: the predeclared JOINT confirmation. Independent
+    coordinate screens (W2a, W2b, G2B) do not test interactions, so
+    no W2 candidate is promotion-eligible before this joint set is
+    evaluated on untouched data: the selected combination, the
+    section-4 control, and every bounded one-step neighbour of the
+    selected combination inside the predeclared grids. Every cell
+    here enters the multiplicity ledger like any other trial."""
+    def neighbours(value, grid):
+        grid = sorted(grid)
+        index = grid.index(value)
+        out = {value}
+        if index > 0:
+            out.add(grid[index - 1])
+        if index + 1 < len(grid):
+            out.add(grid[index + 1])
+        return sorted(out)
+
+    cells, rejections = [], []
+
+    def admit(cell_id, policy, extra):
+        try:
+            validated = check_feasibility(
+                policy, bar_hours=bar_hours,
+                min_open_window_hours=min_open_window_hours)
+        except SessionPolicyError as exc:
+            rejections.append({"family": "W2JOINT",
+                               "cell_id": cell_id,
+                               "reason": str(exc)})
+            return
+        cell = {"cell_id": cell_id, "family": "W2JOINT",
+                "session_exposure_policy": validated,
+                "bar_hours": bar_hours,
+                "min_open_window_hours": min_open_window_hours,
+                "identity": identity, **extra}
+        cell["digest"] = sha256_hex(canonical_bytes(cell))
+        cells.append(cell)
+
+    # section-4 control
+    admit("w2joint_section4_control", base_policy(calendar_identity),
+          {"role": "joint_confirmation_control"})
+    # the selected combination and its bounded one-step neighbours
+    combos = set()
+    for hours in neighbours(selected_w2a["reopen_min_hours"],
+                            W2_REOPEN_MIN_HOURS):
+        for bars in neighbours(selected_w2a["reopen_min_closed_bars"],
+                               W2_REOPEN_MIN_CLOSED_BARS):
+            for checks in neighbours(
+                    selected_w2a["stability_consecutive_checks"],
+                    W2_STABILITY_CHECKS):
+                combos.add((hours, bars, checks))
+    for hours, bars, checks in sorted(combos):
+        policy = base_policy(calendar_identity)
+        policy["wind_down_hours"] = selected_w1["wind_down_hours"]
+        policy["forced_flatten_hours"] =             selected_w1["forced_flatten_hours"]
+        policy["reopen_min_hours"] = hours
+        policy["reopen_min_closed_bars"] = bars
+        policy["stability_consecutive_checks"] = checks
+        policy["max_spread_relative_to_baseline"] =             selected_w2b["max_spread_relative_to_baseline"]
+        policy["max_gap_sigma"] = selected_w2b["max_gap_sigma"]
+        policy["max_realized_vol_relative_to_baseline"] =             selected_w2b["max_realized_vol_relative_to_baseline"]
+        policy["reopen_baseline_bars"] = selected_g2b
+        policy["reopen_gap_sigma_bars"] = selected_g2b
+        policy["reopen_realized_vol_bars"] = selected_g2b
+        selected = (hours == selected_w2a["reopen_min_hours"] and
+                    bars == selected_w2a["reopen_min_closed_bars"]
+                    and checks == selected_w2a[
+                        "stability_consecutive_checks"])
+        admit(f"w2joint_h{hours:g}_b{bars}_c{checks}", policy, {
+            "role": ("joint_selected_combination" if selected
+                     else "joint_bounded_neighbour"),
+            "promotion_rule": "NO W2 candidate is promotion-"
+                              "eligible before this joint set is "
+                              "confirmed on untouched data"})
+    return {"cells": cells, "rejections": rejections}
 
 
 def write_materialization(result: dict, out_dir: Path) -> Path:

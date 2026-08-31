@@ -1,11 +1,14 @@
 {
  "bar_hours": 4.0,
  "cell_id": "g2b_base2",
- "digest": "f2dd50bae23b77ead75f99076a0214bc39c2e5f16ff7c931258b53264849434d",
+ "digest": "98c72d90ec944f1fa6aecaa1656afdae67a25924727248a763677a21788b891e",
  "family": "G2B",
  "identity": {
   "authority_code_identity": "25dec77ad836f63212cd496a3b312e5aea0f2be9fa1a58f59225644c574b5da5",
-  "correction_order": "agent-multi@051ef265",
+  "correction_orders": [
+   "agent-multi@051ef265",
+   "agent-multi@c4b0ecf9"
+  ],
   "gymfx_commit": "2c60b84",
   "plan42": "agent-multi@45c49003",
   "wp3_executor": "lts@83dff62",

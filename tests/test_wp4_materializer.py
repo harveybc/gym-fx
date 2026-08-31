@@ -454,21 +454,49 @@ class TestC4ExecutedMechanics:
 
 class TestC5DerivedConservation:
 
-    def test_a_full_run_derives_and_holds(self, mat, window, tape,
-                                          tmp_path):
+    def test_an_eligible_run_exists_and_derives(self, mat,
+                                                tmp_path):
+        """C9: FULL eligibility on the plain-weekend window with a
+        compliant tape seed — every invariant, equity included,
+        derived and holding with flat terminal exposure."""
+        plain = drv.load_historical_window(
+            tmp_path / "pw", start=drv.PLAIN_WINDOW_START,
+            end=drv.PLAIN_WINDOW_END)
+        tape = drv.action_tape(5, plain["bars"] + 4)
+        run = drv.recorded_run(_cell(mat, "w1_wd48_ff8"),
+                               mat["manifest"],
+                               mat["manifest"]["digest"], tape,
+                               plain, tmp_dir=tmp_path,
+                               repo_root=REPO_ROOT)
+        cons = run["conservation"]
+        assert cons["verdict"] == "ELIGIBLE"
+        assert cons["failed_invariants"] == []
+        assert cons["equity_reconciliation"]["exact"]
+        assert not cons["equity_reconciliation"][
+            "open_position_at_end"]
+        assert cons["pending_entries_at_end"] == 0
+        assert run["rows_sha256"] and run["trades_sha256"]
+
+    def test_blackout_precedence_finding_is_frozen(self, mat,
+                                                   window, tape,
+                                                   tmp_path):
+        """AUTHORITY FINDING, frozen as evidence: on the holiday
+        cluster, REOPEN_BLACKOUT takes precedence over WIND_DOWN /
+        FORCED_FLATTEN in the accepted machine, so exposure held
+        through a blackout crosses the next closure with no flatten
+        attempt. The run must therefore read INELIGIBLE with the
+        crossing invariant NAMED — never weakened to pass."""
         run = drv.recorded_run(_cell(mat, "w0_overlay_enabled"),
                                mat["manifest"],
                                mat["manifest"]["digest"], tape,
                                window, tmp_dir=tmp_path,
                                repo_root=REPO_ROOT)
         cons = run["conservation"]
-        assert cons["bar_timestamps_inside_closures"] == 0
-        assert cons["suppressed_reward_steps"] == []
-        assert cons["close_event_conservation"]["holds"]
-        assert cons["gross_minus_costs_equals_net"]["violations"] \
-            == 0
-        assert cons["holds"]
-        assert run["rows_sha256"] and run["trades_sha256"]
+        assert cons["verdict"] == "INELIGIBLE"
+        assert "no_exposure_across_closure" in \
+            cons["failed_invariants"]
+        assert cons["exposure_across_closure"], (
+            "the crossing rows must be published")
 
     def test_a_suppressed_reward_would_be_detected(self):
         rows = [{"index": 0, "reward": 0.0, "pnl": 5.0}]
@@ -520,7 +548,9 @@ class TestC8Benchmark:
         assert "best_of" not in json.dumps(report)
         assert "SAC update throughput is unmeasured" in \
             report["scope"]
-        assert report["conservation_holds"]
+        assert report["conservation_verdict"] in ("ELIGIBLE",
+                                                  "INELIGIBLE")
+        assert isinstance(report["failed_invariants"], list)
 
     def test_forged_drift_refuses(self):
         """The drift seam itself must bite: a single differing
@@ -601,3 +631,328 @@ class TestC5DerivationBites:
                                        stream)
         assert cons["bar_timestamps_inside_closures"] == 1
         assert not cons["holds"]
+
+
+# ================================================================== #
+# C9: the eligibility contract bites on every invariant              #
+# ================================================================== #
+
+class TestC9EligibilityBites:
+    """Every required invariant, violated in isolation through the
+    REAL derivation, must fail eligibility and be NAMED."""
+
+    def _base(self, tmp_path):
+        import pandas as pd
+        import types
+        frame = pd.DataFrame({
+            "DATE_TIME": pd.date_range("2024-01-01", periods=4,
+                                       freq="4h")})
+        csv = tmp_path / "w.csv"
+        frame.to_csv(csv, index=False)
+        window = {"csv": csv,
+                  "intervals": [["2024-02-01 00:00:00+00:00",
+                                 "2024-02-02 00:00:00+00:00"]]}
+        env = types.SimpleNamespace(
+            initial_cash=100.0,
+            bridge=types.SimpleNamespace(
+                equity=101.0, open_order_inventory=()))
+        summary = {"trades_total": 1, "trades_won": 1,
+                   "trades_lost": 0, "trades_breakeven": 0,
+                   "open_position_at_end": False,
+                   "close_reason_counts": {},
+                   "trade_costs_total": 0.0}
+        stream = [{"gross_pnl": 1.0, "costs": 0.0, "net_pnl": 1.0}]
+        rows = [{"index": 0, "reward": 0.1, "pnl": 1.0,
+                 "signed_exposure": 0.0, "position_after": 0.0,
+                 "protective_orders": 2, "entry_orders": 0,
+                 "cancellation_incident": None,
+                 "flatten_incident": None,
+                 "recovery_active": False,
+                 "bar_stamp": "2024-01-01 00:00:00"}]
+        return env, rows, window, summary, stream
+
+    def _derive(self, parts):
+        env, rows, window, summary, stream = parts
+        return drv.derive_conservation(env, rows, window, summary,
+                                       stream, policy_enabled=True)
+
+    def test_the_clean_base_is_eligible(self, tmp_path):
+        cons = self._derive(self._base(tmp_path))
+        assert cons["verdict"] == "ELIGIBLE", cons[
+            "failed_invariants"]
+
+    def test_open_position_fails(self, tmp_path):
+        parts = self._base(tmp_path)
+        parts[3]["open_position_at_end"] = True
+        cons = self._derive(parts)
+        assert "flat_terminal_exposure" in cons["failed_invariants"]
+        assert "exact_equity_reconciliation" in \
+            cons["failed_invariants"]
+        assert cons["verdict"] == "INELIGIBLE"
+
+    def test_nonzero_equity_gap_fails(self, tmp_path):
+        parts = self._base(tmp_path)
+        parts[0].bridge.equity = 150.0
+        cons = self._derive(parts)
+        assert "exact_equity_reconciliation" in \
+            cons["failed_invariants"]
+
+    def test_pending_entry_fails(self, tmp_path):
+        parts = self._base(tmp_path)
+        parts[0].bridge.open_order_inventory = (
+            {"ref": 9, "role": "entry"},)
+        cons = self._derive(parts)
+        assert "zero_pending_entries_at_end" in \
+            cons["failed_invariants"]
+
+    def test_missing_protection_fails(self, tmp_path):
+        parts = self._base(tmp_path)
+        # index 1: entry boundary (0 -> +) — EXCUSED, declared grace
+        parts[1].append(dict(parts[1][0], index=1,
+                             signed_exposure=100.0,
+                             position_after=100.0,
+                             protective_orders=0))
+        # index 2: HELD unprotected (same sign, still open) — FLAGGED
+        parts[1].append(dict(parts[1][0], index=2,
+                             signed_exposure=100.0,
+                             position_after=100.0,
+                             protective_orders=0))
+        # index 3: close-in-flight (flat after) — EXCUSED
+        parts[1].append(dict(parts[1][0], index=3,
+                             signed_exposure=100.0,
+                             position_after=0.0,
+                             protective_orders=0))
+        parts[3]["open_position_at_end"] = False
+        cons = self._derive(parts)
+        assert "protective_inventory_valid_while_exposed" in \
+            cons["failed_invariants"]
+        assert cons["unprotected_exposure_steps"] == [2]
+
+    def test_unresolved_incident_fails(self, tmp_path):
+        parts = self._base(tmp_path)
+        parts[1][-1]["flatten_incident"] = "FORCED_FLATTEN_FAILED"
+        cons = self._derive(parts)
+        assert "zero_unresolved_incidents" in \
+            cons["failed_invariants"]
+
+    def test_transient_incident_alone_does_not_fail(self, tmp_path):
+        parts = self._base(tmp_path)
+        parts[1].insert(0, dict(parts[1][0], index=0,
+                                flatten_incident="TRANSIENT"))
+        parts[1][-1]["index"] = 1
+        cons = self._derive(parts)
+        assert "zero_unresolved_incidents" not in \
+            cons["failed_invariants"]
+        assert cons["transient_incidents"] == ["TRANSIENT"]
+
+    def test_altered_cost_fails(self, tmp_path):
+        parts = self._base(tmp_path)
+        parts[4][0]["costs"] = 0.5     # gross 1.0 - 0.5 != net 1.0
+        cons = self._derive(parts)
+        assert not cons["invariants"][
+            "gross_minus_costs_equals_net"]
+
+    def test_close_event_mismatch_fails(self, tmp_path):
+        parts = self._base(tmp_path)
+        parts[3]["trades_won"] = 0
+        cons = self._derive(parts)
+        assert not cons["invariants"]["close_event_conservation"]
+
+    def test_interrupted_recovery_can_never_pass(self, tmp_path):
+        parts = self._base(tmp_path)
+        parts[1][-1]["recovery_active"] = True
+        cons = self._derive(parts)
+        assert "zero_unresolved_incidents" in \
+            cons["failed_invariants"]
+        assert cons["verdict"] == "INELIGIBLE"
+
+
+# ================================================================== #
+# C10: terminal cancellation, not requested cancellation             #
+# ================================================================== #
+
+class TestC10TerminalCancellation:
+
+    def test_the_resting_entry_reaches_a_terminal_verdict(
+            self, mat, window, tmp_path):
+        """The broker's final status must be Canceled (or the
+        engine's exact terminal equivalent), the order must never
+        fill, and the post-cancel inventory must reconcile after the
+        terminal callback — a request alone proves nothing."""
+        RestingEntryEnvelope.resting_ref = None
+        env = drv.build_env(_cell(mat, "w0_overlay_enabled"), window,
+                            tmp_dir=tmp_path,
+                            envelope_cls=RestingEntryEnvelope,
+                            leverage_cap=0.4)
+        env.reset(seed=7)
+        frames = []
+        for _ in range(34):
+            _o, _r, term, _t, info = env.step([1.0])
+            frames.append(info)
+            if term:
+                break
+        ref = RestingEntryEnvelope.resting_ref
+        assert ref is not None
+        # request happened...
+        assert env.bridge.cancel_outcomes.get(ref) == \
+            "cancel_submitted"
+        # ...and the TERMINAL broker verdict is cancellation
+        terminal = env.bridge.order_terminal_status.get(ref)
+        assert terminal in ("Canceled", "Cancelled", "Expired"), (
+            f"terminal verdict for {ref} was {terminal!r}")
+        assert terminal != "Completed", "the order must never fill"
+        # the session block reconciled the outcome post-callback
+        final = [f for f in frames
+                 if f.get("session_cancellations")]
+        assert final, "cancellation outcomes must be published"
+        assert final[-1]["session_cancellations"].get(ref) == \
+            "cancelled"
+        assert final[-1]["session_cancellation_incident"] is None
+        # post-cancel inventory: the entry is gone, protection stays
+        refs_in_book = {r["ref"] for r in
+                        (env.bridge.open_order_inventory or ())}
+        assert ref not in refs_in_book
+        # no closed trade ever carries the cancelled entry
+        for event in getattr(env.bridge, "closed_trade_stream", []):
+            assert event.get("entry_ref") != ref
+
+    def test_request_only_states_remain_failures(self, mat, window,
+                                                 tmp_path):
+        """rejected / filled-before-cancel / still-open / gone-
+        without-verdict all surface as failures or pendings, never
+        as success."""
+        env = drv.build_env(_cell(mat, "w0_overlay_enabled"), window,
+                            tmp_dir=tmp_path)
+        env.reset(seed=7)
+        for _ in range(3):
+            env.step([1.0])
+        # a registered entry absent from the book and never given a
+        # terminal verdict is gone_without_verdict — an incident
+        env.bridge.register_order_role(31337, "entry")
+        env._session_cancel_requested.add(31337)
+        outcomes = env._session_cancellation_outcomes()
+        assert outcomes["session_cancellations"][31337] == \
+            "gone_without_verdict"
+        assert outcomes["session_cancellation_incident"]
+        # a forged terminal fill is the filled-before-cancel failure
+        env.bridge.order_terminal_status[31337] = "Completed"
+        outcomes = env._session_cancellation_outcomes()
+        assert outcomes["session_cancellations"][31337] == \
+            "filled_before_cancel"
+        assert "DESPITE" in outcomes[
+            "session_cancellation_incident"]
+
+
+# ================================================================== #
+# C11: zero topology                                                 #
+# ================================================================== #
+
+class TestC11ZeroTopology:
+
+    def test_no_absolute_operator_paths_in_public_surfaces(self):
+        """Repository-wide sanitization scan over the WP4 package:
+        no /home/ path, no operator username, in the tools, the
+        battery (this file asserts over itself minus its own scan
+        strings), and every persisted materialization artefact."""
+        import re
+        surfaces = [Path("tools/wp4_driver.py"),
+                    Path("tools/wp4_materializer.py"),
+                    Path("tools/wp4_stats.py")]
+        surfaces += sorted(
+            Path("examples/wp4_weekly_flat").glob("*.json"))
+        for path in surfaces:
+            text = path.read_text()
+            assert "/home/" not in text, path
+            assert "harveybc" not in text, path
+
+    def test_missing_data_root_fails_closed(self, monkeypatch):
+        monkeypatch.delenv("WP4_DATA_ROOT", raising=False)
+        with pytest.raises(drv.Wp4IdentityError,
+                           match="WP4_DATA_ROOT is not set"):
+            drv.resolve_source_path()
+
+    def test_window_meta_carries_logical_identity_only(self,
+                                                       window):
+        meta = json.dumps(window["meta"])
+        assert "/home/" not in meta
+        assert "logical_id" in window["meta"]["source"]
+        assert window["meta"]["source"]["role"] == \
+            "generic_gap_mechanics_fixture_only"
+
+
+# ================================================================== #
+# C12: mechanics fixture is not venue session authority              #
+# ================================================================== #
+
+class TestC12VenueAuthority:
+
+    def test_economic_binding_is_declared_unavailable(self, window):
+        binding = window["meta"]["economic_data_binding"]
+        assert binding["status"] == \
+            "VENUE_SESSION_HISTORY_UNAVAILABLE"
+        assert len(binding["required"]) == 3
+        assert "NEVER inferred from missing bars" in binding["rule"]
+
+    def test_the_fixture_declares_what_it_is_not(self):
+        assert "MT5 ETHUSD" in \
+            drv.HISTORICAL_SOURCE["not_authoritative_for"]
+
+
+# ================================================================== #
+# C13: the joint confirmation                                        #
+# ================================================================== #
+
+class TestC13JointConfirmation:
+
+    def test_predeclared_in_the_manifest(self, mat):
+        joint = mat["manifest"]["joint_confirmation_predeclaration"]
+        assert "promotion-eligible" in joint["rule"]
+        assert joint["constructor"] == \
+            "materialize_joint_confirmation"
+
+    def test_constructor_builds_control_plus_neighbours(self):
+        from tools.wp4_materializer import (
+            materialize_joint_confirmation)
+        result = materialize_joint_confirmation(
+            calendar_identity=CAL, bar_hours=4.0,
+            min_open_window_hours=104.0, identity=IDENTITY,
+            selected_w1={"wind_down_hours": 48.0,
+                         "forced_flatten_hours": 8.0},
+            selected_w2a={"reopen_min_hours": 4.0,
+                          "reopen_min_closed_bars": 2,
+                          "stability_consecutive_checks": 2},
+            selected_w2b={
+                "max_spread_relative_to_baseline": 2.0,
+                "max_gap_sigma": 3.0,
+                "max_realized_vol_relative_to_baseline": 2.0},
+            selected_g2b=4)
+        ids = {c["cell_id"] for c in result["cells"]}
+        assert "w2joint_section4_control" in ids
+        assert "w2joint_h4_b2_c2" in ids       # the selection
+        # bounded one-step neighbours only: 3*3*3 combos + control
+        assert len(ids) == 28
+        selected = [c for c in result["cells"]
+                    if c["role"] == "joint_selected_combination"]
+        assert len(selected) == 1
+        for cell in result["cells"]:
+            if "promotion_rule" in cell:
+                assert "NO W2 candidate" in cell["promotion_rule"]
+
+    def test_edge_selection_has_fewer_neighbours(self):
+        from tools.wp4_materializer import (
+            materialize_joint_confirmation)
+        result = materialize_joint_confirmation(
+            calendar_identity=CAL, bar_hours=4.0,
+            min_open_window_hours=104.0, identity=IDENTITY,
+            selected_w1={"wind_down_hours": 48.0,
+                         "forced_flatten_hours": 8.0},
+            selected_w2a={"reopen_min_hours": 1.0,
+                          "reopen_min_closed_bars": 1,
+                          "stability_consecutive_checks": 1},
+            selected_w2b={
+                "max_spread_relative_to_baseline": 2.0,
+                "max_gap_sigma": 3.0,
+                "max_realized_vol_relative_to_baseline": 2.0},
+            selected_g2b=4)
+        # grid-edge selection: 2*2*2 combos + control
+        assert len(result["cells"]) == 9

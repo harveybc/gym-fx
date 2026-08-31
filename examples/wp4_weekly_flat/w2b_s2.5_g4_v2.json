@@ -1,12 +1,15 @@
 {
  "bar_hours": 4.0,
  "cell_id": "w2b_s2.5_g4_v2",
- "digest": "c01c3ef21d7b0e0e56d125afd9caa0fcbd0ea958eef050d85fb407f5cbd14d6e",
+ "digest": "b7687a6c60bb7708a8731d559a8c2aa25a90f73a0ebc67a151126ce3d7cb6608",
  "family": "W2b",
  "gated_on": "the frozen W1 timing AND the W2a mechanism screen",
  "identity": {
   "authority_code_identity": "25dec77ad836f63212cd496a3b312e5aea0f2be9fa1a58f59225644c574b5da5",
-  "correction_order": "agent-multi@051ef265",
+  "correction_orders": [
+   "agent-multi@051ef265",
+   "agent-multi@c4b0ecf9"
+  ],
   "gymfx_commit": "2c60b84",
   "plan42": "agent-multi@45c49003",
   "wp3_executor": "lts@83dff62",
