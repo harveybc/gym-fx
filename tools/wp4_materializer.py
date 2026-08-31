@@ -52,6 +52,9 @@ SECTION4_DEFAULTS = {
     "carried_position_recovery":
         "protected_opportunistic_then_forced",
     "holiday_policy": "same_as_weekly",
+    # F5: the probation factor is explicit policy identity; 2 is the
+    # mandatory provisional minimum for any live-capable arm
+    "release_probation_factor": 2,
 }
 
 # WP4-frozen, NOT from plan §4: the G2 baseline windows, at the
@@ -61,6 +64,72 @@ G2_BASELINE_BARS = {
     "reopen_gap_sigma_bars": 4,
     "reopen_realized_vol_bars": 4,
 }
+
+# F4 (order agent-multi@a678fd55): the EXECUTION CONTRACT that
+# feasibility must respect. A forced-flatten window is admissible
+# only if the worst-case permitted close can be FILLED and
+# RECONCILED before the closure under this contract. The H4
+# next-bar-fill contract is what the accepted simulator implements;
+# the reproduced 4-hour failure is ledgered by these numbers.
+EXECUTION_CONTRACT = {
+    "decision_at": "bar_close",
+    "submission_latency_bars": 0,
+    "fill_at": "next_bar_open",
+    "reconcile_at": "fill_bar_step",
+    "close_retry_budget_bars": 0,
+    "safety_margin_hours": 0.0,
+}
+
+
+def flatten_deadline_admissible(ff_hours: float, bar_hours: float,
+                                *, contract: dict) -> tuple:
+    """Mechanical admissibility of a forced-flatten window.
+
+    The flatten first triggers at the largest bar-grid multiple of
+    hours-to-close that is <= ff_hours; the close submitted at that
+    decision fills 1 + submission_latency_bars bars later, plus up
+    to close_retry_budget_bars retries; the fill bar must itself be
+    an OPEN bar strictly before the closure, with the safety margin
+    on top. Everything is derived, nothing is tuned."""
+    import math
+    trigger = math.floor(float(ff_hours) / float(bar_hours))         * float(bar_hours)
+    needed = ((2 + contract["submission_latency_bars"]
+               + contract["close_retry_budget_bars"])
+              * float(bar_hours)
+              + float(contract["safety_margin_hours"]))
+    if trigger <= 0.0:
+        return False, (
+            f"flatten window {ff_hours}h never reaches a decision "
+            f"bar on the {bar_hours}h grid — the close could never "
+            "even be submitted before the closure")
+    if trigger < needed:
+        return False, (
+            f"execution-latency infeasible: the flatten first "
+            f"triggers {trigger}h before close on the {bar_hours}h "
+            f"grid, but the contract (fill at next bar open, "
+            f"{contract['submission_latency_bars']} latency bars, "
+            f"{contract['close_retry_budget_bars']} retry bars, "
+            f"{contract['safety_margin_hours']}h margin) needs "
+            f"{needed}h — the worst-case close cannot fill and "
+            "reconcile before the closure")
+    return True, None
+
+
+def corrected_flatten_default(bar_hours: float, *,
+                              contract: dict) -> float:
+    """The live-safe flatten default MUST come from an eligible
+    value: the smallest predeclared grid value that is admissible
+    under the execution contract. It may not silently remain the
+    section-4 four hours."""
+    for candidate in sorted(W1_FORCED_FLATTEN_HOURS):
+        ok, _reason = flatten_deadline_admissible(
+            candidate, bar_hours, contract=contract)
+        if ok:
+            return candidate
+    raise SessionPolicyError(
+        f"no predeclared flatten value is admissible on "
+        f"{bar_hours}h bars under the execution contract")
+
 
 # plan 42 §7, predeclared grids — no post-result additions
 W1_WIND_DOWN_HOURS = (12.0, 24.0, 36.0, 48.0)
@@ -98,10 +167,18 @@ def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def base_policy(calendar_identity: str) -> dict:
+def base_policy(calendar_identity: str, *,
+                bar_hours: float = 4.0) -> dict:
     policy = dict(SECTION4_DEFAULTS)
     policy["calendar_identity"] = calendar_identity
     policy.update(G2_BASELINE_BARS)
+    # F4: the section-4 forced_flatten_hours=4 default is
+    # structurally ineligible for H4 under the next-bar-fill
+    # contract (the reproduced failure); every enabled arm uses the
+    # smallest ADMISSIBLE predeclared value instead, and the
+    # correction is ledgered on the manifest
+    policy["forced_flatten_hours"] = corrected_flatten_default(
+        bar_hours, contract=EXECUTION_CONTRACT)
     return policy
 
 
@@ -119,10 +196,17 @@ def timeframe_exit_hours(policy: dict, bar_hours: float) -> float:
 
 def check_feasibility(policy: dict, *, bar_hours: float,
                       min_open_window_hours: float) -> dict:
-    """ACCEPTED validator first, then the mechanical timeframe rule.
-    Returns the validated policy or raises SessionPolicyError with
-    the typed reason — the caller ledgers it, never launches it."""
+    """ACCEPTED validator first, then the mechanical timeframe rule
+    and the F4 execution-latency rule. Returns the validated policy
+    or raises SessionPolicyError with the typed reason — the caller
+    ledgers it, never launches it."""
     validated = validate_policy(policy)
+    if validated["enabled"]:
+        ok, reason = flatten_deadline_admissible(
+            validated["forced_flatten_hours"], bar_hours,
+            contract=EXECUTION_CONTRACT)
+        if not ok:
+            raise SessionPolicyError(reason)
     exit_hours = timeframe_exit_hours(validated, bar_hours)
     if exit_hours >= min_open_window_hours:
         raise SessionPolicyError(
@@ -239,6 +323,24 @@ def materialize(*, calendar_identity: str, bar_hours: float,
                           "reopen_counts":
                               "frozen_at_section4_defaults"})
 
+    # -- PROB: probation-factor ablation (F5, non-live) -------------
+    for factor in (1, 2, 3):
+        policy = base_policy(calendar_identity)
+        policy["release_probation_factor"] = factor
+        release_bars = (policy["stability_consecutive_checks"]
+                        * factor)
+        admit("PROB", f"prob_factor{factor}", policy, {
+            "w1_timing": dict(W2_TIMING_BLOCK),
+            "role": "release_probation_ablation",
+            "live_eligible": factor >= 2 and release_bars >= 2,
+            "live_note": ("factor 2 is the mandatory provisional "
+                          "minimum for any live-capable arm; no arm "
+                          "with a one-bar release window is "
+                          "live-eligible" if factor < 2 or
+                          release_bars < 2 else
+                          "live-capable at the provisional minimum "
+                          "or above")})
+
     # -- G2B: baseline-window ablation (C6) -------------------------
     for baseline in G2_BASELINE_ABLATION:
         policy = base_policy(calendar_identity)
@@ -261,11 +363,22 @@ def materialize(*, calendar_identity: str, bar_hours: float,
         "bar_hours": bar_hours,
         "min_open_window_hours": min_open_window_hours,
         "g2_baseline_bars_provisional": G2_BASELINE_BARS,
+        "execution_contract": EXECUTION_CONTRACT,
+        "flatten_default_correction": {
+            "section4_value_hours": 4.0,
+            "status": "STRUCTURALLY_INELIGIBLE_FOR_H4_NEXT_BAR",
+            "corrected_eligible_default_hours":
+                corrected_flatten_default(
+                    bar_hours, contract=EXECUTION_CONTRACT),
+            "rule": "the live-safe default must come from an "
+                    "eligible value and may not silently remain "
+                    "four hours"},
         "cells": len(cells),
         "rejections": len(rejections),
         "families": {
             family: sum(1 for c in cells if c["family"] == family)
-            for family in ("W0", "W1", "W2a", "W2b", "G2B")},
+            for family in ("W0", "W1", "W2a", "W2b", "G2B",
+                           "PROB")},
         # C1: the manifest, not the cell, is the external binding —
         # every cell id and digest is enumerated here, and the
         # manifest digest is what a reviewed dispatch binds

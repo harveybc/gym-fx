@@ -63,6 +63,7 @@ def policy(**kw):
         "reopen_baseline_bars": 4,
         "reopen_gap_sigma_bars": 4,
         "reopen_realized_vol_bars": 4,
+        "release_probation_factor": 2,
     }
     base.update(kw)
     return base

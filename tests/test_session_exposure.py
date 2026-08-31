@@ -46,6 +46,7 @@ def policy(**overrides):
         "reopen_baseline_bars": 20,
         "reopen_gap_sigma_bars": 20,
         "reopen_realized_vol_bars": 20,
+        "release_probation_factor": 2,
     }
     base.update(overrides)
     return validate_policy(base)

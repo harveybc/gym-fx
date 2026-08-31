@@ -99,7 +99,8 @@ def policy():
         "calendar_identity": "cal-A",
         "reopen_baseline_bars": 20,
         "reopen_gap_sigma_bars": 20,
-        "reopen_realized_vol_bars": 20})
+        "reopen_realized_vol_bars": 20,
+        "release_probation_factor": 2})
 
 
 def calendar(symbol="ETHUSD", account="fp-1", venue="mt5_demo"):

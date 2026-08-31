@@ -61,7 +61,8 @@ PARITY_POLICY = policy(wind_down_hours=0.5, forced_flatten_hours=0.25,
                        reopen_min_hours=0.5, reopen_min_closed_bars=2,
                        stability_consecutive_checks=2,
                        reopen_baseline_bars=4, reopen_gap_sigma_bars=4,
-                       reopen_realized_vol_bars=4)
+                       reopen_realized_vol_bars=4,
+                       release_probation_factor=2)
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = ROOT / (

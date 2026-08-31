@@ -132,13 +132,16 @@ def require_utc(name: str, value: Any) -> datetime:
 # C4/§4: typed policy contract                                      #
 # ---------------------------------------------------------------- #
 
-# F2 (order agent-multi@4ad4937b): the PREDECLARED release
-# probation. The blackout release sequence is the policy's declared
-# consecutive stability count for qualification plus the same count
-# again as probation — all consecutive closed bars, so one transient
-# pass can never authorize an entry. Declared here as a constant,
-# never tuned from a reproduced counterexample.
-RELEASE_PROBATION_FACTOR = 2
+# F2/F5 (orders agent-multi@4ad4937b, @a678fd55): the release
+# probation is an EXPLICIT typed policy parameter
+# (release_probation_factor). The blackout release sequence is the
+# declared consecutive stability count for qualification times this
+# factor — all consecutive closed bars, so one transient pass can
+# never authorize an entry. The value 2 is the MANDATORY provisional
+# minimum for any live-capable arm: it is a conservative safety
+# choice made after a counterexample, not an established optimum,
+# and a bounded non-live ablation carries the optimality burden.
+RELEASE_PROBATION_FACTOR = 2          # provisional live minimum
 
 REQUIRED_KEYS = (
     "enabled", "session_source", "wind_down_hours",
@@ -152,7 +155,9 @@ REQUIRED_KEYS = (
     # G2: baseline windows and units are BOUND HERE, never inferred
     # at the call site. All three are counts of fully closed bars.
     "reopen_baseline_bars", "reopen_gap_sigma_bars",
-    "reopen_realized_vol_bars")
+    "reopen_realized_vol_bars",
+    # F5: the probation factor is part of the policy identity
+    "release_probation_factor")
 
 
 def validate_policy(config: dict[str, Any]) -> dict[str, Any]:
@@ -218,6 +223,9 @@ def validate_policy(config: dict[str, Any]) -> dict[str, Any]:
         "reopen_realized_vol_bars": require_count(
             "reopen_realized_vol_bars",
             config["reopen_realized_vol_bars"], minimum=2),
+        "release_probation_factor": require_count(
+            "release_probation_factor",
+            config["release_probation_factor"], minimum=1),
     }
     if validated["forced_flatten_hours"] >= \
             validated["wind_down_hours"]:
@@ -696,7 +704,7 @@ def session_state(policy: dict, *, now: Any,
             # failing check resets the whole sequence. The factor is
             # PREDECLARED here, not tuned from any counterexample.
             release_requirement = (policy["stability_consecutive_checks"]
-                                   * RELEASE_PROBATION_FACTOR)
+                                   * policy["release_probation_factor"])
             blackout_pending = (
                 since_reopen < policy["reopen_min_hours"]
                 or reopen_evidence.closed_bars_since_reopen
@@ -710,7 +718,7 @@ def session_state(policy: dict, *, now: Any,
                     reopen_evidence.stability_checks_passed,
                 "release_requirement": release_requirement,
                 "release_probation_factor":
-                    RELEASE_PROBATION_FACTOR,
+                    policy["release_probation_factor"],
                 "adapter_hint_disagrees": hint_disagrees}
     if hours_to_close is not None:
         if hours_to_close <= policy["forced_flatten_hours"]:

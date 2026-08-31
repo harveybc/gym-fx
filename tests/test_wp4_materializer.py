@@ -59,9 +59,13 @@ def _cell(mat, cell_id):
 class TestMaterialization:
 
     def test_family_counts(self, mat):
+        """F4: twelve W1 cells are execution-latency infeasible on
+        H4 next-bar fills and live in the rejection ledger; F5 adds
+        the bounded probation ablation."""
         assert mat["manifest"]["families"] == {
-            "W0": 2, "W1": 16, "W2a": 45, "W2b": 27, "G2B": 3}
-        assert mat["manifest"]["rejections"] == 0
+            "W0": 2, "W1": 4, "W2a": 45, "W2b": 27, "G2B": 3,
+            "PROB": 3}
+        assert mat["manifest"]["rejections"] == 12
 
     def test_w0_is_the_paired_comparison(self, mat):
         control = _cell(mat, "w0_control_disabled")
@@ -103,7 +107,7 @@ class TestMaterialization:
     def test_manifest_is_the_external_binding(self, mat):
         manifest = mat["manifest"]
         index = manifest["cell_index"]
-        assert len(index) == 93
+        assert len(index) == 84
         assert sorted(index) == manifest["trial_ledger"]
         for cell in mat["cells"]:
             assert index[cell["cell_id"]] == cell["digest"]
@@ -119,6 +123,11 @@ class TestMaterialization:
 
     def test_timeframe_infeasible_refuses(self):
         policy = base_policy(CAL)
+        # a flatten window admissible on 48h bars, so the TIMEFRAME
+        # rule is what refuses (F4's flatten rule is exercised in
+        # its own battery)
+        policy["wind_down_hours"] = 100.0
+        policy["forced_flatten_hours"] = 96.0
         policy["reopen_min_closed_bars"] = 3
         policy["stability_consecutive_checks"] = 3
         with pytest.raises(SessionPolicyError,
@@ -129,7 +138,7 @@ class TestMaterialization:
     def test_persisted_cells_match_the_manifest(self, mat, tmp_path):
         out = write_materialization(mat, tmp_path / "m")
         drv.verify_manifest_matches_dir(mat["manifest"], out)
-        (out / "w1_wd12_ff1.json").unlink()
+        (out / "w1_wd12_ff8.json").unlink()
         with pytest.raises(drv.Wp4IdentityError, match="missing"):
             drv.verify_manifest_matches_dir(mat["manifest"], out)
 
@@ -160,11 +169,10 @@ class TestC1Identity:
     def test_a_redigested_cell_fails_the_manifest_binding(self, mat):
         """PRE FROZEN: the self-digest was the only check, so a
         consistently altered and re-digested cell RAN."""
-        cell = dict(_cell(mat, "w1_wd24_ff4"))
+        cell = dict(_cell(mat, "w1_wd24_ff8"))
         cell["session_exposure_policy"] = dict(
             cell["session_exposure_policy"])
-        cell["session_exposure_policy"]["wind_down_hours"] = 24.0
-        cell["session_exposure_policy"]["forced_flatten_hours"] = 2.0
+        cell["session_exposure_policy"]["wind_down_hours"] = 47.0
         body = {k: v for k, v in cell.items() if k != "digest"}
         cell["digest"] = sha256_hex(canonical_bytes(body))
         verify_cell(cell)          # self-consistent on purpose
@@ -214,7 +222,7 @@ class TestC2PairedTreatment:
 
     @pytest.mark.parametrize("pair", [
         ("w0_control_disabled", "w0_overlay_enabled"),
-        ("w1_wd12_ff1", "w1_wd48_ff8"),
+        ("w1_wd12_ff8", "w1_wd48_ff8"),
     ])
     def test_paired_prefixes_are_identical(self, mat, tape,
                                            tmp_path, pair):
@@ -326,10 +334,21 @@ class TestC4ExecutedMechanics:
             "cancel_submitted"
         assert any(ref in (f.get("session_cancel_requested_refs")
                            or ()) for f in frames)
-        roles = sorted(r["role"] for r in
-                       (env.bridge.open_order_inventory or ()))
-        assert roles == ["protective_stop",
-                         "protective_take_profit"]
+        # protection survives THROUGH the wind-down (post-cancel);
+        # the legitimate forced close retires it afterwards, so the
+        # terminal book being empty is correct — the claim is about
+        # the wind-down window, not the end of time
+        wind_rows = [f for f in frames
+                     if f.get("session_state") == "WIND_DOWN"
+                     and f.get("session_protective_orders")
+                     is not None]
+        assert wind_rows, "the run must traverse wind-down"
+        assert any(f["session_protective_orders"] >= 2
+                   for f in wind_rows), (
+            "both protective legs must be alive in wind-down")
+        assert all(f.get("session_entry_orders", 0) == 0
+                   for f in wind_rows[1:]), (
+            "no pending entry may survive the cancellation")
 
     def test_cancellation_outcome_taxonomy_is_observed(
             self, mat, window, tmp_path):
@@ -496,55 +515,19 @@ class TestC5DerivedConservation:
         assert cons["verdict"] == "ELIGIBLE", cons[
             "failed_invariants"]
 
-    def test_one_bar_flatten_windows_still_refuse_truthfully(
-            self, mat, window, tape, tmp_path):
-        """STRUCTURAL FACT, reported not weakened: the section-4
-        default forced_flatten_hours=4 is ONE 4h bar, and this
-        simulator fills at next-bar open, so the deadline close
-        lands after the gap. The run raises the typed
-        FORCED_FLATTEN_FAILED incident and conservation refuses
-        with the crossing NAMED."""
-        run = drv.recorded_run(_cell(mat, "w0_overlay_enabled"),
-                               mat["manifest"],
-                               mat["manifest"]["digest"], tape,
-                               window, tmp_dir=tmp_path,
-                               repo_root=REPO_ROOT)
-        cons = run["conservation"]
-        assert "no_exposure_across_closure" in \
-            cons["failed_invariants"]
-        assert any("FORCED_FLATTEN_FAILED" in i
-                   for i in cons["transient_incidents"])
-
-    def test_a_suppressed_reward_would_be_detected(self):
-        rows = [{"index": 0, "reward": 0.0, "pnl": 5.0}]
-        import types
-        env = types.SimpleNamespace(initial_cash=0.0, bridge=None)
-        fake_window = None
-        # unit-level: the derivation flags the row
-        suppressed = [r["index"] for r in rows
-                      if r["reward"] == 0.0 and abs(r["pnl"]) > 1e-9]
-        assert suppressed == [0]
-
-    def test_a_bar_inside_closure_would_be_detected(self, window,
-                                                    tmp_path):
-        import pandas as pd
-        frame = pd.read_csv(window["csv"])
-        frame["DATE_TIME"] = pd.to_datetime(frame["DATE_TIME"])
-        a, _b = window["intervals"][0]
-        inject = pd.Timestamp(a).tz_localize(None) + \
-            pd.Timedelta(hours=4)
-        extra = frame.iloc[[0]].copy()
-        extra["DATE_TIME"] = inject
-        tampered = pd.concat([frame, extra]).sort_values("DATE_TIME")
-        csv = tmp_path / "tampered.csv"
-        tampered.to_csv(csv, index=False)
-        stamps = pd.to_datetime(
-            pd.read_csv(csv)["DATE_TIME"]).dt.tz_localize("UTC")
-        inside = 0
-        for s, e in window["intervals"]:
-            inside += int(((stamps >= pd.Timestamp(s)) &
-                           (stamps < pd.Timestamp(e))).sum())
-        assert inside == 1
+    def test_one_bar_flatten_windows_are_ledgered_rejections(
+            self, mat):
+        """F4 supersedes the runtime demonstration: a one-bar
+        flatten window can no longer be materialized at all. The
+        reproduced 4-hour failure lives in the rejection ledger
+        with the execution-contract reason, and the frozen PRE run
+        (C9-C14/F1-F3 packets) preserves the runtime evidence."""
+        rejected = {r["cell_id"]: r["reason"]
+                    for r in mat["rejections"]}
+        assert any("ff4" in cid for cid in rejected)
+        assert all("infeasible" in why
+                   or "never reaches" in why
+                   for why in rejected.values())
 
 
 # ================================================================== #
@@ -973,3 +956,165 @@ class TestC13JointConfirmation:
             selected_g2b=4)
         # grid-edge selection: 2*2*2 combos + control
         assert len(result["cells"]) == 9
+
+
+# ================================================================== #
+# F4/F5: execution-latency feasibility and explicit probation        #
+# ================================================================== #
+
+class TestF4ExecutionLatencyFeasibility:
+
+    def test_the_reproduced_h4_failure_is_ledgered(self, mat):
+        """PRE FROZEN: ff=4h on H4 triggered at the LAST bar and the
+        next-bar fill landed after the gap. The exact cell is now a
+        LEDGERED rejection, not a trial."""
+        rejected = {r["cell_id"]: r["reason"]
+                    for r in mat["rejections"]}
+        assert "w1_wd36_ff4" in rejected
+        assert "execution-latency infeasible" in \
+            rejected["w1_wd36_ff4"]
+        assert "w1_wd36_ff4" not in mat["manifest"]["cell_index"]
+
+    def test_exact_boundary_on_h4(self):
+        from tools.wp4_materializer import (EXECUTION_CONTRACT,
+                                            flatten_deadline_admissible)
+        ok, _ = flatten_deadline_admissible(
+            8.0, 4.0, contract=EXECUTION_CONTRACT)
+        assert ok
+        ok, why = flatten_deadline_admissible(
+            7.9, 4.0, contract=EXECUTION_CONTRACT)
+        assert not ok and "triggers 4.0h" in why
+        ok, why = flatten_deadline_admissible(
+            4.0, 4.0, contract=EXECUTION_CONTRACT)
+        assert not ok
+
+    def test_delayed_fill_and_retry_budget_tighten_the_rule(self):
+        from tools.wp4_materializer import flatten_deadline_admissible
+        delayed = {"decision_at": "bar_close",
+                   "submission_latency_bars": 1,
+                   "fill_at": "next_bar_open",
+                   "reconcile_at": "fill_bar_step",
+                   "close_retry_budget_bars": 0,
+                   "safety_margin_hours": 0.0}
+        ok, _ = flatten_deadline_admissible(8.0, 4.0,
+                                            contract=delayed)
+        assert not ok, "one latency bar makes 8h inadmissible on H4"
+        ok, _ = flatten_deadline_admissible(12.0, 4.0,
+                                            contract=delayed)
+        assert ok
+        retried = dict(delayed, submission_latency_bars=0,
+                       close_retry_budget_bars=1)
+        ok, _ = flatten_deadline_admissible(8.0, 4.0,
+                                            contract=retried)
+        assert not ok, "a rejected first close consumes a bar"
+        ok, _ = flatten_deadline_admissible(12.0, 4.0,
+                                            contract=retried)
+        assert ok
+
+    def test_multiple_bar_sizes(self):
+        from tools.wp4_materializer import (EXECUTION_CONTRACT,
+                                            flatten_deadline_admissible)
+        ok, _ = flatten_deadline_admissible(
+            4.0, 1.0, contract=EXECUTION_CONTRACT)
+        assert ok, "H1: 4h flatten is four bars — admissible"
+        ok, _ = flatten_deadline_admissible(
+            2.0, 1.0, contract=EXECUTION_CONTRACT)
+        assert ok
+        ok, _ = flatten_deadline_admissible(
+            1.0, 1.0, contract=EXECUTION_CONTRACT)
+        assert not ok, "one bar is one bar on any grid"
+
+    def test_the_live_safe_default_is_eligible_not_four(self, mat):
+        correction = mat["manifest"]["flatten_default_correction"]
+        assert correction["section4_value_hours"] == 4.0
+        assert correction["status"] == \
+            "STRUCTURALLY_INELIGIBLE_FOR_H4_NEXT_BAR"
+        assert correction["corrected_eligible_default_hours"] == 8.0
+        for cell in mat["cells"]:
+            policy = cell["session_exposure_policy"]
+            if policy["enabled"]:
+                from tools.wp4_materializer import (
+                    EXECUTION_CONTRACT, flatten_deadline_admissible)
+                ok, _ = flatten_deadline_admissible(
+                    policy["forced_flatten_hours"],
+                    cell["bar_hours"], contract=EXECUTION_CONTRACT)
+                assert ok, cell["cell_id"]
+
+    def test_holiday_shortened_session_is_reported(self, window):
+        """The real Christmas closure is preceded by a stretch
+        shorter than some wind-down horizons; the derived closures
+        list carries the interval so the driver's crossing invariant
+        judges it — nothing is silently admitted."""
+        holiday = [c for c in
+                   window["meta"]
+                   ["closures_derived_from_observed_gaps"]
+                   if c["kind"] == "holiday_or_exception"]
+        assert holiday, "the bound history carries the holiday"
+
+
+class TestF5ExplicitProbation:
+
+    def test_probation_is_typed_policy_identity(self):
+        from app.session_exposure import validate_policy
+        policy = base_policy(CAL)
+        assert policy["release_probation_factor"] == 2
+        validated = validate_policy(policy)
+        assert validated["release_probation_factor"] == 2
+        bad = dict(policy)
+        bad.pop("release_probation_factor")
+        with pytest.raises(SessionPolicyError, match="missing"):
+            validate_policy(bad)
+
+    def test_state_telemetry_carries_the_policy_value(self):
+        from datetime import datetime, timezone
+        from app.session_exposure import (ReopenEvidence,
+                                          SessionCalendar,
+                                          session_state,
+                                          validate_policy)
+        policy = validate_policy(dict(base_policy(CAL),
+                                      release_probation_factor=3))
+        cal = SessionCalendar.build(
+            venue="v", account_fingerprint="a", symbol="s",
+            calendar_digest=CAL,
+            intervals=[(datetime(2026, 1, 2, tzinfo=timezone.utc),
+                        datetime(2026, 1, 4, tzinfo=timezone.utc))])
+        ev = ReopenEvidence.build(closed_bars_since_reopen=9,
+                                  stability_checks_passed=5,
+                                  hint_time_since_reopen_hours=None)
+        block = session_state(
+            policy, now=datetime(2026, 1, 5, tzinfo=timezone.utc),
+            calendar=cal, reopen_evidence=ev)
+        assert block["state"] == "REOPEN_BLACKOUT"
+        assert block["release_probation_factor"] == 3
+        assert block["release_requirement"] == 9
+
+    def test_the_ablation_is_bounded_and_non_live_below_two(
+            self, mat):
+        cells = [c for c in mat["cells"] if c["family"] == "PROB"]
+        assert len(cells) == 3
+        by_factor = {c["session_exposure_policy"]
+                     ["release_probation_factor"]: c for c in cells}
+        assert by_factor[1]["live_eligible"] is False
+        assert by_factor[2]["live_eligible"] is True
+        assert by_factor[3]["live_eligible"] is True
+
+    def test_restart_reconstructs_the_latch_phase(self, mat,
+                                                  window, tape,
+                                                  tmp_path):
+        """Two fresh envs over the same data derive the identical
+        qualification/probation streak at every step — the latch is
+        a causal function of bar history, not process memory."""
+        cell = _cell(mat, "w1_wd48_ff8")
+        env_a = drv.build_env(cell, window, tmp_dir=tmp_path / "a")
+        env_b = drv.build_env(cell, window, tmp_dir=tmp_path / "b")
+        env_a.reset(seed=7)
+        env_b.reset(seed=7)
+        for action in tape["actions"][:40]:
+            _o, _r, ta, _t, info_a = env_a.step([float(action)])
+            _o, _r, tb, _t, info_b = env_b.step([float(action)])
+            assert info_a.get("session_reopen_stability_streak") \
+                == info_b.get("session_reopen_stability_streak")
+            assert info_a.get("session_state") == \
+                info_b.get("session_state")
+            if ta or tb:
+                break

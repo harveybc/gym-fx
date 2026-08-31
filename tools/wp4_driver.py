@@ -70,8 +70,8 @@ from tools.wp4_materializer import (canonical_bytes, sha256_hex,
 # imported through app.env / app.session_exposure)
 FROZEN_AUTHORITY_SHA256 = {
     "app/session_exposure.py":
-        "284f2c829d12b6ddabf5b0cdf85be5fd1d8fb94198c7d8a8db745064d"
-        "e5ef660",
+        "489d51fc2dd6558d8675f1bf3fad0f0fdecb316e27517fce6d19c689d"
+        "68a45ea",
     "app/flatten_custody.py":
         "4143060d46d7d2fa0987f0591ef0f6205b3d1592a9de91174b084b8b3"
         "cb397ab",
