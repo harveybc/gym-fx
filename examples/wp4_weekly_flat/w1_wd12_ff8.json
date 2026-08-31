@@ -1,10 +1,11 @@
 {
  "bar_hours": 4.0,
  "cell_id": "w1_wd12_ff8",
- "digest": "30143bb20e31ac501bd55e214511614abdcf0dcce282c6e37544c7a2bf2aee77",
+ "digest": "be2d0a7e7f8ac5417e3ba7b22c3a38276c2541df1eee69a3081395bc31f62268",
  "family": "W1",
  "identity": {
   "authority_code_identity": "25dec77ad836f63212cd496a3b312e5aea0f2be9fa1a58f59225644c574b5da5",
+  "correction_order": "agent-multi@051ef265",
   "gymfx_commit": "2c60b84",
   "plan42": "agent-multi@45c49003",
   "wp3_executor": "lts@83dff62",

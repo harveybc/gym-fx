@@ -69,6 +69,24 @@ W2_REOPEN_MIN_HOURS = (1.0, 2.0, 4.0, 8.0, 12.0)
 W2_REOPEN_MIN_CLOSED_BARS = (1, 2, 3)
 W2_STABILITY_CHECKS = (1, 2, 3)
 
+# WP4-C6 (order agent-multi@051ef265): W2 is SPLIT. W2a screens
+# hours/bars/checks with the spread/gap/volatility thresholds frozen
+# PROVISIONALLY at the section-4 values — it carries NO claim that W2
+# is complete. W2b calibrates the thresholds over these predeclared
+# bounded domains, and its trials enter the multiplicity ledger.
+W2B_SPREAD_DOMAIN = (1.5, 2.0, 2.5)
+W2B_GAP_SIGMA_DOMAIN = (2.0, 3.0, 4.0)
+W2B_VOL_DOMAIN = (1.5, 2.0, 2.5)
+
+# WP4-C6: the G2 baseline windows are treatment-bearing. Mechanical
+# rationale for the provisional value 4: the smallest window is 2
+# (the validator's floor, one degree of freedom for a dispersion
+# estimate); 4 closed bars give three degrees of freedom while still
+# fitting inside the shortest post-reopen stretch of the bound
+# history at the 4h timeframe. That rationale does NOT establish
+# optimality, so the value is also ABLATED over this bounded domain.
+G2_BASELINE_ABLATION = (2, 4, 8)
+
 
 def canonical_bytes(payload: Any) -> bytes:
     return json.dumps(payload, sort_keys=True,
@@ -175,7 +193,16 @@ def materialize(*, calendar_identity: str, bar_hours: float,
                   f"w1_wd{wind:g}_ff{flatten:g}", policy,
                   {"reopen_policy": "frozen_at_section4_defaults"})
 
-    # -- W2: reopen calibration family (plan 42 §7 W2) --------------
+    # -- W2a: reopen mechanism screen (plan 42 §7 W2, C6 split) -----
+    W2_TIMING_BLOCK = {
+        "status": "pending_w1_selection",
+        "economic_execution": "BLOCKED",
+        "rule": "W2 timing must be a W1 selection frozen from "
+                "fit/calibration evidence under a predeclared "
+                "rule; no such selection exists",
+        "mechanics_smoke_timing":
+            "section4_defaults_zero_economic_authority",
+    }
     for hours in W2_REOPEN_MIN_HOURS:
         for bars in W2_REOPEN_MIN_CLOSED_BARS:
             for checks in W2_STABILITY_CHECKS:
@@ -183,35 +210,68 @@ def materialize(*, calendar_identity: str, bar_hours: float,
                 policy["reopen_min_hours"] = hours
                 policy["reopen_min_closed_bars"] = bars
                 policy["stability_consecutive_checks"] = checks
-                admit("W2",
-                      f"w2_h{hours:g}_b{bars}_c{checks}", policy, {
-                          "w1_timing": {
-                              "status": "pending_w1_selection",
-                              "economic_execution": "BLOCKED",
-                              "rule": "W2 timing must be a W1 "
-                                      "selection frozen from fit/"
-                                      "calibration evidence under a "
-                                      "predeclared rule; no such "
-                                      "selection exists",
-                              "mechanics_smoke_timing":
-                                  "section4_defaults_zero_economic_"
-                                  "authority",
-                          },
+                admit("W2a",
+                      f"w2a_h{hours:g}_b{bars}_c{checks}", policy, {
+                          "w1_timing": dict(W2_TIMING_BLOCK),
+                          "role": "provisional_mechanism_screen",
+                          "completeness_claim": "NONE — the spread/"
+                              "gap/volatility thresholds are frozen "
+                              "PROVISIONALLY at section-4 values; "
+                              "W2b calibrates them and W2 is not "
+                              "complete until it does",
                           "thresholds":
+                              "provisionally_frozen_at_section4"})
+
+    # -- W2b: threshold calibration (C6, predeclared domains) -------
+    for spread in W2B_SPREAD_DOMAIN:
+        for gap in W2B_GAP_SIGMA_DOMAIN:
+            for vol in W2B_VOL_DOMAIN:
+                policy = base_policy(calendar_identity)
+                policy["max_spread_relative_to_baseline"] = spread
+                policy["max_gap_sigma"] = gap
+                policy["max_realized_vol_relative_to_baseline"] = vol
+                admit("W2b",
+                      f"w2b_s{spread:g}_g{gap:g}_v{vol:g}", policy, {
+                          "w1_timing": dict(W2_TIMING_BLOCK),
+                          "role": "threshold_calibration",
+                          "gated_on": "the frozen W1 timing AND the "
+                                      "W2a mechanism screen",
+                          "reopen_counts":
                               "frozen_at_section4_defaults"})
 
+    # -- G2B: baseline-window ablation (C6) -------------------------
+    for baseline in G2_BASELINE_ABLATION:
+        policy = base_policy(calendar_identity)
+        policy["reopen_baseline_bars"] = baseline
+        policy["reopen_gap_sigma_bars"] = baseline
+        policy["reopen_realized_vol_bars"] = baseline
+        admit("G2B", f"g2b_base{baseline}", policy, {
+            "w1_timing": dict(W2_TIMING_BLOCK),
+            "role": "g2_baseline_window_ablation",
+            "rationale": "the provisional value 4 has a mechanical "
+                         "rationale (three dispersion degrees of "
+                         "freedom inside the shortest post-reopen "
+                         "stretch) but no optimality claim; this "
+                         "bounded ablation carries the burden"})
+
     manifest = {
-        "schema": "gymfx.wp4.materialization.v1",
+        "schema": "gymfx.wp4.materialization.v2",
         "plan42_sha256": PLAN42_SHA256,
         "identity": identity,
         "bar_hours": bar_hours,
         "min_open_window_hours": min_open_window_hours,
-        "g2_baseline_bars_frozen_not_in_plan_s4": G2_BASELINE_BARS,
+        "g2_baseline_bars_provisional": G2_BASELINE_BARS,
         "cells": len(cells),
         "rejections": len(rejections),
         "families": {
             family: sum(1 for c in cells if c["family"] == family)
-            for family in ("W0", "W1", "W2")},
+            for family in ("W0", "W1", "W2a", "W2b", "G2B")},
+        # C1: the manifest, not the cell, is the external binding —
+        # every cell id and digest is enumerated here, and the
+        # manifest digest is what a reviewed dispatch binds
+        "cell_index": {c["cell_id"]: c["digest"] for c in cells},
+        # C7: every attempted cell is a recorded trial
+        "trial_ledger": sorted(c["cell_id"] for c in cells),
     }
     manifest["digest"] = sha256_hex(canonical_bytes(manifest))
     return {"manifest": manifest, "cells": cells,
