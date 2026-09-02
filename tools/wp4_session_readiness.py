@@ -58,6 +58,9 @@ PINNED_TRUST_MANIFEST_DIGEST = (
 TRUST_MANIFEST_SCHEMA = "wp4.session_trust_manifest.v1"
 STATUS_NOT_PROVISIONED = "NOT_PROVISIONED_NON_AUTHORIZING"
 STATUS_PROVISIONED = "PROVISIONED_AUTHORIZING"
+# C36: while the pinned manifest is NOT_PROVISIONED, the consumption
+# verifier refuses every package without exception under this state.
+NOT_PROVISIONED_NON_CONSUMABLE = "NOT_PROVISIONED_NON_CONSUMABLE"
 
 WP4_MIN_PAIRED_WEEKS = 30
 WEEKEND_MIN_HOURS = 40.0
@@ -209,12 +212,24 @@ def require_real_positive(name: str, value: Any) -> float:
     return float(value)
 
 
+# C37: ResolvedTrust is MINTED only while _resolve_manifest holds
+# this module-private latch. Direct construction — including
+# dataclasses.replace(), which re-runs __init__/__post_init__ —
+# refuses, so no caller can fabricate a trust that merely NAMES the
+# pinned digest under a different key. The manifest self-digest check
+# in _resolve_manifest binds digest to content: a manifest whose
+# digest equals the production pin IS the committed NOT_PROVISIONED
+# manifest.
+_TRUST_MINTING: list = []
+
+
 @dataclass(frozen=True)
 class ResolvedTrust:
     """The trust resolved from a loaded, pin-verified manifest. It
     carries authority ONLY when the manifest is provisioned with a
     real key. NOT_PROVISIONED yields authorizing=False, so no bundle
-    can activate the collector."""
+    can activate the collector. It has NO public constructor: only
+    _resolve_manifest mints instances (C37)."""
 
     authorizing: bool
     manifest_digest: str
@@ -229,6 +244,12 @@ class ResolvedTrust:
     max_activation_age_days: float
     approving_order_reference: str
     approving_order_digest: str
+
+    def __post_init__(self):
+        if not _TRUST_MINTING:
+            raise TrustError(
+                "ResolvedTrust has no public constructor — trust is "
+                "minted only by resolving a digest-verified manifest")
 
     def public_key(self) -> Ed25519PublicKey:
         if not self.public_key_hex:
@@ -290,19 +311,24 @@ def _resolve_manifest(obj: dict, *, expected_digest: str) -> \
             if not body[name]:
                 raise TrustError(
                     f"provisioned manifest missing {name}")
-    return ResolvedTrust(
-        authorizing=authorizing, manifest_digest=self_digest,
-        status=status, public_key_hex=body["public_key_hex"],
-        venue=body["venue"],
-        account_fingerprint=body["account_fingerprint"],
-        symbol=body["symbol"],
-        exporter_code_digest=body["exporter_code_digest"],
-        parser_code_digest=body["parser_code_digest"],
-        code_identity_digest=body["code_identity_digest"],
-        max_activation_age_days=float(
-            body["max_activation_age_days"]),
-        approving_order_reference=body["approving_order_reference"],
-        approving_order_digest=body["approving_order_digest"])
+    _TRUST_MINTING.append(True)
+    try:
+        return ResolvedTrust(
+            authorizing=authorizing, manifest_digest=self_digest,
+            status=status, public_key_hex=body["public_key_hex"],
+            venue=body["venue"],
+            account_fingerprint=body["account_fingerprint"],
+            symbol=body["symbol"],
+            exporter_code_digest=body["exporter_code_digest"],
+            parser_code_digest=body["parser_code_digest"],
+            code_identity_digest=body["code_identity_digest"],
+            max_activation_age_days=float(
+                body["max_activation_age_days"]),
+            approving_order_reference=body[
+                "approving_order_reference"],
+            approving_order_digest=body["approving_order_digest"])
+    finally:
+        _TRUST_MINTING.pop()
 
 
 def load_pinned_production_trust() -> ResolvedTrust:
@@ -317,12 +343,16 @@ def load_pinned_production_trust() -> ResolvedTrust:
 
 
 # NOTE: trust-injecting loaders/builders do NOT live in this
-# distributed module (C35). The only public entry points are the
+# distributed module (C35/C37). The only public entry points are the
 # production build_readiness_package (which loads the code-pinned
-# manifest itself) and verify_consumable_readiness. The provisioned
-# fixture seam lives under tests/ and drives the private _resolve_
-# manifest / _build_package with fixture=True, which can only emit
-# the FIXTURE schema.
+# manifest itself and is the SOLE place the production schema is
+# stamped) and verify_consumable_readiness (which loads the pinned
+# manifest internally and refuses everything while it is
+# NOT_PROVISIONED). The common core _derive_readiness_body has no
+# schema selector and emits no sealed package. The provisioned
+# fixture seam lives under tests/ and seals EXCLUSIVELY the FIXTURE
+# schema. ResolvedTrust cannot be constructed outside
+# _resolve_manifest.
 
 
 def _verify_signed_artifact(raw: Any, trust: ResolvedTrust, *,
@@ -901,31 +931,28 @@ PRODUCTION_SCHEMA = "gymfx.wp4.session_readiness.v4"
 FIXTURE_SCHEMA = "gymfx.wp4.session_readiness.fixture.v4"
 
 
-def _build_package(source: VerifiedSource, trust: ResolvedTrust, *,
-                   bar_hours: float, evaluation_as_of: datetime,
-                   realized_vol_window_bars: int,
-                   calendar_tz: Optional[str],
-                   session_export: Optional[Any],
-                   activation_receipt: Optional[Any],
-                   required_pre_bars: int, required_post_bars: int,
-                   operator_exceptions: Optional[Sequence[Any]],
-                   fixture: bool) -> dict:
+def _derive_readiness_body(source: VerifiedSource,
+                           trust: ResolvedTrust, *,
+                           bar_hours: float,
+                           evaluation_as_of: datetime,
+                           realized_vol_window_bars: int,
+                           calendar_tz: Optional[str],
+                           session_export: Optional[Any],
+                           activation_receipt: Optional[Any],
+                           required_pre_bars: int,
+                           required_post_bars: int,
+                           operator_exceptions:
+                           Optional[Sequence[Any]]) -> dict:
+    """C37: the COMMON CORE. It derives the readiness body but has NO
+    schema selector and emits NO schema, NO fixture marker and NO
+    digest — it cannot produce a sealed package of any kind. Sealing
+    into the PRODUCTION schema happens only inside
+    build_readiness_package, which loads the pinned manifest itself;
+    sealing into the FIXTURE schema happens only inside tests/."""
     if not isinstance(source, VerifiedSource):
         raise ReadinessError(
             "source must be a VerifiedSource built from hashed bytes")
     source.revalidate()
-    # C35: a PRODUCTION-schema package can only carry authority under
-    # the code-pinned manifest. A caller-supplied (fixture) trust
-    # must declare fixture=True and produces the FIXTURE schema, so a
-    # fixture can never masquerade as production authority.
-    is_pinned = trust.manifest_digest == PINNED_TRUST_MANIFEST_DIGEST
-    if fixture and is_pinned:
-        raise ReadinessError(
-            "the fixture seam cannot use the pinned production trust")
-    if not fixture and not is_pinned:
-        raise ReadinessError(
-            "a non-pinned trust cannot build a production package — "
-            "use the isolated fixture seam")
     roles = source.roles
     frame = source.frame()
     as_of = (pd.Timestamp(evaluation_as_of).tz_convert("UTC")
@@ -977,9 +1004,7 @@ def _build_package(source: VerifiedSource, trust: ResolvedTrust, *,
             "required_post_bars": required_post_bars}
     assert verdict_state in READINESS_STATES
 
-    package = {
-        "schema": FIXTURE_SCHEMA if fixture else PRODUCTION_SCHEMA,
-        "fixture_marker": bool(fixture),
+    body = {
         "source": {"logical_id": source.source_logical_id,
                    "source_digest": source.source_digest},
         "column_role_contract_digest": roles.digest(),
@@ -1008,8 +1033,7 @@ def _build_package(source: VerifiedSource, trust: ResolvedTrust, *,
                                PROVENANCE_OBSERVED],
         "eth_conclusion_when_spot": ETH_SPOT_CONCLUSION,
     }
-    package["digest"] = sha256_hex(canonical_bytes(package))
-    return package
+    return body
 
 
 def build_readiness_package(source: VerifiedSource, *,
@@ -1023,13 +1047,17 @@ def build_readiness_package(source: VerifiedSource, *,
                             required_post_bars: int = 4,
                             operator_exceptions:
                             Optional[Sequence[Any]] = None) -> dict:
-    """PRODUCTION path. It loads the PINNED trust manifest itself and
-    NEVER accepts a caller-supplied trust — the manifest ships
-    NOT_PROVISIONED, so no bundle can activate the collector until a
-    separate key ceremony. evaluation_as_of comes from the reviewed
-    invocation and is bound into the package."""
+    """PRODUCTION path — the ONLY factory that seals the PRODUCTION
+    schema. It loads the PINNED trust manifest itself and IGNORES any
+    external ResolvedTrust completely (there is no parameter to pass
+    one) — the manifest ships NOT_PROVISIONED, so no bundle can
+    activate the collector until a separate key ceremony.
+    evaluation_as_of comes from the reviewed invocation and is bound
+    into the package. C37: the schema decision is not parameterized
+    anywhere — it is stamped inline here and nowhere else in this
+    module."""
     trust = load_pinned_production_trust()
-    return _build_package(
+    body = _derive_readiness_body(
         source, trust, bar_hours=bar_hours,
         evaluation_as_of=evaluation_as_of,
         realized_vol_window_bars=realized_vol_window_bars,
@@ -1037,38 +1065,183 @@ def build_readiness_package(source: VerifiedSource, *,
         activation_receipt=activation_receipt,
         required_pre_bars=required_pre_bars,
         required_post_bars=required_post_bars,
-        operator_exceptions=operator_exceptions, fixture=False)
+        operator_exceptions=operator_exceptions)
+    package = {"schema": PRODUCTION_SCHEMA, "fixture_marker": False,
+               **body}
+    package["digest"] = sha256_hex(canonical_bytes(package))
+    return package
 
 
-# C35: a consumption verifier every future readiness consumer MUST
-# call before trusting sufficiency — even while the grid is blocked.
-def verify_consumable_readiness(
-        package: dict, *, expected_manifest_digest: str) -> dict:
-    """Refuse anything that is not a genuine PRODUCTION package with
-    the pinned provisioned manifest, no fixture marker and an intact
-    digest. A fixture package (fixture schema or marker) refuses."""
+# C36: the exact key set a sealed production package carries. The
+# consumer refuses any other shape.
+_PACKAGE_FIELDS = (
+    "schema", "fixture_marker", "source",
+    "column_role_contract_digest", "bar_hours", "timezone",
+    "evaluation_as_of", "trust_manifest_digest", "trust_status",
+    "realized_vol_window_bars", "inventory_summary",
+    "observed_gap_ledger_digest", "observed_gap_count",
+    "authoritative", "verdict", "provenance_classes",
+    "eth_conclusion_when_spot", "digest")
+
+
+def _check_consumable_consistency(package: dict, *,
+                                  pinned_digest: str) -> None:
+    """C36 structural + consistency gate (a pure dict checker — it
+    confers NO authority by itself; the consumer additionally
+    REDERIVES the package from signed evidence). Refuses unless the
+    package has the exact production shape, an intact digest, the
+    pinned manifest, provisioned status, non-null authority, an
+    active collector, a sufficient verdict backed by at least the
+    minimum paired records, concordant digests, and a permanently
+    unauthorized economic grid."""
     if not isinstance(package, dict):
         raise ReadinessError("package must be a dict")
-    if package.get("schema") != PRODUCTION_SCHEMA:
+    if set(package) != set(_PACKAGE_FIELDS):
+        raise ReadinessError(
+            f"package fields {sorted(package)} do not match the "
+            f"exact production schema fields")
+    if package["schema"] != PRODUCTION_SCHEMA:
         raise ReadinessError(
             f"not a production package: schema "
-            f"{package.get('schema')!r}")
-    if package.get("fixture_marker") is not False:
+            f"{package['schema']!r}")
+    if package["fixture_marker"] is not False:
         raise ReadinessError("package carries a fixture marker")
     body = {k: v for k, v in package.items() if k != "digest"}
-    if package.get("digest") != sha256_hex(canonical_bytes(body)):
+    if package["digest"] != sha256_hex(canonical_bytes(body)):
         raise ReadinessError("package digest mismatch — altered")
-    if package.get("trust_manifest_digest") != \
-            expected_manifest_digest:
+    if package["trust_manifest_digest"] != pinned_digest:
         raise ReadinessError(
-            "trust_manifest_digest is not the expected pin")
-    if package.get("trust_status") != STATUS_PROVISIONED:
+            "trust_manifest_digest is not the pinned production "
+            "manifest")
+    if package["trust_status"] != STATUS_PROVISIONED:
         raise ReadinessError(
-            f"trust status {package.get('trust_status')!r} is not "
+            f"trust status {package['trust_status']!r} is not "
             f"{STATUS_PROVISIONED}")
-    verdict = package.get("verdict", {})
+    source = package["source"]
+    if not isinstance(source, dict):
+        raise ReadinessError("source block must be a dict")
+    require_canonical_digest("source.source_digest",
+                             source.get("source_digest"))
+    require_logical_id("source.logical_id", source.get("logical_id"))
+    require_canonical_digest("column_role_contract_digest",
+                             package["column_role_contract_digest"])
+    require_canonical_digest("observed_gap_ledger_digest",
+                             package["observed_gap_ledger_digest"])
+    auth = package["authoritative"]
+    if not isinstance(auth, dict):
+        raise ReadinessError(
+            "authoritative block is null/malformed — a consumable "
+            "package must carry non-null authority")
+    require_canonical_digest("authoritative.export_digest",
+                             auth.get("export_digest"))
+    require_canonical_digest(
+        "authoritative.authoritative_pairing_digest",
+        auth.get("authoritative_pairing_digest"))
+    if auth.get("trust_manifest_digest") != pinned_digest:
+        raise ReadinessError(
+            "authoritative trust_manifest_digest does not match the "
+            "pinned production manifest")
+    verdict = package["verdict"]
+    if not isinstance(verdict, dict):
+        raise ReadinessError("verdict block must be a dict")
+    if verdict.get("collector_active") is not True:
+        raise ReadinessError(
+            "collector is not active — not consumable")
+    if verdict.get("state") != \
+            "AUTHORITATIVE_SUPPORT_SUFFICIENT_FOR_CALIBRATION":
+        raise ReadinessError(
+            f"verdict state {verdict.get('state')!r} is not "
+            "sufficient — not consumable")
+    accounting = verdict.get("paired_week_accounting")
+    if not isinstance(accounting, dict) or \
+            accounting.get("status") != "SUFFICIENT":
+        raise ReadinessError(
+            "paired week accounting is not SUFFICIENT")
+    supported = accounting.get("supported_paired_weeks")
+    if isinstance(supported, bool) or \
+            not isinstance(supported, int) or \
+            supported < WP4_MIN_PAIRED_WEEKS:
+        raise ReadinessError(
+            f"supported_paired_weeks {supported!r} is below the "
+            f"minimum {WP4_MIN_PAIRED_WEEKS}")
+    records = auth.get("pairing_records")
+    if not isinstance(records, list) or len(records) != supported:
+        raise ReadinessError(
+            "pairing_records do not concord with "
+            "supported_paired_weeks")
     if verdict.get("economic_grid_authorized") is not False:
         raise ReadinessError("economic grid must never be authorized")
+
+
+def _require_rederivation_match(package: dict,
+                                rederived: dict) -> None:
+    """C36: the presented package must be byte-for-byte the package
+    the PINNED production factory derives from the signed evidence.
+    A self-emitted dict — however well digested — cannot survive
+    this, because it was not produced by the pinned path."""
+    if rederived.get("digest") != package.get("digest"):
+        raise ReadinessError(
+            "rederivation mismatch — the package is not the one the "
+            "pinned production path derives from the signed "
+            "evidence; a self-emitted digest proves only that the "
+            "dict did not change, not who produced it")
+
+
+# C36: a consumption verifier every future readiness consumer MUST
+# call before trusting sufficiency — even while the grid is blocked.
+def verify_consumable_readiness(
+        package: dict, *,
+        source_bytes: Optional[bytes] = None,
+        source_logical_id: Optional[str] = None,
+        roles: Optional["ColumnRoleContract"] = None,
+        session_export: Optional[Any] = None,
+        activation_receipt: Optional[Any] = None,
+        operator_exceptions: Optional[Sequence[Any]] = None,
+        calendar_tz: Optional[str] = None) -> dict:
+    """C36: the consumer accepts NO self-emitted claim. It loads the
+    PINNED manifest internally — there is deliberately no caller
+    digest parameter. While the pinned manifest is NOT_PROVISIONED it
+    refuses EVERY package without exception
+    (NOT_PROVISIONED_NON_CONSUMABLE). Once a reviewed key ceremony
+    provisions the pin, consumption verifies by FULL REDERIVATION:
+    the caller must supply the signed evidence bytes (source, export,
+    receipt) and the package must equal, digest for digest, what the
+    pinned production factory derives from them — plus the exact
+    schema and full consistency checks. A dict's own SHA proves only
+    that it did not change, never who produced it."""
+    trust = load_pinned_production_trust()
+    if trust.status != STATUS_PROVISIONED:
+        raise ReadinessError(
+            f"{NOT_PROVISIONED_NON_CONSUMABLE}: the pinned "
+            "production manifest is not provisioned — no readiness "
+            "package is consumable, without exception")
+    # ---- reachable only after a reviewed key ceremony re-pins a ----
+    # ---- PROVISIONED manifest; defined now so consumption is    ----
+    # ---- rederivation-only from day one (C36 form 1).           ----
+    _check_consumable_consistency(
+        package, pinned_digest=trust.manifest_digest)
+    if source_bytes is None or roles is None or \
+            source_logical_id is None or session_export is None or \
+            activation_receipt is None:
+        raise ReadinessError(
+            "rederivation evidence required: source bytes, roles, "
+            "logical id, signed export and receipt — a package is "
+            "never consumable on its own digest")
+    auth = package["authoritative"]
+    rederived = build_readiness_package(
+        VerifiedSource.from_csv_bytes(
+            source_bytes, roles=roles,
+            source_logical_id=source_logical_id),
+        bar_hours=package["bar_hours"],
+        evaluation_as_of=require_rfc3339_utc(
+            "evaluation_as_of", package["evaluation_as_of"]),
+        realized_vol_window_bars=package["realized_vol_window_bars"],
+        calendar_tz=calendar_tz, session_export=session_export,
+        activation_receipt=activation_receipt,
+        required_pre_bars=auth["required_pre_bars"],
+        required_post_bars=auth["required_post_bars"],
+        operator_exceptions=operator_exceptions)
+    _require_rederivation_match(package, rederived)
     return {"consumable": True,
-            "state": verdict.get("state"),
+            "state": package["verdict"]["state"],
             "note": "sufficiency may be read; grid stays blocked"}

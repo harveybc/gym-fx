@@ -1,17 +1,23 @@
-"""C35: the trust-injecting fixture seam lives HERE, under tests/,
-NOT in the distributed production module. It drives the private
-_resolve_manifest / _build_package with fixture=True, which can only
-emit the FIXTURE schema — a fixture package can never masquerade as
-production authority. Production code never imports this file.
+"""C35/C37: the trust-injecting fixture seam lives HERE, under
+tests/, NOT in the distributed production module. It drives the
+private _resolve_manifest / _derive_readiness_body and seals the
+result EXCLUSIVELY into the FIXTURE schema — the sealing function
+below hardcodes FIXTURE_SCHEMA and fixture_marker=True, so this seam
+structurally CANNOT select or emit the production schema. Production
+code never imports this file.
 """
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
-from tools.wp4_session_readiness import (ResolvedTrust,
-                                         VerifiedSource, _build_package,
+from tools.wp4_session_readiness import (FIXTURE_SCHEMA,
+                                         PINNED_TRUST_MANIFEST_DIGEST,
+                                         ReadinessError, ResolvedTrust,
+                                         VerifiedSource,
+                                         _derive_readiness_body,
                                          _resolve_manifest,
+                                         canonical_bytes, sha256_hex,
                                          strict_json_loads)
 
 
@@ -21,6 +27,15 @@ def resolve_fixture_manifest(path: Any, *,
     raw = Path(path).read_bytes()
     return _resolve_manifest(strict_json_loads(raw),
                              expected_digest=expected_digest)
+
+
+def _seal_fixture(body: dict) -> dict:
+    """Pure sealing function: FIXTURE schema only. There is no
+    parameter by which a caller could select the production schema."""
+    package = {"schema": FIXTURE_SCHEMA, "fixture_marker": True,
+               **body}
+    package["digest"] = sha256_hex(canonical_bytes(package))
+    return package
 
 
 def build_fixture_readiness(source: VerifiedSource,
@@ -36,7 +51,10 @@ def build_fixture_readiness(source: VerifiedSource,
                             Optional[Sequence[Any]] = None) -> dict:
     """Build a FIXTURE-schema readiness package under an isolated
     provisioned manifest. Never emits the production schema."""
-    return _build_package(
+    if trust.manifest_digest == PINNED_TRUST_MANIFEST_DIGEST:
+        raise ReadinessError(
+            "the fixture seam cannot use the pinned production trust")
+    body = _derive_readiness_body(
         source, trust, bar_hours=bar_hours,
         evaluation_as_of=evaluation_as_of,
         realized_vol_window_bars=realized_vol_window_bars,
@@ -44,4 +62,5 @@ def build_fixture_readiness(source: VerifiedSource,
         activation_receipt=activation_receipt,
         required_pre_bars=required_pre_bars,
         required_post_bars=required_post_bars,
-        operator_exceptions=operator_exceptions, fixture=True)
+        operator_exceptions=operator_exceptions)
+    return _seal_fixture(body)

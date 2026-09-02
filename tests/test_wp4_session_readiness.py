@@ -24,8 +24,10 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 import tools.wp4_session_readiness as mod
 from tools.wp4_session_readiness import (
     ACTIVATION_RECEIPT_SCHEMA, ColumnRoleContract, ETH_SPOT_CONCLUSION,
-    EvidenceError, JoinContractError, OPERATOR_EXCEPTION_SCHEMA,
-    ReadinessError, SESSION_EXPORT_SCHEMA, STATUS_PROVISIONED,
+    EvidenceError, JoinContractError, NOT_PROVISIONED_NON_CONSUMABLE,
+    OPERATOR_EXCEPTION_SCHEMA,
+    ReadinessError, ResolvedTrust, SESSION_EXPORT_SCHEMA,
+    STATUS_PROVISIONED,
     TRUST_MANIFEST_SCHEMA, TrustError, UNAVAILABLE,
     WP4_MIN_PAIRED_WEEKS, VerifiedSource, build_readiness_package,
     canonical_bytes, classify_observed_gap,
@@ -33,9 +35,11 @@ from tools.wp4_session_readiness import (
     opening_gap_return, quote_continuity, sha256_hex,
     strict_json_loads, verify_consumable_readiness,
     PRODUCTION_SCHEMA, PINNED_TRUST_MANIFEST_DIGEST)
+from tools.wp4_session_readiness import (
+    _check_consumable_consistency, _derive_readiness_body,
+    _require_rederivation_match)
 from _wp4_trust_fixture import (build_fixture_readiness,
                                 resolve_fixture_manifest)
-from tools.wp4_session_readiness import _build_package as _build_seam
 
 VENUE, ACCT, SYM = "mt5_demo", "fp-1", "ETHUSD"
 EXP_D = "a" * 64
@@ -627,9 +631,9 @@ class TestC35FixtureIsolationAndConsumer:
                                                 key):
         ivs = _weekly(3)
         pkg = _auth_pkg(_bars(ivs), provisioned, key, ivs)
-        with pytest.raises(ReadinessError):
-            verify_consumable_readiness(
-                pkg, expected_manifest_digest=PINNED_TRUST_MANIFEST_DIGEST)
+        with pytest.raises(ReadinessError,
+                           match=NOT_PROVISIONED_NON_CONSUMABLE):
+            verify_consumable_readiness(pkg)
 
     def test_production_package_is_not_authoritative_but_valid(self):
         raw = b"DATE_TIME,OPEN,CLOSE\n2024-01-01 00:00:00,1,1\n"
@@ -641,12 +645,12 @@ class TestC35FixtureIsolationAndConsumer:
                                       tzinfo=timezone.utc))
         assert pkg["schema"] == PRODUCTION_SCHEMA
         assert pkg["fixture_marker"] is False
-        # it verifies as a genuine package but is NOT_PROVISIONED, so
-        # the consumer refuses on the trust status
-        with pytest.raises(ReadinessError, match="trust status|pin"):
-            verify_consumable_readiness(
-                pkg,
-                expected_manifest_digest=PINNED_TRUST_MANIFEST_DIGEST)
+        # C36: while the pinned manifest is NOT_PROVISIONED, even a
+        # GENUINE production package refuses consumption — no
+        # exception whatsoever
+        with pytest.raises(ReadinessError,
+                           match=NOT_PROVISIONED_NON_CONSUMABLE):
+            verify_consumable_readiness(pkg)
 
     def test_fixture_seam_cannot_use_the_pinned_trust(self):
         pinned = load_pinned_production_trust()
@@ -659,38 +663,43 @@ class TestC35FixtureIsolationAndConsumer:
                 evaluation_as_of=datetime(2026, 9, 1,
                                           tzinfo=timezone.utc))
 
-    def test_non_pinned_trust_cannot_build_production(
-            self, provisioned, key):
-        """M3 target: a PROVISIONED but non-pinned trust with
-        fixture=False must refuse — the only production authority is
-        the code-pinned manifest."""
-        raw = b"DATE_TIME,OPEN,CLOSE\n2024-01-01 00:00:00,1,1\n"
-        src = VerifiedSource.from_csv_bytes(
-            raw, roles=ROLES, source_logical_id="fx:e")
-        with pytest.raises(ReadinessError, match="non-pinned"):
-            _build_seam(src, provisioned, bar_hours=4.0,
-                        evaluation_as_of=datetime(2026, 9, 1,
-                                                  tzinfo=timezone.utc),
-                        realized_vol_window_bars=3, calendar_tz=None,
-                        session_export=None, activation_receipt=None,
-                        required_pre_bars=4, required_post_bars=4,
-                        operator_exceptions=None, fixture=False)
+    def test_the_core_cannot_seal_any_schema(self, provisioned, key):
+        """C37 (replaces the old M3 target): the common core has no
+        fixture/schema selector and emits an UNSEALED body — no
+        schema, no fixture_marker, no digest — so no trust, pinned or
+        not, can make it produce a production package."""
+        assert "fixture" not in inspect.signature(
+            _derive_readiness_body).parameters
+        ivs = _weekly(3)
+        exp = _export(ivs, key)
+        body = _derive_readiness_body(
+            _source(_bars(ivs)), provisioned, bar_hours=4.0,
+            evaluation_as_of=AS_OF, realized_vol_window_bars=3,
+            calendar_tz=None, session_export=exp,
+            activation_receipt=_receipt(exp, key),
+            required_pre_bars=4, required_post_bars=4,
+            operator_exceptions=None)
+        assert "schema" not in body
+        assert "fixture_marker" not in body
+        assert "digest" not in body
 
     def test_consumer_rejects_fixture_marker_alone(self):
-        """M4 target: a package with the PRODUCTION schema but a
-        fixture_marker True is refused for the marker itself, not
-        only the schema."""
-        pkg = {"schema": PRODUCTION_SCHEMA, "fixture_marker": True,
-               "trust_manifest_digest": PINNED_TRUST_MANIFEST_DIGEST,
-               "trust_status": "PROVISIONED_AUTHORIZING",
-               "verdict": {"economic_grid_authorized": False,
-                           "state": "x"}}
-        pkg["digest"] = sha256_hex(canonical_bytes(
-            {k: v for k, v in pkg.items() if k != "digest"}))
+        """M4 target, retargeted at the consistency gate: a package
+        with the PRODUCTION schema but fixture_marker True is refused
+        for the marker itself, not only the schema."""
+        raw = b"DATE_TIME,OPEN,CLOSE\n2024-01-01 00:00:00,1,1\n"
+        pkg = build_readiness_package(
+            VerifiedSource.from_csv_bytes(raw, roles=ROLES,
+                                          source_logical_id="fx:e"),
+            bar_hours=4.0,
+            evaluation_as_of=datetime(2026, 9, 1,
+                                      tzinfo=timezone.utc))
+        forged = {k: (True if k == "fixture_marker" else v)
+                  for k, v in pkg.items() if k != "digest"}
+        forged["digest"] = sha256_hex(canonical_bytes(forged))
         with pytest.raises(ReadinessError, match="fixture marker"):
-            verify_consumable_readiness(
-                pkg,
-                expected_manifest_digest=PINNED_TRUST_MANIFEST_DIGEST)
+            _check_consumable_consistency(
+                forged, pinned_digest=PINNED_TRUST_MANIFEST_DIGEST)
 
     def test_a_tampered_production_package_refuses(self):
         raw = b"DATE_TIME,OPEN,CLOSE\n2024-01-01 00:00:00,1,1\n"
@@ -702,6 +711,271 @@ class TestC35FixtureIsolationAndConsumer:
                                       tzinfo=timezone.utc))
         pkg["verdict"]["state"] = "tampered"
         with pytest.raises(ReadinessError, match="digest mismatch"):
-            verify_consumable_readiness(
-                pkg,
-                expected_manifest_digest=PINNED_TRUST_MANIFEST_DIGEST)
+            _check_consumable_consistency(
+                pkg, pinned_digest=PINNED_TRUST_MANIFEST_DIGEST)
+
+
+# ================================================================== #
+# C36 derived consumption + C37 single production factory            #
+# ================================================================== #
+
+def _forge_production_stamp(body):
+    """What an adversary would do after C37: hand-stamp a derived
+    body as production. The consumer must kill this."""
+    forged = {"schema": PRODUCTION_SCHEMA, "fixture_marker": False,
+              **{k: v for k, v in body.items()
+                 if k not in ("schema", "fixture_marker", "digest")}}
+    forged["digest"] = sha256_hex(canonical_bytes(forged))
+    return forged
+
+
+def _sufficient_fixture_body(provisioned, key):
+    ivs = _weekly(WP4_MIN_PAIRED_WEEKS)
+    exp = _export(
+        ivs, key,
+        acq=["2024-01-01T00:00:00Z", "2024-08-05T00:00:00Z"],
+        observed="2024-08-05T00:00:00Z",
+        exported="2024-08-06T00:00:00Z")
+    return _derive_readiness_body(
+        _source(_bars(ivs)), provisioned, bar_hours=4.0,
+        evaluation_as_of=datetime(2024, 8, 7, tzinfo=timezone.utc),
+        realized_vol_window_bars=3, calendar_tz=None,
+        session_export=exp, activation_receipt=_receipt(exp, key),
+        required_pre_bars=4, required_post_bars=4,
+        operator_exceptions=None)
+
+
+class TestC36ConsumerNoSelfEmittedClaims:
+
+    def test_pre1_minimal_self_digested_dict_refuses(self):
+        """PRE#1 dead twice over: the NOT_PROVISIONED gate refuses it
+        today, and the exact-schema consistency gate refuses it on
+        the day the pin is provisioned."""
+        minimal = {"schema": PRODUCTION_SCHEMA,
+                   "fixture_marker": False,
+                   "trust_manifest_digest":
+                       PINNED_TRUST_MANIFEST_DIGEST,
+                   "trust_status": STATUS_PROVISIONED,
+                   "verdict": {"economic_grid_authorized": False,
+                               "state": "x"}}
+        minimal["digest"] = sha256_hex(canonical_bytes(
+            {k: v for k, v in minimal.items() if k != "digest"}))
+        with pytest.raises(ReadinessError,
+                           match=NOT_PROVISIONED_NON_CONSUMABLE):
+            verify_consumable_readiness(minimal)
+        with pytest.raises(ReadinessError, match="exact production"):
+            _check_consumable_consistency(
+                minimal, pinned_digest=PINNED_TRUST_MANIFEST_DIGEST)
+
+    def test_consumer_takes_no_caller_digest(self):
+        """Acceptance #3: the verifier loads the pinned manifest
+        internally — no caller digest/pin/trust parameter exists."""
+        params = inspect.signature(
+            verify_consumable_readiness).parameters
+        for banned in ("expected_manifest_digest", "digest", "pin",
+                       "trust", "manifest_digest", "trust_manifest"):
+            assert banned not in params
+
+    def test_everything_refuses_while_not_provisioned(
+            self, provisioned, key):
+        """Acceptance #4: under NOT_PROVISIONED every package refuses
+        consumption — genuine production, fixture, garbage."""
+        raw = b"DATE_TIME,OPEN,CLOSE\n2024-01-01 00:00:00,1,1\n"
+        genuine = build_readiness_package(
+            VerifiedSource.from_csv_bytes(raw, roles=ROLES,
+                                          source_logical_id="fx:e"),
+            bar_hours=4.0,
+            evaluation_as_of=datetime(2026, 9, 1,
+                                      tzinfo=timezone.utc))
+        ivs = _weekly(3)
+        fixture_pkg = _auth_pkg(_bars(ivs), provisioned, key, ivs)
+        for pkg in (genuine, fixture_pkg, {}, {"schema": "x"}):
+            with pytest.raises(ReadinessError,
+                               match=NOT_PROVISIONED_NON_CONSUMABLE):
+                verify_consumable_readiness(pkg)
+
+    def test_pre3_forged_stamp_dies_on_pin_and_rederivation(
+            self, provisioned, key):
+        """PRE#3 dead: a hand-stamped 'production' package built from
+        a fixture-trust body fails the internal pin check AND can
+        never match a rederivation by the pinned factory."""
+        forged = _forge_production_stamp(
+            _sufficient_fixture_body(provisioned, key))
+        assert forged["verdict"]["collector_active"] is True
+        # today: the unconditional gate
+        with pytest.raises(ReadinessError,
+                           match=NOT_PROVISIONED_NON_CONSUMABLE):
+            verify_consumable_readiness(forged)
+        # provisioned-day: the pin is checked against the INTERNAL
+        # manifest, and the forged body names the fixture digest
+        with pytest.raises(ReadinessError, match="pinned production"):
+            _check_consumable_consistency(
+                forged, pinned_digest=PINNED_TRUST_MANIFEST_DIGEST)
+        # and rederivation by the pinned factory cannot reproduce it
+        raw = b"DATE_TIME,OPEN,CLOSE\n2024-01-01 00:00:00,1,1\n"
+        rebuilt = build_readiness_package(
+            VerifiedSource.from_csv_bytes(raw, roles=ROLES,
+                                          source_logical_id="fx:e"),
+            bar_hours=4.0,
+            evaluation_as_of=datetime(2026, 9, 1,
+                                      tzinfo=timezone.utc))
+        with pytest.raises(ReadinessError, match="rederivation"):
+            _require_rederivation_match(forged, rebuilt)
+
+    def test_consistency_gate_full_coverage(self, provisioned, key):
+        """The provisioned-day gate demands non-null authority, an
+        active collector, a sufficient state, >= 30 concordant
+        records, concordant digests and a permanently blocked grid —
+        exercised against the isolated fixture pin."""
+        pin = provisioned.manifest_digest
+        good = _forge_production_stamp(
+            _sufficient_fixture_body(provisioned, key))
+        # the well-formed sufficient body passes the pure dict gate
+        # under ITS OWN pin (this confers no authority by itself)
+        _check_consumable_consistency(good, pinned_digest=pin)
+
+        def _mutate(**changes):
+            body = {k: v for k, v in good.items() if k != "digest"}
+            for path, value in changes.items():
+                keys = path.split("__")
+                tgt = body
+                # deep-copy the touched branches only
+                for k in keys[:-1]:
+                    tgt[k] = dict(tgt[k]) if isinstance(tgt[k], dict) \
+                        else tgt[k]
+                    tgt = tgt[k]
+                if value is ...:
+                    tgt.pop(keys[-1])
+                else:
+                    tgt[keys[-1]] = value
+            body["digest"] = sha256_hex(canonical_bytes(body))
+            return body
+
+        with pytest.raises(ReadinessError, match="non-null"):
+            _check_consumable_consistency(
+                _mutate(authoritative=None), pinned_digest=pin)
+        with pytest.raises(ReadinessError, match="not active"):
+            _check_consumable_consistency(
+                _mutate(verdict__collector_active=False),
+                pinned_digest=pin)
+        with pytest.raises(ReadinessError, match="not\nsufficient|"
+                           "not sufficient|is not"):
+            _check_consumable_consistency(
+                _mutate(verdict__state=
+                        "COLLECTOR_ACTIVE_HISTORY_ACCUMULATING"),
+                pinned_digest=pin)
+        with pytest.raises(ReadinessError, match="SUFFICIENT"):
+            _check_consumable_consistency(
+                _mutate(verdict__paired_week_accounting=dict(
+                    good["verdict"]["paired_week_accounting"],
+                    status="INCONCLUSIVE")), pinned_digest=pin)
+        short = dict(good["verdict"]["paired_week_accounting"],
+                     supported_paired_weeks=WP4_MIN_PAIRED_WEEKS - 1)
+        with pytest.raises(ReadinessError, match="below the"):
+            _check_consumable_consistency(
+                _mutate(verdict__paired_week_accounting=short),
+                pinned_digest=pin)
+        with pytest.raises(ReadinessError, match="concord"):
+            _check_consumable_consistency(
+                _mutate(authoritative__pairing_records=
+                        good["authoritative"]["pairing_records"][:-1]),
+                pinned_digest=pin)
+        with pytest.raises(ReadinessError, match="never be"):
+            _check_consumable_consistency(
+                _mutate(verdict__economic_grid_authorized=True),
+                pinned_digest=pin)
+        with pytest.raises(ReadinessError, match="exact production"):
+            _check_consumable_consistency(
+                _mutate(extra_field=1), pinned_digest=pin)
+        with pytest.raises(ReadinessError, match="exact production"):
+            _check_consumable_consistency(
+                _mutate(authoritative=...), pinned_digest=pin)
+
+    def test_rederivation_match_accepts_only_equality(self):
+        a = {"digest": "a" * 64}
+        _require_rederivation_match(a, {"digest": "a" * 64})
+        with pytest.raises(ReadinessError, match="rederivation"):
+            _require_rederivation_match(a, {"digest": "b" * 64})
+
+
+class TestC37SingleProductionFactory:
+
+    def test_pre2_resolved_trust_has_no_public_constructor(self):
+        """PRE#2 dead at the root: a caller cannot fabricate a
+        ResolvedTrust that merely NAMES the pinned digest — direct
+        construction and dataclasses.replace both refuse."""
+        import dataclasses
+        with pytest.raises(TrustError, match="no public constructor"):
+            ResolvedTrust(
+                authorizing=True,
+                manifest_digest=PINNED_TRUST_MANIFEST_DIGEST,
+                status=STATUS_PROVISIONED, public_key_hex="ab",
+                venue=VENUE, account_fingerprint=ACCT, symbol=SYM,
+                exporter_code_digest=EXP_D, parser_code_digest=PAR_D,
+                code_identity_digest=COD_D,
+                max_activation_age_days=3650.0,
+                approving_order_reference="attacker",
+                approving_order_digest="d" * 64)
+        real = load_pinned_production_trust()
+        with pytest.raises(TrustError, match="no public constructor"):
+            dataclasses.replace(real, status=STATUS_PROVISIONED)
+
+    def test_minted_trust_binds_digest_to_content(self):
+        """A manifest whose digest equals the production pin IS the
+        committed NOT_PROVISIONED manifest — the self-digest check in
+        _resolve_manifest makes pin-naming impossible under any other
+        content."""
+        trust = load_pinned_production_trust()
+        assert trust.manifest_digest == PINNED_TRUST_MANIFEST_DIGEST
+        assert trust.authorizing is False
+
+    def test_no_distributed_function_combines_trust_and_selector(
+            self):
+        """Acceptance #5: structural scan over EVERY function in the
+        distributed module (private included) — none accepts a trust
+        together with a fixture/schema selector."""
+        for name, obj in inspect.getmembers(mod, inspect.isfunction):
+            params = inspect.signature(obj).parameters
+            has_trust = "trust" in params or \
+                "resolved_trust" in params
+            assert not (has_trust and "fixture" in params), name
+
+    def test_production_schema_is_stamped_in_exactly_one_place(self):
+        """The literal production stamp exists only inside
+        build_readiness_package, which takes no trust."""
+        stamp = '"schema": PRODUCTION_SCHEMA'
+        module_src = inspect.getsource(mod)
+        assert module_src.count(stamp) == 1
+        factory_src = inspect.getsource(build_readiness_package)
+        assert stamp in factory_src
+        assert "trust" not in inspect.signature(
+            build_readiness_package).parameters
+        core_src = inspect.getsource(_derive_readiness_body)
+        assert "PRODUCTION_SCHEMA" not in core_src
+        assert "FIXTURE_SCHEMA" not in core_src
+
+    def test_fixture_seam_cannot_select_production(self):
+        """The tests/ seam hardcodes the FIXTURE schema; it has no
+        selector and never references the production schema."""
+        import _wp4_trust_fixture as seam
+        assert "PRODUCTION_SCHEMA" not in inspect.getsource(seam)
+        for fn in (seam.build_fixture_readiness, seam._seal_fixture):
+            params = inspect.signature(fn).parameters
+            assert "schema" not in params
+            assert "fixture" not in params
+
+    def test_production_ignores_external_trust_entirely(self, key):
+        """The factory derives its trust from the pinned manifest on
+        every call; there is no channel to hand it an instance, and
+        its output under an attacker bundle stays inert."""
+        ivs = _weekly(3)
+        exp = _export(ivs, key)
+        pkg = build_readiness_package(
+            _source(_bars(ivs)), bar_hours=4.0,
+            evaluation_as_of=AS_OF, session_export=exp,
+            activation_receipt=_receipt(exp, key))
+        assert pkg["trust_manifest_digest"] == \
+            PINNED_TRUST_MANIFEST_DIGEST
+        assert pkg["trust_status"] == \
+            "NOT_PROVISIONED_NON_AUTHORIZING"
+        assert pkg["verdict"]["collector_active"] is False
