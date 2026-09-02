@@ -1,0 +1,15 @@
+{
+ "account_fingerprint": null,
+ "approving_order_digest": "56af94461a8e2b85a4a838b293ecc45a981323c0ff1efa9ae6631c7502ffac4f",
+ "approving_order_reference": "agent-multi@41f99b92",
+ "code_identity_digest": null,
+ "exporter_code_digest": null,
+ "manifest_digest": "55b8cfc4301080e3d0e7758ef3174abfcb3e1fe45b8583d076e2ad675be511b8",
+ "max_activation_age_days": 30.0,
+ "parser_code_digest": null,
+ "public_key_hex": null,
+ "schema": "wp4.session_trust_manifest.v1",
+ "status": "NOT_PROVISIONED_NON_AUTHORIZING",
+ "symbol": "ETHUSD",
+ "venue": "mt5_demo"
+}

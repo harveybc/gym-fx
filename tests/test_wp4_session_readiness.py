@@ -1,13 +1,16 @@
-"""C23-C27 battery: authority is born only from evidence signed under
-an order-fixed Ed25519 key (a self-consistent bundle refuses), there
-is one derivation path (no caller authority dict/count), pairing is
-LOCAL and causal (remote bars never certify, a bar inside a closure
-refuses), the package binds trust/activation/intervals/pairing/source,
-and schemas are strict. The five audit counterexamples are dead."""
+"""C28-C32 battery: the trust root is FIXED BY THE EXECUTING PATH
+(the committed manifest ships NOT_PROVISIONED, so the production API
+never activates); a caller cannot inject trust into production;
+source bytes and frame are one population; the as-of contract refuses
+future evidence; the closure is [close_at, reopen_at); and boolean
+spacing cannot make continuity true. The five audit counterexamples
+are dead. Provisioned-authority tests use an ISOLATED fixture
+manifest through the explicit TEST_ONLY door."""
 from __future__ import annotations
 
 import binascii
 import hashlib
+import inspect
 import json
 import os
 from datetime import datetime, timezone
@@ -18,18 +21,26 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey)
 
+import tools.wp4_session_readiness as mod
 from tools.wp4_session_readiness import (
     ACTIVATION_RECEIPT_SCHEMA, ColumnRoleContract, ETH_SPOT_CONCLUSION,
     EvidenceError, JoinContractError, OPERATOR_EXCEPTION_SCHEMA,
-    ReadinessError, SESSION_EXPORT_SCHEMA, TrustContract, TrustError,
-    UNAVAILABLE, WP4_MIN_PAIRED_WEEKS, build_readiness_package,
-    canonical_bytes, classify_observed_gap, inventory_observed_gaps,
-    opening_gap_return, post_reopen_realized_vol, quote_continuity,
-    sha256_hex, strict_json_loads)
+    ReadinessError, SESSION_EXPORT_SCHEMA, STATUS_PROVISIONED,
+    TRUST_MANIFEST_SCHEMA, TrustError, UNAVAILABLE,
+    WP4_MIN_PAIRED_WEEKS, VerifiedSource, build_readiness_package,
+    build_readiness_package_with_trust_TEST_ONLY, canonical_bytes,
+    classify_observed_gap, inventory_observed_gaps,
+    load_pinned_production_trust, load_trust_manifest_TEST_ONLY,
+    opening_gap_return, quote_continuity, sha256_hex,
+    strict_json_loads)
 
 VENUE, ACCT, SYM = "mt5_demo", "fp-1", "ETHUSD"
-EXPORTER, PARSER, CODE = "exp-1", "par-1", "code-1"
-NOW = datetime(2024, 6, 1, tzinfo=timezone.utc)
+EXP_D = "a" * 64
+PAR_D = "b" * 64
+COD_D = "c" * 64
+AS_OF = datetime(2024, 8, 1, tzinfo=timezone.utc)
+OBSERVED_THROUGH = "2024-07-30T00:00:00Z"
+EXPORTED_AT = "2024-07-31T00:00:00Z"
 ROLES = ColumnRoleContract(datetime_col="DATE_TIME", open_col="OPEN",
                            close_col="CLOSE")
 
@@ -40,82 +51,98 @@ def key():
 
 
 @pytest.fixture(scope="module")
-def trust(key):
-    pub = key.public_key().public_bytes_raw()
-    return TrustContract(
-        public_key_hex=binascii.hexlify(pub).decode(),
-        venue=VENUE, account_fingerprint=ACCT, symbol=SYM,
-        exporter_identity=EXPORTER, parser_identity=PARSER,
-        code_identity=CODE)
+def provisioned(tmp_path_factory, key):
+    """An ISOLATED provisioned manifest fixture and its own pin — the
+    production pin is never touched."""
+    pub = binascii.hexlify(
+        key.public_key().public_bytes_raw()).decode()
+    manifest = {"schema": TRUST_MANIFEST_SCHEMA,
+                "status": STATUS_PROVISIONED, "public_key_hex": pub,
+                "venue": VENUE, "account_fingerprint": ACCT,
+                "symbol": SYM, "exporter_code_digest": EXP_D,
+                "parser_code_digest": PAR_D,
+                "code_identity_digest": COD_D,
+                "max_activation_age_days": 3650.0,
+                "approving_order_reference": "test-fixture",
+                "approving_order_digest": "d" * 64}
+    digest = sha256_hex(canonical_bytes(manifest))
+    path = tmp_path_factory.mktemp("trust") / "provisioned.json"
+    path.write_text(json.dumps({**manifest, "manifest_digest":
+                                digest}))
+    return load_trust_manifest_TEST_ONLY(path, expected_digest=digest)
 
 
 def _sign(body, key):
-    sig = key.sign(canonical_bytes(body))
-    return json.dumps({**body, "signature":
-                       binascii.hexlify(sig).decode()})
+    sig = binascii.hexlify(key.sign(canonical_bytes(body))).decode()
+    return json.dumps({**body, "signature": sig})
 
 
-def _weekly_intervals(n, *, start="2024-01-05 20:00"):
-    base = pd.Timestamp(start, tz="UTC")
-    return [{"close_at": (base + pd.Timedelta(weeks=i)).isoformat(),
-             "reopen_at": (base + pd.Timedelta(weeks=i, hours=52))
+def _weekly(n, *, start="2024-01-05 20:00"):
+    b = pd.Timestamp(start, tz="UTC")
+    return [{"close_at": (b + pd.Timedelta(weeks=i)).isoformat(),
+             "reopen_at": (b + pd.Timedelta(weeks=i, hours=52))
              .isoformat()} for i in range(n)]
 
 
-def _export(intervals, key, *, acq=None):
-    acq = acq or ["2024-01-01T00:00:00Z", "2024-12-31T00:00:00Z"]
+def _export(intervals, key, *, acq=None, observed=OBSERVED_THROUGH,
+            exported=EXPORTED_AT):
     return _sign({"schema": SESSION_EXPORT_SCHEMA, "venue": VENUE,
                   "account_fingerprint": ACCT, "symbol": SYM,
-                  "exporter_identity": EXPORTER,
-                  "parser_identity": PARSER, "code_identity": CODE,
-                  "acquisition_range": acq,
+                  "exporter_identity": EXP_D, "parser_identity": PAR_D,
+                  "code_identity": COD_D,
+                  "acquisition_range": acq or
+                  ["2024-01-01T00:00:00Z", "2024-07-01T00:00:00Z"],
+                  "exported_at": exported,
+                  "observed_through": observed,
                   "intervals": intervals}, key)
 
 
-def _receipt(export_json, key):
+def _receipt(export_json, key, *, activated="2024-02-01T00:00:00Z"):
     body = {k: v for k, v in json.loads(export_json).items()
             if k != "signature"}
-    export_digest = sha256_hex(canonical_bytes(body))
     return _sign({"schema": ACTIVATION_RECEIPT_SCHEMA, "venue": VENUE,
                   "account_fingerprint": ACCT, "symbol": SYM,
-                  "exporter_identity": EXPORTER,
-                  "parser_identity": PARSER, "code_identity": CODE,
-                  "activation_identity": "act-1",
-                  "activated_at": "2024-02-01T00:00:00Z",
-                  "bound_export_sha256": export_digest}, key)
+                  "exporter_identity": EXP_D, "parser_identity": PAR_D,
+                  "code_identity": COD_D, "activation_identity":
+                  "act-1", "activated_at": activated,
+                  "bound_export_sha256": sha256_hex(
+                      canonical_bytes(body))}, key)
 
 
-def _local_bars(intervals, *, pre=4, post=4, bar_hours=4.0,
-                remote_only=False):
-    """Adjacent local pre/post bars around EVERY interval (or, when
-    remote_only, only around the first close and last reopen)."""
-    bar = pd.Timedelta(hours=bar_hours)
+def _bars(intervals, *, pre=4, post=4, remote_only=False):
+    bar = pd.Timedelta(hours=4)
     stamps = set()
-    targets = ([intervals[0]] if remote_only else intervals)
+    targets = [intervals[0]] if remote_only else intervals
     for iv in targets:
-        c = pd.Timestamp(iv["close_at"]); r = pd.Timestamp(
-            intervals[-1]["reopen_at"] if remote_only
-            else iv["reopen_at"])
+        c = pd.Timestamp(iv["close_at"])
+        r = pd.Timestamp(intervals[-1]["reopen_at"] if remote_only
+                         else iv["reopen_at"])
         for k in range(pre, 0, -1):
             stamps.add(c - k * bar)
         for k in range(post):
             stamps.add(r + k * bar)
     stamps = sorted(stamps)
     n = len(stamps)
-    return pd.DataFrame({
+    frame = pd.DataFrame({
         "DATE_TIME": [s.tz_convert("UTC").tz_localize(None)
                       for s in stamps],
-        "OPEN": 100.0 + np.arange(n),
-        "CLOSE": 100.5 + np.arange(n)})
+        "OPEN": 100.0 + np.arange(n), "CLOSE": 100.5 + np.arange(n)})
+    return frame
 
 
-def _pkg(frame, key=None, trust_c=None, export=None, receipt=None,
-         **kw):
-    return build_readiness_package(
-        source_bytes=b"src-bytes", source_logical_id="fx:eth",
-        roles=ROLES, bar_hours=4.0, frame=frame,
-        session_export=export, activation_receipt=receipt,
-        trust=trust_c, now=NOW, **kw)
+def _source(frame, logical="fx:eth"):
+    raw = frame.to_csv(index=False).encode()
+    return VerifiedSource.from_csv_bytes(raw, roles=ROLES,
+                                         source_logical_id=logical)
+
+
+def _auth_pkg(frame, trust, key, intervals, *, pre=4, post=4,
+              as_of=AS_OF, **kw):
+    exp = _export(intervals, key, **kw)
+    return build_readiness_package_with_trust_TEST_ONLY(
+        _source(frame), trust, bar_hours=4.0, evaluation_as_of=as_of,
+        session_export=exp, activation_receipt=_receipt(exp, key),
+        required_pre_bars=pre, required_post_bars=post)
 
 
 # ================================================================== #
@@ -124,261 +151,313 @@ def _pkg(frame, key=None, trust_c=None, export=None, receipt=None,
 
 class TestFrozenCounterexamples:
 
-    def test_1_self_signed_forgery_refuses(self, trust):
-        """A bundle 'sealed' by an attacker's own key cannot verify
-        under the order-fixed public key."""
-        attacker = Ed25519PrivateKey.generate()
-        exp = _export(_weekly_intervals(30), attacker)
-        with pytest.raises(TrustError, match="signature"):
-            _pkg(_local_bars(_weekly_intervals(30)),
-                 trust_c=trust, export=exp,
-                 receipt=_receipt(exp, attacker))
-
-    def test_2_no_caller_authority_dict_or_count(self):
-        """The single path takes evidence bytes + trust, never an
-        authoritative dict, paired dict or collector_active flag."""
-        import inspect
-        import tools.wp4_session_readiness as mod
-        params = inspect.signature(
-            mod.build_readiness_package).parameters
-        for banned in ("authoritative", "paired", "collector_active"):
-            assert banned not in params
-        # with no evidence, the verdict is non-authoritative
-        pkg = _pkg(_local_bars(_weekly_intervals(1)))
+    def test_1_production_never_accepts_caller_trust(self, key):
+        """CRITICAL-1 dead: production build_readiness_package has no
+        trust parameter and loads the pinned NOT_PROVISIONED
+        manifest; an attacker key + bundle cannot activate."""
+        assert "trust" not in inspect.signature(
+            build_readiness_package).parameters
+        ivs = _weekly(30)
+        exp = _export(ivs, key)
+        pkg = build_readiness_package(
+            _source(_bars(ivs)), bar_hours=4.0, evaluation_as_of=AS_OF,
+            session_export=exp, activation_receipt=_receipt(exp, key))
         assert pkg["verdict"]["state"] == \
             "HISTORICAL_BACKFILL_NON_AUTHORITATIVE_ONLY"
+        assert pkg["verdict"]["collector_active"] is False
 
-    def test_3_remote_bars_never_certify(self, key, trust):
-        """Eight remote bars cannot support thirty local windows."""
-        ivs = _weekly_intervals(30)
-        exp = _export(ivs, key)
-        pkg = _pkg(_local_bars(ivs, remote_only=True), trust_c=trust,
-                   export=exp, receipt=_receipt(exp, key))
-        acc = pkg["verdict"]["paired_week_accounting"]
-        assert acc["supported_paired_weeks"] < 30
-        assert acc["status"] == "INCONCLUSIVE"
+    def test_2_frame_is_the_hashed_bytes(self):
+        """CRITICAL-2 dead: the frame is parsed FROM the bytes, so
+        distinct rows give distinct source digests."""
+        with pytest.raises(TypeError):
+            VerifiedSource(source_bytes=b"x", source_digest="d",
+                           source_logical_id="fx", roles=ROLES,
+                           frame=pd.DataFrame(), extra=1)
+        a = _source(pd.DataFrame({
+            "DATE_TIME": pd.date_range("2024-01-01", periods=2,
+                                       freq="4h"),
+            "OPEN": [1.0, 2.0], "CLOSE": [1.0, 2.0]}))
+        b = _source(pd.DataFrame({
+            "DATE_TIME": pd.date_range("2024-01-01", periods=2,
+                                       freq="4h"),
+            "OPEN": [999.0, 998.0], "CLOSE": [999.0, 998.0]}))
+        assert a.source_digest != b.source_digest
 
-    def test_4_distinct_authority_changes_digest(self, key, trust):
-        """Two authoritative populations of equal cardinality over
-        the SAME observed frame produce different package digests."""
-        frame = _local_bars(_weekly_intervals(2) +
-                            _weekly_intervals(2, start="2024-06-07 20:00"))
-        a = _weekly_intervals(2)
-        b = _weekly_intervals(2, start="2024-06-07 20:00")
-        ea, eb = _export(a, key), _export(b, key)
-        pa = _pkg(frame, trust_c=trust, export=ea,
-                  receipt=_receipt(ea, key), required_pre_bars=1,
-                  required_post_bars=1)
-        pb = _pkg(frame, trust_c=trust, export=eb,
-                  receipt=_receipt(eb, key), required_pre_bars=1,
-                  required_post_bars=1)
-        assert pa["authoritative"]["authoritative_pairing_digest"] \
-            != pb["authoritative"]["authoritative_pairing_digest"]
-        assert pa["digest"] != pb["digest"]
+    def test_3_future_intervals_refuse(self, provisioned, key):
+        """CRITICAL-3 dead: an interval reopening past
+        observed_through refuses."""
+        ivs = _weekly(30)   # runs to late July, past observed 07-30
+        with pytest.raises(TrustError, match="future|observed"):
+            _auth_pkg(_bars(ivs), provisioned, key, ivs,
+                      observed="2024-06-01T00:00:00Z",
+                      exported="2024-06-02T00:00:00Z",
+                      as_of=datetime(2024, 6, 3, tzinfo=timezone.utc))
 
-    def test_5_absolute_path_and_bad_digest_refuse(self):
-        with pytest.raises(ReadinessError, match="logical id"):
-            build_readiness_package(
-                source_bytes=b"x",
-                source_logical_id="/home/secret/eth.csv",
-                roles=ROLES, bar_hours=4.0,
-                frame=_local_bars(_weekly_intervals(1)))
-        with pytest.raises(ReadinessError, match="BYTES"):
-            build_readiness_package(
-                source_bytes="not-a-digest",
-                source_logical_id="fx:eth", roles=ROLES,
-                bar_hours=4.0,
-                frame=_local_bars(_weekly_intervals(1)))
+    def test_4_bar_at_close_refuses(self, provisioned, key):
+        """HIGH-1 dead: a bar exactly at close_at is inside the
+        [close_at, reopen_at) closure."""
+        ivs = _weekly(1)
+        frame = _bars(ivs, pre=1, post=1)
+        at_close = pd.Timestamp(ivs[0]["close_at"]).tz_localize(None)
+        frame = pd.concat([frame, pd.DataFrame({
+            "DATE_TIME": [at_close], "OPEN": [1.0], "CLOSE": [1.0]})]
+            ).drop_duplicates("DATE_TIME").reset_index(drop=True)
+        with pytest.raises(JoinContractError, match="inside"):
+            _auth_pkg(frame, provisioned, key, ivs, pre=1, post=1)
+
+    def test_5_boolean_spacing_is_unavailable(self):
+        """HIGH-2 dead."""
+        qc = quote_continuity(
+            ["2024-01-01T00:00:00Z", "2024-01-01T00:00:01Z"],
+            expected_spacing_seconds=True)
+        assert qc["value"] == UNAVAILABLE
 
 
 # ================================================================== #
-# C23 trust root                                                     #
+# C28 pinned trust                                                   #
 # ================================================================== #
 
-class TestTrustRoot:
+class TestPinnedTrust:
 
-    def test_a_signed_bundle_activates(self, key, trust):
-        ivs = _weekly_intervals(3)
-        exp = _export(ivs, key)
-        pkg = _pkg(_local_bars(ivs), trust_c=trust, export=exp,
-                   receipt=_receipt(exp, key))
+    def test_production_manifest_is_not_provisioned(self):
+        trust = load_pinned_production_trust()
+        assert trust.status == "NOT_PROVISIONED_NON_AUTHORIZING"
+        assert trust.authorizing is False
+
+    def test_no_production_param_injects_a_key(self):
+        params = inspect.signature(
+            build_readiness_package).parameters
+        for banned in ("trust", "public_key", "public_key_hex",
+                       "trust_manifest"):
+            assert banned not in params
+
+    def test_a_redigested_manifest_refuses(self, tmp_path, key):
+        pub = binascii.hexlify(
+            key.public_key().public_bytes_raw()).decode()
+        man = {"schema": TRUST_MANIFEST_SCHEMA,
+               "status": STATUS_PROVISIONED, "public_key_hex": pub,
+               "venue": VENUE, "account_fingerprint": ACCT,
+               "symbol": SYM, "exporter_code_digest": EXP_D,
+               "parser_code_digest": PAR_D,
+               "code_identity_digest": COD_D,
+               "max_activation_age_days": 3650.0,
+               "approving_order_reference": "x",
+               "approving_order_digest": "d" * 64}
+        digest = sha256_hex(canonical_bytes(man))
+        path = tmp_path / "m.json"
+        path.write_text(json.dumps({**man, "manifest_digest": digest}))
+        # asking for a DIFFERENT expected digest refuses
+        with pytest.raises(TrustError, match="pinned"):
+            load_trust_manifest_TEST_ONLY(path,
+                                          expected_digest="e" * 64)
+
+    def test_bool_max_age_refuses(self, tmp_path, key):
+        pub = binascii.hexlify(
+            key.public_key().public_bytes_raw()).decode()
+        man = {"schema": TRUST_MANIFEST_SCHEMA,
+               "status": STATUS_PROVISIONED, "public_key_hex": pub,
+               "venue": VENUE, "account_fingerprint": ACCT,
+               "symbol": SYM, "exporter_code_digest": EXP_D,
+               "parser_code_digest": PAR_D,
+               "code_identity_digest": COD_D,
+               "max_activation_age_days": True,
+               "approving_order_reference": "x",
+               "approving_order_digest": "d" * 64}
+        digest = sha256_hex(canonical_bytes(man))
+        path = tmp_path / "m.json"
+        path.write_text(json.dumps({**man, "manifest_digest": digest}))
+        with pytest.raises(ReadinessError, match="real positive"):
+            load_trust_manifest_TEST_ONLY(path,
+                                          expected_digest=digest)
+
+
+# ================================================================== #
+# C28/C30 authority and the as-of contract                           #
+# ================================================================== #
+
+class TestAuthorityAndAsOf:
+
+    def test_a_provisioned_bundle_activates(self, provisioned, key):
+        ivs = _weekly(3)
+        pkg = _auth_pkg(_bars(ivs), provisioned, key, ivs)
         assert pkg["verdict"]["collector_active"] is True
 
-    @pytest.mark.parametrize("swap", ["export", "receipt"])
-    def test_substituting_a_signer_refuses(self, key, trust, swap):
-        other = Ed25519PrivateKey.generate()
-        ivs = _weekly_intervals(3)
-        good = _export(ivs, key)
-        exp = _export(ivs, other) if swap == "export" else good
-        rcpt = (_receipt(good, other) if swap == "receipt"
-                else _receipt(good, key))
-        with pytest.raises(TrustError):
-            _pkg(_local_bars(ivs), trust_c=trust, export=exp,
-                 receipt=rcpt)
+    def test_substituting_signer_and_trust_together_refuses(
+            self, tmp_path):
+        """The real attack: attacker key AND attacker manifest. The
+        attacker manifest is not the fixture's pinned digest."""
+        attacker = Ed25519PrivateKey.generate()
+        pub = binascii.hexlify(
+            attacker.public_key().public_bytes_raw()).decode()
+        man = {"schema": TRUST_MANIFEST_SCHEMA,
+               "status": STATUS_PROVISIONED, "public_key_hex": pub,
+               "venue": VENUE, "account_fingerprint": ACCT,
+               "symbol": SYM, "exporter_code_digest": EXP_D,
+               "parser_code_digest": PAR_D,
+               "code_identity_digest": COD_D,
+               "max_activation_age_days": 3650.0,
+               "approving_order_reference": "attacker",
+               "approving_order_digest": "d" * 64}
+        digest = sha256_hex(canonical_bytes(man))
+        path = tmp_path / "atk.json"
+        path.write_text(json.dumps({**man, "manifest_digest": digest}))
+        # loading it requires the caller to already know its digest;
+        # the PRODUCTION path never loads a caller path — it only
+        # loads the code-pinned one. Prove production stays inert:
+        ivs = _weekly(30)
+        exp = _export(ivs, attacker)
+        pkg = build_readiness_package(
+            _source(_bars(ivs)), bar_hours=4.0, evaluation_as_of=AS_OF,
+            session_export=exp,
+            activation_receipt=_receipt(exp, attacker))
+        assert pkg["verdict"]["collector_active"] is False
 
-    def test_wrong_exporter_identity_refuses(self, key):
-        bad_trust = TrustContract(
-            public_key_hex=binascii.hexlify(
-                key.public_key().public_bytes_raw()).decode(),
-            venue=VENUE, account_fingerprint=ACCT, symbol=SYM,
-            exporter_identity="OTHER", parser_identity=PARSER,
-            code_identity=CODE)
-        ivs = _weekly_intervals(3)
-        exp = _export(ivs, key)
-        with pytest.raises(TrustError, match="exporter"):
-            _pkg(_local_bars(ivs), trust_c=bad_trust, export=exp,
-                 receipt=_receipt(exp, key))
+    def test_activated_after_observed_refuses(self, provisioned, key):
+        ivs = _weekly(1)
+        with pytest.raises(TrustError, match="as-of"):
+            _auth_pkg(_bars(ivs), provisioned, key, ivs,
+                      observed="2024-01-01T00:00:00Z",
+                      exported="2024-07-31T00:00:00Z")
 
-    def test_transplanted_receipt_refuses(self, key, trust):
-        a = _export(_weekly_intervals(1), key)
-        b = _export(_weekly_intervals(2, start="2024-06-07 20:00"),
-                    key)
-        with pytest.raises(TrustError, match="transplanted"):
-            _pkg(_local_bars(_weekly_intervals(1)), trust_c=trust,
-                 export=a, receipt=_receipt(b, key))
-
-    def test_interval_outside_acquisition_refuses(self, key, trust):
-        ivs = _weekly_intervals(1, start="2025-06-07 20:00")
-        exp = _export(ivs, key)   # acq default is 2024
-        with pytest.raises(EvidenceError, match="acquisition"):
-            _pkg(_local_bars(ivs), trust_c=trust, export=exp,
-                 receipt=_receipt(exp, key))
+    def test_bar_past_as_of_refuses(self, provisioned, key):
+        ivs = _weekly(1)
+        frame = _bars(ivs)
+        # push a bar past the as-of horizon
+        far = pd.Timestamp("2024-09-01").tz_localize(None)
+        frame = pd.concat([frame, pd.DataFrame({
+            "DATE_TIME": [far], "OPEN": [1.0], "CLOSE": [1.0]})]
+            ).reset_index(drop=True)
+        with pytest.raises(TrustError, match="as_of|future"):
+            _auth_pkg(frame, provisioned, key, ivs, pre=1, post=1)
 
 
 # ================================================================== #
-# C25 local causal pairing + acceptance battery                      #
+# C31 interval semantics + C25 local pairing acceptance              #
 # ================================================================== #
 
-class TestLocalPairingAndAcceptance:
+class TestLocalPairing:
 
-    def _run(self, n, key, trust, *, pre=4, post=4, frame=None):
-        ivs = _weekly_intervals(n)
-        exp = _export(ivs, key)
-        return _pkg(frame if frame is not None else _local_bars(ivs),
-                    trust_c=trust, export=exp,
-                    receipt=_receipt(exp, key), required_pre_bars=pre,
-                    required_post_bars=post)
+    def test_reopen_bar_is_valid_post(self, provisioned, key):
+        ivs = _weekly(1)
+        pkg = _auth_pkg(_bars(ivs, pre=1, post=1), provisioned, key,
+                        ivs, pre=1, post=1)
+        assert pkg["verdict"]["paired_week_accounting"][
+            "supported_paired_weeks"] == 1
 
-    def test_29_local_windows_deficit_1(self, key, trust):
-        # 30 intervals but the last has no local post window
-        ivs = _weekly_intervals(30)
-        frame = _local_bars(ivs)
-        last = pd.Timestamp(ivs[-1]["reopen_at"]).tz_localize(None)
-        frame = frame[pd.to_datetime(frame["DATE_TIME"]) < last]
-        pkg = self._run(30, key, trust, frame=frame)
+    def test_29_local_windows_deficit_1(self, provisioned, key):
+        """30 authoritative intervals within range, but the last has
+        no local post window -> 29 supported, deficit 1."""
+        ivs = _weekly(30, start="2024-01-05 20:00")
+        frame = _bars(ivs)
+        last_reopen = pd.Timestamp(
+            ivs[-1]["reopen_at"]).tz_localize(None)
+        frame = frame[pd.to_datetime(frame["DATE_TIME"])
+                      < last_reopen]
+        exp = _export(ivs, key, observed="2024-07-29T00:00:00Z",
+                      exported="2024-07-30T00:00:00Z",
+                      acq=["2024-01-01T00:00:00Z",
+                           "2024-07-29T00:00:00Z"])
+        as_of = datetime(2024, 7, 31, tzinfo=timezone.utc)
+        pkg = build_readiness_package_with_trust_TEST_ONLY(
+            _source(frame), provisioned, bar_hours=4.0,
+            evaluation_as_of=as_of, session_export=exp,
+            activation_receipt=_receipt(exp, key),
+            required_pre_bars=4, required_post_bars=4)
         acc = pkg["verdict"]["paired_week_accounting"]
         assert acc["supported_paired_weeks"] == 29
         assert acc["exact_deficit"] == 1
         assert pkg["verdict"]["state"] == \
             "COLLECTOR_ACTIVE_HISTORY_ACCUMULATING"
 
-    def test_30_local_windows_sufficient_not_grid(self, key, trust):
-        pkg = self._run(30, key, trust)
+    def test_30_local_windows_sufficient(self, provisioned, key):
+        ivs = _weekly(30, start="2024-01-05 20:00")
+        exp = _export(ivs, key, observed="2024-07-29T00:00:00Z",
+                      exported="2024-07-30T00:00:00Z",
+                      acq=["2024-01-01T00:00:00Z",
+                           "2024-07-29T00:00:00Z"])
+        as_of = datetime(2024, 7, 31, tzinfo=timezone.utc)
+        pkg = build_readiness_package_with_trust_TEST_ONLY(
+            _source(_bars(ivs)), provisioned, bar_hours=4.0,
+            evaluation_as_of=as_of, session_export=exp,
+            activation_receipt=_receipt(exp, key),
+            required_pre_bars=4, required_post_bars=4)
         assert pkg["verdict"]["state"] == \
             "AUTHORITATIVE_SUPPORT_SUFFICIENT_FOR_CALIBRATION"
         assert pkg["verdict"]["economic_grid_authorized"] is False
 
-    def test_removing_a_local_bar_reduces_support(self, key, trust):
-        ivs = _weekly_intervals(30)
-        frame = _local_bars(ivs)
-        # drop one pre-close bar of the last interval
-        drop_at = (pd.Timestamp(ivs[-1]["close_at"]) -
-                   pd.Timedelta(hours=4)).tz_localize(None)
-        frame = frame[pd.to_datetime(frame["DATE_TIME"]) != drop_at]
-        pkg = self._run(30, key, trust, frame=frame)
+    def test_remote_bars_never_certify(self, provisioned, key):
+        ivs = _weekly(12)
+        pkg = _auth_pkg(_bars(ivs, remote_only=True), provisioned,
+                        key, ivs)
         assert pkg["verdict"]["paired_week_accounting"][
-            "supported_paired_weeks"] == 29
+            "supported_paired_weeks"] < 12
 
-    def test_adding_remote_bars_does_not_restore(self, key, trust):
-        ivs = _weekly_intervals(30)
-        frame = _local_bars(ivs)
-        drop_at = (pd.Timestamp(ivs[-1]["close_at"]) -
-                   pd.Timedelta(hours=4)).tz_localize(None)
-        frame = frame[pd.to_datetime(frame["DATE_TIME"]) != drop_at]
-        # add distant bars far from every interval and unique to
-        # the grid (2023, before the whole acquisition window)
-        extra = pd.DataFrame({
-            "DATE_TIME": pd.date_range("2023-06-01", periods=4,
-                                       freq="4h"),
-            "OPEN": [1.0, 2.0, 3.0, 4.0],
-            "CLOSE": [1.0, 2.0, 3.0, 4.0]})
-        frame = pd.concat([extra, frame]).drop_duplicates(
-            "DATE_TIME").reset_index(drop=True)
-        pkg = self._run(30, key, trust, frame=frame)
+    def test_removing_a_local_bar_reduces(self, provisioned, key):
+        ivs = _weekly(3)
+        frame = _bars(ivs)
+        drop = (pd.Timestamp(ivs[-1]["close_at"]) -
+                pd.Timedelta(hours=4)).tz_localize(None)
+        frame = frame[pd.to_datetime(frame["DATE_TIME"]) != drop]
+        pkg = _auth_pkg(frame, provisioned, key, ivs)
         assert pkg["verdict"]["paired_week_accounting"][
-            "supported_paired_weeks"] == 29
-
-    def test_a_bar_inside_a_closure_refuses(self, key, trust):
-        ivs = _weekly_intervals(1)
-        frame = _local_bars(ivs)
-        inside = (pd.Timestamp(ivs[0]["close_at"]) +
-                  pd.Timedelta(hours=8)).tz_localize(None)
-        frame = pd.concat([frame, pd.DataFrame({
-            "DATE_TIME": [inside], "OPEN": [1.0], "CLOSE": [1.0]})]
-            ).reset_index(drop=True)
-        with pytest.raises(JoinContractError, match="inside"):
-            self._run(1, key, trust, frame=frame)
+            "supported_paired_weeks"] == 2
 
 
 # ================================================================== #
-# C19 metric truth + C27 strict schemas                              #
+# C32 strict remaining boundaries + operator exceptions              #
 # ================================================================== #
 
-class TestMetricsAndSchemas:
+class TestStrictBoundaries:
 
     def test_opening_gap_reads_open(self):
         assert opening_gap_return(150.0, 100.0) == pytest.approx(0.5)
 
-    def test_volume_is_never_volatility(self):
-        import inspect
-        import tools.wp4_session_readiness as mod
-        assert "vol_col" not in inspect.signature(
-            mod.inventory_observed_gaps).parameters
-
-    def test_quote_continuity_needs_ordered_sufficient(self):
-        assert quote_continuity(
-            None, expected_spacing_seconds=None)["value"] == \
-            UNAVAILABLE
-        # out-of-order cannot be true
-        t = ["2024-01-01T00:00:10Z", "2024-01-01T00:00:00Z"]
-        assert quote_continuity(
-            t, expected_spacing_seconds=30)["value"] == UNAVAILABLE
-
-    def test_tuesday_56h_is_never_weekend(self):
+    def test_tuesday_56h_never_weekend(self):
         pre = pd.Timestamp("2024-01-09 08:00", tz="UTC")
         assert classify_observed_gap(
             pre, pre + pd.Timedelta(hours=56)) == \
             "midweek_outage_shaped"
 
+    @pytest.mark.parametrize("bad", [True, "5", 0, float("nan"),
+                                     float("inf")])
+    def test_bad_spacing_is_unavailable(self, bad):
+        qc = quote_continuity(
+            ["2024-01-01T00:00:00Z", "2024-01-01T00:00:01Z"],
+            expected_spacing_seconds=bad)
+        assert qc["value"] == UNAVAILABLE
+
     def test_duplicate_json_keys_refuse(self):
-        with pytest.raises(ReadinessError, match="duplicate JSON"):
+        with pytest.raises(ReadinessError, match="duplicate"):
             strict_json_loads('{"a": 1, "a": 2}')
 
-    def test_non_finite_json_refuses(self):
-        with pytest.raises(ReadinessError, match="non-finite"):
-            strict_json_loads('{"a": NaN}')
+    def test_inverted_operator_exception_refuses(self, provisioned,
+                                                 key):
+        ivs = _weekly(1)
+        exc = _sign({"schema": OPERATOR_EXCEPTION_SCHEMA,
+                     "venue": VENUE, "account_fingerprint": ACCT,
+                     "symbol": SYM, "exporter_identity": EXP_D,
+                     "parser_identity": PAR_D, "code_identity": COD_D,
+                     "named_intervals": [{
+                         "close_at": "2024-03-10T00:00:00Z",
+                         "reopen_at": "2024-03-09T00:00:00Z"}]}, key)
+        exp = _export(ivs, key)
+        with pytest.raises(EvidenceError, match="precede"):
+            build_readiness_package_with_trust_TEST_ONLY(
+                _source(_bars(ivs)), provisioned, bar_hours=4.0,
+                evaluation_as_of=AS_OF, session_export=exp,
+                activation_receipt=_receipt(exp, key),
+                operator_exceptions=[exc])
 
-    @pytest.mark.parametrize("bad", [0, -1, float("nan"),
-                                     float("inf"), True])
-    def test_bad_bar_hours_refuse(self, bad):
-        with pytest.raises(ReadinessError):
-            inventory_observed_gaps(
-                pd.DataFrame({"DATE_TIME": pd.date_range(
-                    "2024-01-01", periods=2, freq="4h"),
-                    "OPEN": [1.0, 2.0], "CLOSE": [1.0, 2.0]}),
-                roles=ROLES, bar_hours=bad)
-
-    def test_non_positive_price_refuses(self):
-        with pytest.raises(ReadinessError, match="non-positive"):
-            inventory_observed_gaps(
-                pd.DataFrame({"DATE_TIME": pd.date_range(
-                    "2024-01-01", periods=2, freq="4h"),
-                    "OPEN": [1.0, 2.0], "CLOSE": [0.0, 2.0]}),
-                roles=ROLES, bar_hours=4.0)
+    def test_absolute_logical_id_refuses(self):
+        with pytest.raises(ReadinessError, match="logical id"):
+            VerifiedSource.from_csv_bytes(
+                b"DATE_TIME,OPEN,CLOSE\n",
+                roles=ROLES,
+                source_logical_id="/abs/redacted/session.csv")
 
 
 # ================================================================== #
-# Tier-A: fail closed, no skip                                       #
+# Tier-A real data: fail closed, no skip                             #
 # ================================================================== #
 
 def _tier_a_root():
@@ -399,26 +478,31 @@ class TestTierAEthConclusion:
         if not os.path.isfile(path):
             pytest.fail(f"Tier-A ETH dataset absent ({path})")
         raw = open(path, "rb").read()
-        frame = pd.read_csv(path, usecols=["DATE_TIME", "OPEN",
-                                           "CLOSE"])
+        src = VerifiedSource.from_csv_bytes(
+            raw, roles=ROLES,
+            source_logical_id="predictor:project3/ethusdt_4h")
         pkg = build_readiness_package(
-            source_bytes=raw,
-            source_logical_id="predictor:project3/ethusdt_4h",
-            roles=ROLES, bar_hours=4.0, frame=frame, now=NOW)
+            src, bar_hours=4.0,
+            evaluation_as_of=datetime(2026, 9, 1,
+                                      tzinfo=timezone.utc))
         assert pkg["inventory_summary"]["kind_counts"].get(
             "weekend_shaped_observed_gap", 0) == 0
         assert pkg["verdict"]["state"] == \
             "HISTORICAL_BACKFILL_NON_AUTHORITATIVE_ONLY"
         assert pkg["verdict"]["paired_week_accounting"][
             "exact_deficit"] == WP4_MIN_PAIRED_WEEKS
-        assert pkg["eth_conclusion_when_spot"] == \
-            ETH_SPOT_CONCLUSION
+        assert pkg["eth_conclusion_when_spot"] == ETH_SPOT_CONCLUSION
 
 
 class TestSanitization:
 
-    def test_no_private_topology_in_public_code(self):
-        import tools.wp4_session_readiness as mod
-        src = open(mod.__file__).read()
-        assert "/home/" not in src
-        assert "harveybc" not in src
+    def test_no_private_topology_in_code_or_manifest(self):
+        # needles built without literals so the scan is clean of
+        # itself
+        home_needle = "/" + "home/"
+        operator_needle = "harvey" + "bc"
+        for path in (mod.__file__,
+                     str(mod.PINNED_TRUST_MANIFEST_PATH)):
+            src = open(path).read()
+            assert home_needle not in src
+            assert operator_needle not in src

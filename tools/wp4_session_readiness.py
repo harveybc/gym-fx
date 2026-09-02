@@ -28,11 +28,13 @@ from __future__ import annotations
 
 import binascii
 import hashlib
+import io
 import json
 import math
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional, Sequence
 
 import numpy as np
@@ -41,6 +43,21 @@ import pandas as pd
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey)
+
+# C28: the trust manifest is FIXED BY THE EXECUTING PATH, not the
+# caller. The production path loads this committed manifest and
+# verifies it against the digest pinned in code below. The manifest
+# ships in status NOT_PROVISIONED_NON_AUTHORIZING: no operational key
+# exists, so NO bundle can produce collector_active=True until a
+# separate operator key ceremony fixes a new manifest and pin.
+PINNED_TRUST_MANIFEST_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "examples" / "wp4_trust" / "session_trust_manifest.json")
+PINNED_TRUST_MANIFEST_DIGEST = (
+    "55b8cfc4301080e3d0e7758ef3174abfcb3e1fe45b8583d076e2ad675be511b8")
+TRUST_MANIFEST_SCHEMA = "wp4.session_trust_manifest.v1"
+STATUS_NOT_PROVISIONED = "NOT_PROVISIONED_NON_AUTHORIZING"
+STATUS_PROVISIONED = "PROVISIONED_AUTHORIZING"
 
 WP4_MIN_PAIRED_WEEKS = 30
 WEEKEND_MIN_HOURS = 40.0
@@ -178,54 +195,150 @@ def require_logical_id(name: str, value: Any) -> str:
 
 
 # ------------------------------------------------------------------ #
-# C23: external root of trust — detached Ed25519 signatures          #
+# C28: external root of trust FIXED BY THE EXECUTING PATH             #
 # ------------------------------------------------------------------ #
 
-@dataclass(frozen=True)
-class TrustContract:
-    """FIXED BY THE REVIEWED ORDER, external to every bundle. The
-    public key, the identities and the bindings here cannot be
-    written by the evidence producer, so a synthetic self-consistent
-    bundle cannot satisfy them."""
+def require_real_positive(name: str, value: Any) -> float:
+    """C32: a real positive finite number that is NOT a bool."""
+    if isinstance(value, bool) or not isinstance(
+            value, (int, float)) or not math.isfinite(value) or \
+            value <= 0:
+        raise ReadinessError(
+            f"{name} must be a real positive finite number "
+            f"(not a bool), got {value!r}")
+    return float(value)
 
-    public_key_hex: str
-    venue: str
-    account_fingerprint: str
-    symbol: str
-    exporter_identity: str
-    parser_identity: str
-    code_identity: str
-    max_activation_age_days: float = 3650.0
+
+@dataclass(frozen=True)
+class ResolvedTrust:
+    """The trust resolved from a loaded, pin-verified manifest. It
+    carries authority ONLY when the manifest is provisioned with a
+    real key. NOT_PROVISIONED yields authorizing=False, so no bundle
+    can activate the collector."""
+
+    authorizing: bool
+    manifest_digest: str
+    status: str
+    public_key_hex: Optional[str]
+    venue: Optional[str]
+    account_fingerprint: Optional[str]
+    symbol: Optional[str]
+    exporter_code_digest: Optional[str]
+    parser_code_digest: Optional[str]
+    code_identity_digest: Optional[str]
+    max_activation_age_days: float
+    approving_order_reference: str
+    approving_order_digest: str
 
     def public_key(self) -> Ed25519PublicKey:
+        if not self.public_key_hex:
+            raise TrustError("no public key: trust is not "
+                             "provisioned")
         try:
             return Ed25519PublicKey.from_public_bytes(
                 binascii.unhexlify(self.public_key_hex))
         except Exception as exc:
             raise TrustError(
-                f"trust contract public key is malformed: "
-                f"{exc}") from exc
-
-    def digest(self) -> str:
-        return sha256_hex(canonical_bytes({
-            "public_key_hex": self.public_key_hex,
-            "venue": self.venue,
-            "account_fingerprint": self.account_fingerprint,
-            "symbol": self.symbol,
-            "exporter_identity": self.exporter_identity,
-            "parser_identity": self.parser_identity,
-            "code_identity": self.code_identity,
-            "max_activation_age_days": self.max_activation_age_days}))
+                f"manifest public key malformed: {exc}") from exc
 
 
-def verify_signed_artifact(raw: Any, trust: TrustContract, *,
+_MANIFEST_FIELDS = ("schema", "status", "public_key_hex", "venue",
+                    "account_fingerprint", "symbol",
+                    "exporter_code_digest", "parser_code_digest",
+                    "code_identity_digest", "max_activation_age_days",
+                    "approving_order_reference",
+                    "approving_order_digest")
+
+
+def _resolve_manifest(obj: dict, *, expected_digest: str) -> \
+        ResolvedTrust:
+    body = {k: v for k, v in obj.items() if k != "manifest_digest"}
+    if set(body) != set(_MANIFEST_FIELDS):
+        raise TrustError(
+            f"trust manifest fields {sorted(body)} do not match the "
+            f"required {sorted(_MANIFEST_FIELDS)}")
+    if body["schema"] != TRUST_MANIFEST_SCHEMA:
+        raise TrustError("trust manifest schema mismatch")
+    self_digest = sha256_hex(canonical_bytes(body))
+    if obj.get("manifest_digest") != self_digest:
+        raise TrustError("trust manifest self-digest mismatch")
+    if self_digest != expected_digest:
+        raise TrustError(
+            f"trust manifest digest {self_digest[:16]}… is not the "
+            f"pinned {expected_digest[:16]}… — an unfixed manifest "
+            "confers no authority")
+    require_real_positive("max_activation_age_days",
+                          body["max_activation_age_days"])
+    if not isinstance(body["approving_order_reference"], str) or \
+            not body["approving_order_reference"]:
+        raise TrustError("approving_order_reference is empty")
+    require_canonical_digest("approving_order_digest",
+                             body["approving_order_digest"])
+    status = body["status"]
+    if status not in (STATUS_NOT_PROVISIONED, STATUS_PROVISIONED):
+        raise TrustError(f"unknown manifest status {status!r}")
+    authorizing = status == STATUS_PROVISIONED
+    if authorizing:
+        require_canonical_digest("public_key... via identity checks",
+                                 body["exporter_code_digest"])
+        require_canonical_digest("parser_code_digest",
+                                 body["parser_code_digest"])
+        require_canonical_digest("code_identity_digest",
+                                 body["code_identity_digest"])
+        for name in ("public_key_hex", "venue",
+                     "account_fingerprint", "symbol"):
+            if not body[name]:
+                raise TrustError(
+                    f"provisioned manifest missing {name}")
+    return ResolvedTrust(
+        authorizing=authorizing, manifest_digest=self_digest,
+        status=status, public_key_hex=body["public_key_hex"],
+        venue=body["venue"],
+        account_fingerprint=body["account_fingerprint"],
+        symbol=body["symbol"],
+        exporter_code_digest=body["exporter_code_digest"],
+        parser_code_digest=body["parser_code_digest"],
+        code_identity_digest=body["code_identity_digest"],
+        max_activation_age_days=float(
+            body["max_activation_age_days"]),
+        approving_order_reference=body["approving_order_reference"],
+        approving_order_digest=body["approving_order_digest"])
+
+
+def load_pinned_production_trust() -> ResolvedTrust:
+    """The PRODUCTION path: load the committed manifest fixed by the
+    executing path and verify it against the code-pinned digest. It
+    ships NOT_PROVISIONED, so it never authorizes until a separate
+    key ceremony fixes a new manifest and pin."""
+    raw = PINNED_TRUST_MANIFEST_PATH.read_bytes()
+    return _resolve_manifest(
+        strict_json_loads(raw),
+        expected_digest=PINNED_TRUST_MANIFEST_DIGEST)
+
+
+def load_trust_manifest_TEST_ONLY(path: Any, *,
+                                  expected_digest: str) -> \
+        ResolvedTrust:
+    """TEST-ONLY trust injection. The production path never calls
+    this — it is the isolated-fixture door the acceptance battery
+    uses to exercise a PROVISIONED manifest. Its name carries the
+    warning so no production code reaches for it."""
+    raw = Path(path).read_bytes()
+    return _resolve_manifest(strict_json_loads(raw),
+                             expected_digest=expected_digest)
+
+
+def verify_signed_artifact(raw: Any, trust: ResolvedTrust, *,
                            schema: str, required_fields: Sequence[str],
                            what: str) -> dict:
-    """C23/C27: strict-parse, then verify the DETACHED signature over
-    the canonical body under the trust contract's fixed public key.
-    A field written by the producer (an 'exporter_identity' label)
-    is trusted only after it is checked against the trust contract —
-    never taken on its own word."""
+    """C23/C28/C27: strict-parse, then verify the DETACHED signature
+    over the canonical body under the PINNED manifest's public key.
+    A field written by the producer is trusted only after it is
+    checked against the resolved trust — never taken on its word."""
+    if not trust.authorizing:
+        raise TrustError(
+            f"{what}: the trust manifest is {trust.status} — no key "
+            "is provisioned and no bundle can be authoritative")
     obj = strict_json_loads(raw)
     if "signature" not in obj:
         raise TrustError(f"{what}: no detached signature")
@@ -248,12 +361,12 @@ def verify_signed_artifact(raw: Any, trust: TrustContract, *,
     except (InvalidSignature, binascii.Error, ValueError) as exc:
         raise TrustError(
             f"{what}: detached signature does not verify under the "
-            "order-fixed public key — a self-consistent bundle "
+            "pinned manifest public key — a self-consistent bundle "
             "cannot mint authority") from exc
     return body
 
 
-def _bind_identity(body: dict, trust: TrustContract, what: str,
+def _bind_identity(body: dict, trust: ResolvedTrust, what: str,
                    *, check_exporter_parser: bool) -> None:
     if body.get("venue") != trust.venue or \
             body.get("account_fingerprint") != \
@@ -262,12 +375,15 @@ def _bind_identity(body: dict, trust: TrustContract, what: str,
         raise TrustError(
             f"{what}: not bound to the trust venue/account/symbol")
     if check_exporter_parser:
-        if body.get("exporter_identity") != trust.exporter_identity:
-            raise TrustError(f"{what}: exporter identity mismatch")
-        if body.get("parser_identity") != trust.parser_identity:
-            raise TrustError(f"{what}: parser identity mismatch")
-        if body.get("code_identity") != trust.code_identity:
-            raise TrustError(f"{what}: code identity mismatch")
+        # C28/C32: the identities the manifest fixes are canonical
+        # code digests, matched exactly against the producer's fields
+        if body.get("exporter_identity") != \
+                trust.exporter_code_digest:
+            raise TrustError(f"{what}: exporter code digest mismatch")
+        if body.get("parser_identity") != trust.parser_code_digest:
+            raise TrustError(f"{what}: parser code digest mismatch")
+        if body.get("code_identity") != trust.code_identity_digest:
+            raise TrustError(f"{what}: code identity digest mismatch")
 
 
 # ------------------------------------------------------------------ #
@@ -291,7 +407,8 @@ class AuthoritativeInterval:
 
 _EXPORT_FIELDS = ("venue", "account_fingerprint", "symbol",
                   "exporter_identity", "parser_identity",
-                  "code_identity", "acquisition_range", "intervals")
+                  "code_identity", "acquisition_range",
+                  "exported_at", "observed_through", "intervals")
 _RECEIPT_FIELDS = ("venue", "account_fingerprint", "symbol",
                    "exporter_identity", "parser_identity",
                    "code_identity", "activation_identity",
@@ -302,10 +419,10 @@ _EXCEPTION_FIELDS = ("venue", "account_fingerprint", "symbol",
 
 
 def _load_authoritative_bundle(export_raw: Any, receipt_raw: Any,
-                               trust: TrustContract, *,
+                               trust: ResolvedTrust, *,
                                operator_exceptions:
                                Optional[Sequence[Any]],
-                               now: datetime) -> dict:
+                               evaluation_as_of: datetime) -> dict:
     export = verify_signed_artifact(
         export_raw, trust, schema=SESSION_EXPORT_SCHEMA,
         required_fields=_EXPORT_FIELDS, what="session export")
@@ -323,46 +440,79 @@ def _load_authoritative_bundle(export_raw: Any, receipt_raw: Any,
         raise TrustError(
             "the receipt does not name this export's canonical "
             "digest — a transplanted receipt confers no authority")
+    # C30: the as-of temporal contract. evaluation_as_of comes from
+    # the reviewed invocation, not the bundle.
     activated = require_rfc3339_utc("activated_at",
-                                    receipt.get("activated_at"))
-    if activated > now:
-        raise TrustError("activation is in the future")
-    age_days = (now - activated).total_seconds() / 86400.0
+                                    receipt["activated_at"])
+    exported_at = require_rfc3339_utc("exported_at",
+                                      export["exported_at"])
+    observed_through = require_rfc3339_utc("observed_through",
+                                           export["observed_through"])
+    as_of = pd.Timestamp(evaluation_as_of).tz_convert("UTC") \
+        if pd.Timestamp(evaluation_as_of).tzinfo \
+        else pd.Timestamp(evaluation_as_of, tz="UTC")
+    chain = [("activated_at", pd.Timestamp(activated)),
+             ("observed_through", pd.Timestamp(observed_through)),
+             ("exported_at", pd.Timestamp(exported_at)),
+             ("evaluation_as_of", as_of)]
+    for (na, a), (nb, b) in zip(chain, chain[1:]):
+        if not a <= b:
+            raise TrustError(
+                f"as-of violation: {na} {a} must be <= {nb} {b} — "
+                "future evidence refuses, it is not merely "
+                "unsupported")
+    if not isinstance(receipt["activation_identity"], str) or \
+            not receipt["activation_identity"]:
+        raise TrustError("activation_identity is empty")
+    age_days = (as_of - pd.Timestamp(activated)).total_seconds() \
+        / 86400.0
     if age_days > trust.max_activation_age_days:
         raise TrustError(
             f"activation is {age_days:.1f} days old, older than the "
             f"trust window {trust.max_activation_age_days}")
-    if not isinstance(receipt.get("activation_identity"), str) or \
-            not receipt["activation_identity"]:
-        raise TrustError("activation_identity is empty")
-    acq = export.get("acquisition_range")
+    acq = export["acquisition_range"]
     if not isinstance(acq, list) or len(acq) != 2:
         raise ReadinessError("acquisition_range must be [start, end]")
-    acq_start = require_rfc3339_utc("acquisition_range[0]", acq[0])
-    acq_end = require_rfc3339_utc("acquisition_range[1]", acq[1])
-    if not acq_start < acq_end:
+    acq_start = pd.Timestamp(require_rfc3339_utc(
+        "acquisition_range[0]", acq[0]))
+    acq_end = pd.Timestamp(require_rfc3339_utc(
+        "acquisition_range[1]", acq[1]))
+    if not acq_start <= acq_end:
         raise ReadinessError("acquisition_range is not ordered")
+    if not acq_end <= pd.Timestamp(observed_through):
+        raise TrustError(
+            "acquisition_range extends past observed_through")
+
+    def _intervals_from(raw_list, provenance, evidence_digest,
+                        what):
+        for raw in raw_list:
+            if not isinstance(raw, dict) or \
+                    set(raw) != {"close_at", "reopen_at"}:
+                raise ReadinessError(
+                    f"{what} must be exactly {{close_at, reopen_at}}")
+            close_at = require_utc(f"{what}.close_at", raw["close_at"])
+            reopen_at = require_utc(f"{what}.reopen_at",
+                                    raw["reopen_at"])
+            if not close_at < reopen_at:
+                raise EvidenceError(
+                    f"contradictory {what}: close_at must precede "
+                    "reopen_at")
+            if close_at < acq_start or reopen_at > acq_end:
+                raise EvidenceError(
+                    f"{what} lies outside the acquisition range")
+            # C30: no future authoritative interval
+            if reopen_at > pd.Timestamp(observed_through):
+                raise TrustError(
+                    f"{what} reopens at {reopen_at} after "
+                    f"observed_through {observed_through} — future "
+                    "evidence refuses")
+            yield AuthoritativeInterval(
+                trust.venue, trust.account_fingerprint, trust.symbol,
+                close_at, reopen_at, provenance, evidence_digest)
 
     intervals, seen = [], {}
-    for raw in export.get("intervals", []):
-        if not isinstance(raw, dict) or \
-                set(raw) != {"close_at", "reopen_at"}:
-            raise ReadinessError(
-                "interval must be exactly {close_at, reopen_at}")
-        close_at = require_utc("interval.close_at", raw["close_at"])
-        reopen_at = require_utc("interval.reopen_at",
-                                raw["reopen_at"])
-        if not close_at < reopen_at:
-            raise EvidenceError(
-                "contradictory interval: close_at must precede "
-                "reopen_at")
-        if close_at < pd.Timestamp(acq_start) or \
-                reopen_at > pd.Timestamp(acq_end):
-            raise EvidenceError(
-                "interval lies outside the acquisition range")
-        iv = AuthoritativeInterval(
-            trust.venue, trust.account_fingerprint, trust.symbol,
-            close_at, reopen_at, PROVENANCE_BROKER, export_digest)
+    for iv in _intervals_from(export["intervals"], PROVENANCE_BROKER,
+                              export_digest, "interval"):
         if iv.identity() in seen:
             continue
         seen[iv.identity()] = iv
@@ -376,14 +526,9 @@ def _load_authoritative_bundle(export_raw: Any, receipt_raw: Any,
         _bind_identity(art, trust, "operator exception",
                        check_exporter_parser=True)
         art_digest = sha256_hex(canonical_bytes(art))
-        for raw in art.get("named_intervals", []):
-            close_at = require_utc("exception.close_at",
-                                   raw["close_at"])
-            reopen_at = require_utc("exception.reopen_at",
-                                    raw["reopen_at"])
-            iv = AuthoritativeInterval(
-                trust.venue, trust.account_fingerprint, trust.symbol,
-                close_at, reopen_at, PROVENANCE_OPERATOR, art_digest)
+        for iv in _intervals_from(art["named_intervals"],
+                                  PROVENANCE_OPERATOR, art_digest,
+                                  "exception"):
             if iv.identity() in seen:
                 continue
             seen[iv.identity()] = iv
@@ -399,9 +544,12 @@ def _load_authoritative_bundle(export_raw: Any, receipt_raw: Any,
         "intervals": intervals,
         "activation_identity": receipt["activation_identity"],
         "activated_at": receipt["activated_at"],
+        "exported_at": export["exported_at"],
+        "observed_through": export["observed_through"],
+        "evaluation_as_of": as_of.isoformat(),
         "export_digest": export_digest,
         "acquisition_range": [acq[0], acq[1]],
-        "trust_digest": trust.digest(),
+        "trust_digest": trust.manifest_digest,
     }
 
 
@@ -420,11 +568,17 @@ def _derive_local_pairing(intervals: Sequence[AuthoritativeInterval],
                           roles: "ColumnRoleContract",
                           bar_hours: float, required_pre_bars: int,
                           required_post_bars: int,
-                          acquisition_range: Sequence[str]) -> dict:
+                          acquisition_range: Sequence[str],
+                          evaluation_as_of: pd.Timestamp) -> dict:
     require_pos_int("required_pre_bars", required_pre_bars)
     require_pos_int("required_post_bars", required_post_bars)
     work = validate_bars(frame, roles, bar_hours=bar_hours)
     ts = pd.to_datetime(work[roles.datetime_col], utc=True)
+    # C30: no bar used may lie past the as-of horizon
+    if len(ts) and ts.max() > evaluation_as_of:
+        raise TrustError(
+            f"a bar at {ts.max()} lies past evaluation_as_of "
+            f"{evaluation_as_of} — future evidence refuses")
     opens = work[roles.open_col].to_numpy(dtype=float)
     closes = work[roles.close_col].to_numpy(dtype=float)
     by_stamp = {ts.iloc[i]: i for i in range(len(ts))}
@@ -433,13 +587,14 @@ def _derive_local_pairing(intervals: Sequence[AuthoritativeInterval],
     acq_end = require_utc("acq[1]", acquisition_range[1])
     records = []
     for iv in intervals:
-        # C25: a bar physically INSIDE the authoritative closure is a
-        # contradiction — refuse, never a silent supported=False
-        inside = ts[(ts > iv.close_at) & (ts < iv.reopen_at)]
+        # C31: the closure is [close_at, reopen_at). A bar with
+        # close_at <= ts < reopen_at is INSIDE the closure and is a
+        # contradiction — refuse, never a silent supported=False.
+        inside = ts[(ts >= iv.close_at) & (ts < iv.reopen_at)]
         if len(inside):
             raise JoinContractError(
                 f"a bar exists inside the authoritative closure "
-                f"[{iv.close_at}, {iv.reopen_at}]: {inside.iloc[0]}")
+                f"[{iv.close_at}, {iv.reopen_at}): {inside.iloc[0]}")
         if iv.close_at < acq_start or iv.reopen_at > acq_end:
             raise JoinContractError(
                 "paired interval outside the acquisition range")
@@ -561,10 +716,19 @@ def post_reopen_realized_vol(reopen_closes: Sequence[float], *,
 def quote_continuity(quote_times: Optional[Sequence[Any]], *,
                      expected_spacing_seconds: Optional[float]
                      ) -> Any:
-    """C27: continuity requires quote timestamps that are ORDERED and
-    SUFFICIENT under a bound spacing contract. Fewer than two quotes,
-    an out-of-order series or an absent contract are typed
-    UNAVAILABLE — a price bar can never make it true."""
+    """C27/C32: continuity requires quote timestamps that are ORDERED
+    and SUFFICIENT under a REAL positive spacing (a bool/string/zero/
+    NaN is not a spacing). Fewer than two quotes, an out-of-order
+    series or an absent/invalid contract are typed UNAVAILABLE — a
+    price bar can never make it true."""
+    if expected_spacing_seconds is not None:
+        try:
+            require_real_positive("expected_spacing_seconds",
+                                  expected_spacing_seconds)
+        except ReadinessError:
+            return {"value": UNAVAILABLE,
+                    "reason": "expected_spacing_seconds is not a "
+                              "real positive number"}
     if not quote_times or expected_spacing_seconds is None or \
             len(quote_times) < 2:
         return {"value": UNAVAILABLE,
@@ -662,35 +826,52 @@ def inventory_observed_gaps(frame: pd.DataFrame, *,
 # C24/C26: the one wired package                                     #
 # ------------------------------------------------------------------ #
 
-def build_readiness_package(*, source_bytes: bytes,
-                            source_logical_id: str,
-                            roles: ColumnRoleContract,
-                            bar_hours: float,
-                            frame: pd.DataFrame,
-                            realized_vol_window_bars: int = 3,
-                            calendar_tz: Optional[str] = None,
-                            session_export: Optional[Any] = None,
-                            activation_receipt: Optional[Any] = None,
-                            trust: Optional[TrustContract] = None,
-                            required_pre_bars: int = 4,
-                            required_post_bars: int = 4,
-                            operator_exceptions:
-                            Optional[Sequence[Any]] = None,
-                            now: Optional[datetime] = None) -> dict:
-    """The ONE derivation path. Authority — if any — is derived here
-    from the signed bytes and the trust contract; the caller cannot
-    hand in an authority dict or a count. C26: the digest binds the
-    trust contract, activation proof, export, authoritative
-    intervals, the pairing ledger, the observed ledger, the VERIFIED
-    source digest and every contract field."""
-    require_logical_id("source_logical_id", source_logical_id)
-    if not isinstance(source_bytes, (bytes, bytearray)):
-        raise ReadinessError(
-            "source_digest must be verified from source BYTES, not "
-            "supplied as prose")
-    source_digest = sha256_hex(bytes(source_bytes))
-    now = now or datetime.now(timezone.utc)
+@dataclass(frozen=True)
+class VerifiedSource:
+    """C29: ONE data population. Bytes, their digest and the parsed
+    frame are inseparable — the public constructor parses the frame
+    FROM the bytes, so a caller can never hand a frame that is not
+    the hashed source. Two sources with distinct rows yield distinct
+    digests even without observed gaps."""
 
+    source_bytes: bytes
+    source_digest: str
+    source_logical_id: str
+    roles: "ColumnRoleContract"
+    frame: pd.DataFrame
+
+    @staticmethod
+    def from_csv_bytes(raw: bytes, *, roles: "ColumnRoleContract",
+                       source_logical_id: str,
+                       usecols: Optional[Sequence[str]] = None
+                       ) -> "VerifiedSource":
+        require_logical_id("source_logical_id", source_logical_id)
+        if not isinstance(raw, (bytes, bytearray)):
+            raise ReadinessError(
+                "source must be provided as BYTES and parsed here, "
+                "never as a detached frame")
+        digest = sha256_hex(bytes(raw))
+        cols = list(usecols) if usecols else [
+            roles.datetime_col, roles.open_col, roles.close_col]
+        frame = pd.read_csv(io.BytesIO(bytes(raw)), usecols=cols)
+        return VerifiedSource(bytes(raw), digest, source_logical_id,
+                              roles, frame)
+
+
+def _build_package(source: VerifiedSource, trust: ResolvedTrust, *,
+                   bar_hours: float, evaluation_as_of: datetime,
+                   realized_vol_window_bars: int,
+                   calendar_tz: Optional[str],
+                   session_export: Optional[Any],
+                   activation_receipt: Optional[Any],
+                   required_pre_bars: int, required_post_bars: int,
+                   operator_exceptions: Optional[Sequence[Any]]
+                   ) -> dict:
+    roles = source.roles
+    frame = source.frame
+    as_of = (pd.Timestamp(evaluation_as_of).tz_convert("UTC")
+             if pd.Timestamp(evaluation_as_of).tzinfo
+             else pd.Timestamp(evaluation_as_of, tz="UTC"))
     inv = inventory_observed_gaps(
         frame, roles=roles, bar_hours=bar_hours,
         realized_vol_window_bars=realized_vol_window_bars,
@@ -702,26 +883,31 @@ def build_readiness_package(*, source_bytes: bytes,
                   "supported_paired_weeks": 0,
                   "exact_deficit": WP4_MIN_PAIRED_WEEKS,
                   "status": "INCONCLUSIVE"}
-    if session_export is not None and activation_receipt is not None \
-            and trust is not None:
+    if session_export is not None and \
+            activation_receipt is not None and trust.authorizing:
         bundle = _load_authoritative_bundle(
             session_export, activation_receipt, trust,
-            operator_exceptions=operator_exceptions, now=now)
+            operator_exceptions=operator_exceptions,
+            evaluation_as_of=as_of)
         pairing = _derive_local_pairing(
             bundle["intervals"], frame, roles=roles,
             bar_hours=bar_hours, required_pre_bars=required_pre_bars,
             required_post_bars=required_post_bars,
-            acquisition_range=bundle["acquisition_range"])
+            acquisition_range=bundle["acquisition_range"],
+            evaluation_as_of=as_of)
         accounting = _count_paired_weeks(pairing)
         verdict_state = (
             "AUTHORITATIVE_SUPPORT_SUFFICIENT_FOR_CALIBRATION"
             if accounting["status"] == "SUFFICIENT"
             else "COLLECTOR_ACTIVE_HISTORY_ACCUMULATING")
         authoritative_block = {
-            "trust_digest": bundle["trust_digest"],
+            "trust_manifest_digest": bundle["trust_digest"],
             "export_digest": bundle["export_digest"],
             "activation_identity": bundle["activation_identity"],
             "activated_at": bundle["activated_at"],
+            "exported_at": bundle["exported_at"],
+            "observed_through": bundle["observed_through"],
+            "evaluation_as_of": bundle["evaluation_as_of"],
             "acquisition_range": bundle["acquisition_range"],
             "authoritative_intervals": [
                 list(iv.identity()) for iv in bundle["intervals"]],
@@ -733,12 +919,15 @@ def build_readiness_package(*, source_bytes: bytes,
     assert verdict_state in READINESS_STATES
 
     package = {
-        "schema": "gymfx.wp4.session_readiness.v3",
-        "source": {"logical_id": source_logical_id,
-                   "source_digest": source_digest},
+        "schema": "gymfx.wp4.session_readiness.v4",
+        "source": {"logical_id": source.source_logical_id,
+                   "source_digest": source.source_digest},
         "column_role_contract_digest": roles.digest(),
         "bar_hours": bar_hours,
         "timezone": roles.timezone,
+        "evaluation_as_of": as_of.isoformat(),
+        "trust_manifest_digest": trust.manifest_digest,
+        "trust_status": trust.status,
         "realized_vol_window_bars": realized_vol_window_bars,
         "inventory_summary": {"bars": inv["bars"], "span": inv["span"],
                               "kind_counts": inv["kind_counts"],
@@ -761,3 +950,54 @@ def build_readiness_package(*, source_bytes: bytes,
     }
     package["digest"] = sha256_hex(canonical_bytes(package))
     return package
+
+
+def build_readiness_package(source: VerifiedSource, *,
+                            bar_hours: float,
+                            evaluation_as_of: datetime,
+                            realized_vol_window_bars: int = 3,
+                            calendar_tz: Optional[str] = None,
+                            session_export: Optional[Any] = None,
+                            activation_receipt: Optional[Any] = None,
+                            required_pre_bars: int = 4,
+                            required_post_bars: int = 4,
+                            operator_exceptions:
+                            Optional[Sequence[Any]] = None) -> dict:
+    """PRODUCTION path. It loads the PINNED trust manifest itself and
+    NEVER accepts a caller-supplied trust — the manifest ships
+    NOT_PROVISIONED, so no bundle can activate the collector until a
+    separate key ceremony. evaluation_as_of comes from the reviewed
+    invocation and is bound into the package."""
+    trust = load_pinned_production_trust()
+    return _build_package(
+        source, trust, bar_hours=bar_hours,
+        evaluation_as_of=evaluation_as_of,
+        realized_vol_window_bars=realized_vol_window_bars,
+        calendar_tz=calendar_tz, session_export=session_export,
+        activation_receipt=activation_receipt,
+        required_pre_bars=required_pre_bars,
+        required_post_bars=required_post_bars,
+        operator_exceptions=operator_exceptions)
+
+
+def build_readiness_package_with_trust_TEST_ONLY(
+        source: VerifiedSource, trust: ResolvedTrust, *,
+        bar_hours: float, evaluation_as_of: datetime,
+        realized_vol_window_bars: int = 3,
+        calendar_tz: Optional[str] = None,
+        session_export: Optional[Any] = None,
+        activation_receipt: Optional[Any] = None,
+        required_pre_bars: int = 4, required_post_bars: int = 4,
+        operator_exceptions: Optional[Sequence[Any]] = None) -> dict:
+    """TEST-ONLY door for an isolated PROVISIONED fixture manifest.
+    The production path never calls this; its name carries the
+    warning so no production code injects trust."""
+    return _build_package(
+        source, trust, bar_hours=bar_hours,
+        evaluation_as_of=evaluation_as_of,
+        realized_vol_window_bars=realized_vol_window_bars,
+        calendar_tz=calendar_tz, session_export=session_export,
+        activation_receipt=activation_receipt,
+        required_pre_bars=required_pre_bars,
+        required_post_bars=required_post_bars,
+        operator_exceptions=operator_exceptions)
