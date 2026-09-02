@@ -153,7 +153,15 @@ def require_canonical_digest(name: str, value: Any) -> str:
 def require_rfc3339_utc(name: str, value: Any) -> datetime:
     if not isinstance(value, str) or not _RFC3339.match(value):
         raise ReadinessError(f"{name} is not RFC3339: {value!r}")
-    stamp = pd.Timestamp(value)
+    # C38: a shape that matches the regex can still be an impossible
+    # date ("2024-13-45..."); the parser error must surface as a
+    # TYPED refusal naming the field, never a raw pandas exception.
+    try:
+        stamp = pd.Timestamp(value)
+    except (ValueError, OverflowError) as exc:
+        raise ReadinessError(
+            f"{name} is not a real timestamp: {value!r} "
+            f"({exc})") from exc
     if stamp.tzinfo is None:
         raise ReadinessError(f"{name} has no timezone")
     return stamp.tz_convert("UTC").to_pydatetime()
@@ -182,6 +190,61 @@ def require_utc(name: str, value: Any) -> pd.Timestamp:
     if stamp.tzinfo is None:
         raise JoinContractError(f"{name} is timezone-naive")
     return stamp.tz_convert("UTC")
+
+
+def require_strict_bool(name: str, value: Any,
+                        expected: Optional[bool] = None) -> bool:
+    """C38: an actual bool — never a truthy int/str; optionally an
+    exact expected value."""
+    if not isinstance(value, bool):
+        raise ReadinessError(
+            f"{name} must be a bool, got {value!r}")
+    if expected is not None and value is not expected:
+        raise ReadinessError(
+            f"{name} must be {expected}, got {value}")
+    return value
+
+
+def require_nonneg_int(name: str, value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or \
+            value < 0:
+        raise ReadinessError(
+            f"{name} must be a non-negative int, got {value!r}")
+    return value
+
+
+def require_nonempty_str(name: str, value: Any) -> str:
+    if not isinstance(value, str) or not value:
+        raise ReadinessError(
+            f"{name} must be a non-empty string, got {value!r}")
+    return value
+
+
+def _require_exact_fields(name: str, obj: Any,
+                          fields: Sequence[str]) -> dict:
+    """C38: a dict with EXACTLY these keys — missing or extra keys
+    refuse, naming the block and the offending keys."""
+    if not isinstance(obj, dict):
+        raise ReadinessError(
+            f"{name} must be a dict, got {type(obj).__name__}")
+    missing = [f for f in fields if f not in obj]
+    extra = [k for k in obj if k not in fields]
+    if missing or extra:
+        raise ReadinessError(
+            f"{name} does not have the exact schema — "
+            f"missing {missing}, extra {extra}")
+    return obj
+
+
+def _require_ordered_rfc3339_pair(name: str, value: Any) -> None:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise ReadinessError(
+            f"{name} must be a [start, end] pair, got {value!r}")
+    start = require_rfc3339_utc(f"{name}[0]", value[0])
+    end = require_rfc3339_utc(f"{name}[1]", value[1])
+    if start > end:
+        raise ReadinessError(
+            f"{name} is not ordered: {value[0]} > {value[1]}")
 
 
 def require_logical_id(name: str, value: Any) -> str:
@@ -853,6 +916,18 @@ def inventory_observed_gaps(frame: pd.DataFrame, *,
 # C24/C26: the one wired package                                     #
 # ------------------------------------------------------------------ #
 
+def _parse_csv_typed(raw: bytes, cols: list) -> pd.DataFrame:
+    """C38: adversarial bytes must produce a TYPED refusal, never a
+    raw pandas/decoding exception escaping the public API."""
+    try:
+        return pd.read_csv(io.BytesIO(raw), usecols=cols)
+    except (ValueError, UnicodeDecodeError,
+            pd.errors.ParserError) as exc:
+        raise ReadinessError(
+            f"source bytes are not a parseable CSV with the "
+            f"declared columns {cols}: {exc}") from exc
+
+
 _SOURCE_FACTORY_TOKEN = object()
 
 
@@ -899,8 +974,7 @@ class VerifiedSource:
     def frame(self) -> pd.DataFrame:
         """A FRESH copy parsed from the bytes — never a shared
         mutable reference."""
-        return pd.read_csv(io.BytesIO(self._raw),
-                           usecols=list(self._usecols))
+        return _parse_csv_typed(self._raw, list(self._usecols))
 
     def revalidate(self) -> None:
         """C33: last-point-of-use revalidation — the digest still
@@ -921,8 +995,8 @@ class VerifiedSource:
                 "never as a detached frame")
         cols = list(usecols) if usecols else [
             roles.datetime_col, roles.open_col, roles.close_col]
-        # parse once to fail fast on a malformed source
-        pd.read_csv(io.BytesIO(bytes(raw)), usecols=cols)
+        # parse once to fail fast on a malformed source (typed)
+        _parse_csv_typed(bytes(raw), cols)
         return VerifiedSource(_SOURCE_FACTORY_TOKEN, raw,
                               source_logical_id, roles, cols)
 
@@ -1072,8 +1146,10 @@ def build_readiness_package(source: VerifiedSource, *,
     return package
 
 
-# C36: the exact key set a sealed production package carries. The
-# consumer refuses any other shape.
+# C36/C38: the exact key sets a sealed production package carries —
+# top level AND every nested block. The consumer refuses any other
+# shape with a typed error naming the block and field; no raw
+# KeyError/TypeError/AttributeError/pandas exception can escape.
 _PACKAGE_FIELDS = (
     "schema", "fixture_marker", "source",
     "column_role_contract_digest", "bar_hours", "timezone",
@@ -1082,31 +1158,46 @@ _PACKAGE_FIELDS = (
     "observed_gap_ledger_digest", "observed_gap_count",
     "authoritative", "verdict", "provenance_classes",
     "eth_conclusion_when_spot", "digest")
+_SOURCE_FIELDS = ("logical_id", "source_digest")
+_INVENTORY_FIELDS = ("bars", "span", "kind_counts",
+                     "dst_crossing_units")
+_AUTHORITATIVE_FIELDS = (
+    "trust_manifest_digest", "export_digest", "activation_identity",
+    "activated_at", "exported_at", "observed_through",
+    "evaluation_as_of", "acquisition_range",
+    "authoritative_intervals", "authoritative_pairing_digest",
+    "pairing_records", "required_pre_bars", "required_post_bars")
+_VERDICT_FIELDS = ("state", "collector_active",
+                   "paired_week_accounting",
+                   "observed_nonauthoritative_gaps",
+                   "economic_grid_authorized")
+_ACCOUNTING_FIELDS = ("minimum_required", "supported_paired_weeks",
+                      "exact_deficit", "status")
+_PAIRING_RECORD_FIELDS = ("identity", "provenance",
+                          "evidence_digest", "pre_close_bars",
+                          "post_reopen_bars", "supported")
+_PAIRED_BAR_FIELDS = ("at", "row_digest")
 
 
 def _check_consumable_consistency(package: dict, *,
                                   pinned_digest: str) -> None:
-    """C36 structural + consistency gate (a pure dict checker — it
-    confers NO authority by itself; the consumer additionally
-    REDERIVES the package from signed evidence). Refuses unless the
-    package has the exact production shape, an intact digest, the
-    pinned manifest, provisioned status, non-null authority, an
-    active collector, a sufficient verdict backed by at least the
-    minimum paired records, concordant digests, and a permanently
-    unauthorized economic grid."""
-    if not isinstance(package, dict):
-        raise ReadinessError("package must be a dict")
-    if set(package) != set(_PACKAGE_FIELDS):
-        raise ReadinessError(
-            f"package fields {sorted(package)} do not match the "
-            f"exact production schema fields")
+    """C36/C38 structural + consistency gate (a pure dict checker —
+    it confers NO authority by itself; the consumer additionally
+    REDERIVES the package from signed evidence). Every nested block
+    is validated against its EXACT schema and every value the
+    consumer later reuses is type-checked BEFORE any access, so a
+    malformed package always produces a typed ReadinessError naming
+    the field — never a KeyError/TypeError/AttributeError or a
+    pandas exception. No defaults, no silent normalization."""
+    _require_exact_fields("package", package, _PACKAGE_FIELDS)
     if package["schema"] != PRODUCTION_SCHEMA:
         raise ReadinessError(
             f"not a production package: schema "
             f"{package['schema']!r}")
-    if package["fixture_marker"] is not False:
-        raise ReadinessError("package carries a fixture marker")
+    require_strict_bool("fixture_marker", package["fixture_marker"],
+                        expected=False)
     body = {k: v for k, v in package.items() if k != "digest"}
+    require_canonical_digest("digest", package["digest"])
     if package["digest"] != sha256_hex(canonical_bytes(body)):
         raise ReadinessError("package digest mismatch — altered")
     if package["trust_manifest_digest"] != pinned_digest:
@@ -1117,60 +1208,243 @@ def _check_consumable_consistency(package: dict, *,
         raise ReadinessError(
             f"trust status {package['trust_status']!r} is not "
             f"{STATUS_PROVISIONED}")
-    source = package["source"]
-    if not isinstance(source, dict):
-        raise ReadinessError("source block must be a dict")
+
+    # ---- source ------------------------------------------------- #
+    source = _require_exact_fields("source", package["source"],
+                                   _SOURCE_FIELDS)
     require_canonical_digest("source.source_digest",
-                             source.get("source_digest"))
-    require_logical_id("source.logical_id", source.get("logical_id"))
+                             source["source_digest"])
+    require_logical_id("source.logical_id", source["logical_id"])
+
+    # ---- scalar fields the consumer reuses to rederive ----------- #
     require_canonical_digest("column_role_contract_digest",
                              package["column_role_contract_digest"])
     require_canonical_digest("observed_gap_ledger_digest",
                              package["observed_gap_ledger_digest"])
-    auth = package["authoritative"]
-    if not isinstance(auth, dict):
+    require_real_positive("bar_hours", package["bar_hours"])
+    require_nonempty_str("timezone", package["timezone"])
+    require_rfc3339_utc("evaluation_as_of",
+                        package["evaluation_as_of"])
+    require_pos_int("realized_vol_window_bars",
+                    package["realized_vol_window_bars"])
+    gap_count = require_nonneg_int("observed_gap_count",
+                                   package["observed_gap_count"])
+    if package["provenance_classes"] != [
+            PROVENANCE_BROKER, PROVENANCE_OPERATOR,
+            PROVENANCE_OBSERVED]:
         raise ReadinessError(
-            "authoritative block is null/malformed — a consumable "
-            "package must carry non-null authority")
-    require_canonical_digest("authoritative.export_digest",
-                             auth.get("export_digest"))
-    require_canonical_digest(
-        "authoritative.authoritative_pairing_digest",
-        auth.get("authoritative_pairing_digest"))
-    if auth.get("trust_manifest_digest") != pinned_digest:
+            "provenance_classes are not the canonical ordered "
+            "triple")
+    if package["eth_conclusion_when_spot"] != ETH_SPOT_CONCLUSION:
+        raise ReadinessError(
+            "eth_conclusion_when_spot is not the declared spot "
+            "conclusion")
+
+    # ---- inventory_summary --------------------------------------- #
+    inv = _require_exact_fields("inventory_summary",
+                                package["inventory_summary"],
+                                _INVENTORY_FIELDS)
+    require_nonneg_int("inventory_summary.bars", inv["bars"])
+    _require_ordered_rfc3339_pair("inventory_summary.span",
+                                  inv["span"])
+    if not isinstance(inv["kind_counts"], dict):
+        raise ReadinessError(
+            "inventory_summary.kind_counts must be a dict")
+    kind_total = 0
+    for kind, count in inv["kind_counts"].items():
+        require_nonempty_str("inventory_summary.kind_counts key",
+                             kind)
+        kind_total += require_nonneg_int(
+            f"inventory_summary.kind_counts[{kind!r}]", count)
+    if kind_total != gap_count:
+        raise ReadinessError(
+            f"kind_counts total {kind_total} does not concord with "
+            f"observed_gap_count {gap_count}")
+    require_nonneg_int("inventory_summary.dst_crossing_units",
+                       inv["dst_crossing_units"])
+
+    # ---- authoritative block ------------------------------------- #
+    auth = package["authoritative"]
+    if auth is None:
+        raise ReadinessError(
+            "authoritative block is null — a consumable package "
+            "must carry non-null authority")
+    auth = _require_exact_fields("authoritative", auth,
+                                 _AUTHORITATIVE_FIELDS)
+    if auth["trust_manifest_digest"] != pinned_digest:
         raise ReadinessError(
             "authoritative trust_manifest_digest does not match the "
             "pinned production manifest")
-    verdict = package["verdict"]
-    if not isinstance(verdict, dict):
-        raise ReadinessError("verdict block must be a dict")
-    if verdict.get("collector_active") is not True:
+    require_canonical_digest("authoritative.export_digest",
+                             auth["export_digest"])
+    require_canonical_digest(
+        "authoritative.authoritative_pairing_digest",
+        auth["authoritative_pairing_digest"])
+    require_nonempty_str("authoritative.activation_identity",
+                         auth["activation_identity"])
+    activated = require_rfc3339_utc("authoritative.activated_at",
+                                    auth["activated_at"])
+    exported = require_rfc3339_utc("authoritative.exported_at",
+                                   auth["exported_at"])
+    observed = require_rfc3339_utc("authoritative.observed_through",
+                                   auth["observed_through"])
+    as_of = require_rfc3339_utc("authoritative.evaluation_as_of",
+                                auth["evaluation_as_of"])
+    if not (activated <= observed <= exported <= as_of):
         raise ReadinessError(
-            "collector is not active — not consumable")
-    if verdict.get("state") != \
-            "AUTHORITATIVE_SUPPORT_SUFFICIENT_FOR_CALIBRATION":
+            "authoritative as-of chain is not ordered "
+            "(activated <= observed <= exported <= evaluation)")
+    if auth["evaluation_as_of"] != package["evaluation_as_of"]:
         raise ReadinessError(
-            f"verdict state {verdict.get('state')!r} is not "
-            "sufficient — not consumable")
-    accounting = verdict.get("paired_week_accounting")
-    if not isinstance(accounting, dict) or \
-            accounting.get("status") != "SUFFICIENT":
+            "authoritative.evaluation_as_of does not concord with "
+            "the package evaluation_as_of")
+    _require_ordered_rfc3339_pair(
+        "authoritative.acquisition_range",
+        auth["acquisition_range"])
+    pre_n = require_pos_int("authoritative.required_pre_bars",
+                            auth["required_pre_bars"])
+    post_n = require_pos_int("authoritative.required_post_bars",
+                             auth["required_post_bars"])
+
+    intervals = auth["authoritative_intervals"]
+    if not isinstance(intervals, list) or not intervals:
         raise ReadinessError(
-            "paired week accounting is not SUFFICIENT")
-    supported = accounting.get("supported_paired_weeks")
-    if isinstance(supported, bool) or \
-            not isinstance(supported, int) or \
-            supported < WP4_MIN_PAIRED_WEEKS:
-        raise ReadinessError(
-            f"supported_paired_weeks {supported!r} is below the "
-            f"minimum {WP4_MIN_PAIRED_WEEKS}")
-    records = auth.get("pairing_records")
-    if not isinstance(records, list) or len(records) != supported:
+            "authoritative_intervals must be a non-empty list")
+    seen_ivs = set()
+    for i, item in enumerate(intervals):
+        if not isinstance(item, list) or len(item) != 5 or \
+                not all(isinstance(part, str) for part in item):
+            raise ReadinessError(
+                f"authoritative_intervals[{i}] is not a 5-part "
+                f"identity list")
+        require_rfc3339_utc(
+            f"authoritative_intervals[{i}].close_at", item[3])
+        require_rfc3339_utc(
+            f"authoritative_intervals[{i}].reopen_at", item[4])
+        key = tuple(item)
+        if key in seen_ivs:
+            raise ReadinessError(
+                f"authoritative_intervals[{i}] is a duplicate")
+        seen_ivs.add(key)
+
+    records = auth["pairing_records"]
+    if not isinstance(records, list):
+        raise ReadinessError("pairing_records must be a list")
+    if len(records) != len(intervals):
         raise ReadinessError(
             "pairing_records do not concord with "
-            "supported_paired_weeks")
-    if verdict.get("economic_grid_authorized") is not False:
-        raise ReadinessError("economic grid must never be authorized")
+            "authoritative_intervals")
+    supported_count = 0
+    seen_recs = set()
+    for i, rec in enumerate(records):
+        rec = _require_exact_fields(f"pairing_records[{i}]", rec,
+                                    _PAIRING_RECORD_FIELDS)
+        identity = rec["identity"]
+        if not isinstance(identity, list) or len(identity) != 5 or \
+                not all(isinstance(part, str) for part in identity):
+            raise ReadinessError(
+                f"pairing_records[{i}].identity is not a 5-part "
+                f"identity list")
+        key = tuple(identity)
+        if key in seen_recs:
+            raise ReadinessError(
+                f"pairing_records[{i}] is a duplicate identity")
+        seen_recs.add(key)
+        if rec["provenance"] not in (PROVENANCE_BROKER,
+                                     PROVENANCE_OPERATOR,
+                                     PROVENANCE_OBSERVED):
+            raise ReadinessError(
+                f"pairing_records[{i}].provenance "
+                f"{rec['provenance']!r} is not a declared class")
+        require_canonical_digest(
+            f"pairing_records[{i}].evidence_digest",
+            rec["evidence_digest"])
+        supported = require_strict_bool(
+            f"pairing_records[{i}].supported", rec["supported"])
+        for side, need in (("pre_close_bars", pre_n),
+                           ("post_reopen_bars", post_n)):
+            bars = rec[side]
+            if bars is None:
+                if supported:
+                    raise ReadinessError(
+                        f"pairing_records[{i}].{side} is null but "
+                        f"the record claims supported")
+                continue
+            if not isinstance(bars, list) or len(bars) != need:
+                raise ReadinessError(
+                    f"pairing_records[{i}].{side} does not carry "
+                    f"exactly {need} bars")
+            for j, bar_row in enumerate(bars):
+                bar_row = _require_exact_fields(
+                    f"pairing_records[{i}].{side}[{j}]", bar_row,
+                    _PAIRED_BAR_FIELDS)
+                require_rfc3339_utc(
+                    f"pairing_records[{i}].{side}[{j}].at",
+                    bar_row["at"])
+                require_canonical_digest(
+                    f"pairing_records[{i}].{side}[{j}].row_digest",
+                    bar_row["row_digest"])
+        if supported and (rec["pre_close_bars"] is None or
+                          rec["post_reopen_bars"] is None):
+            raise ReadinessError(
+                f"pairing_records[{i}] claims supported without "
+                f"both bar sides")
+        if supported:
+            supported_count += 1
+    if auth["authoritative_pairing_digest"] != sha256_hex(
+            canonical_bytes(records)):
+        raise ReadinessError(
+            "authoritative_pairing_digest does not concord with the "
+            "pairing_records ledger")
+
+    # ---- verdict -------------------------------------------------- #
+    verdict = _require_exact_fields("verdict", package["verdict"],
+                                    _VERDICT_FIELDS)
+    require_strict_bool("verdict.collector_active",
+                        verdict["collector_active"], expected=True)
+    if verdict["state"] != \
+            "AUTHORITATIVE_SUPPORT_SUFFICIENT_FOR_CALIBRATION":
+        raise ReadinessError(
+            f"verdict state {verdict['state']!r} is not "
+            "sufficient — not consumable")
+    if require_nonneg_int(
+            "verdict.observed_nonauthoritative_gaps",
+            verdict["observed_nonauthoritative_gaps"]) != gap_count:
+        raise ReadinessError(
+            "verdict.observed_nonauthoritative_gaps does not "
+            "concord with observed_gap_count")
+    require_strict_bool("verdict.economic_grid_authorized",
+                        verdict["economic_grid_authorized"],
+                        expected=False)
+    accounting = _require_exact_fields(
+        "verdict.paired_week_accounting",
+        verdict["paired_week_accounting"], _ACCOUNTING_FIELDS)
+    if require_nonneg_int("accounting.minimum_required",
+                          accounting["minimum_required"]) != \
+            WP4_MIN_PAIRED_WEEKS:
+        raise ReadinessError(
+            f"accounting.minimum_required is not "
+            f"{WP4_MIN_PAIRED_WEEKS}")
+    supported = require_nonneg_int(
+        "accounting.supported_paired_weeks",
+        accounting["supported_paired_weeks"])
+    if supported < WP4_MIN_PAIRED_WEEKS:
+        raise ReadinessError(
+            f"supported_paired_weeks {supported} is below the "
+            f"minimum {WP4_MIN_PAIRED_WEEKS}")
+    if supported != supported_count:
+        raise ReadinessError(
+            f"supported_paired_weeks {supported} does not concord "
+            f"with the {supported_count} supported pairing records")
+    deficit = require_nonneg_int("accounting.exact_deficit",
+                                 accounting["exact_deficit"])
+    if deficit != max(0, WP4_MIN_PAIRED_WEEKS - supported):
+        raise ReadinessError(
+            "accounting.exact_deficit does not concord with the "
+            "supported count")
+    if accounting["status"] != "SUFFICIENT":
+        raise ReadinessError(
+            "paired week accounting is not SUFFICIENT")
 
 
 def _require_rederivation_match(package: dict,

@@ -697,7 +697,7 @@ class TestC35FixtureIsolationAndConsumer:
         forged = {k: (True if k == "fixture_marker" else v)
                   for k, v in pkg.items() if k != "digest"}
         forged["digest"] = sha256_hex(canonical_bytes(forged))
-        with pytest.raises(ReadinessError, match="fixture marker"):
+        with pytest.raises(ReadinessError, match="fixture_marker"):
             _check_consumable_consistency(
                 forged, pinned_digest=PINNED_TRUST_MANIFEST_DIGEST)
 
@@ -763,7 +763,7 @@ class TestC36ConsumerNoSelfEmittedClaims:
         with pytest.raises(ReadinessError,
                            match=NOT_PROVISIONED_NON_CONSUMABLE):
             verify_consumable_readiness(minimal)
-        with pytest.raises(ReadinessError, match="exact production"):
+        with pytest.raises(ReadinessError, match="exact schema"):
             _check_consumable_consistency(
                 minimal, pinned_digest=PINNED_TRUST_MANIFEST_DIGEST)
 
@@ -854,7 +854,7 @@ class TestC36ConsumerNoSelfEmittedClaims:
         with pytest.raises(ReadinessError, match="non-null"):
             _check_consumable_consistency(
                 _mutate(authoritative=None), pinned_digest=pin)
-        with pytest.raises(ReadinessError, match="not active"):
+        with pytest.raises(ReadinessError, match="must be True"):
             _check_consumable_consistency(
                 _mutate(verdict__collector_active=False),
                 pinned_digest=pin)
@@ -880,14 +880,14 @@ class TestC36ConsumerNoSelfEmittedClaims:
                 _mutate(authoritative__pairing_records=
                         good["authoritative"]["pairing_records"][:-1]),
                 pinned_digest=pin)
-        with pytest.raises(ReadinessError, match="never be"):
+        with pytest.raises(ReadinessError, match="must be False"):
             _check_consumable_consistency(
                 _mutate(verdict__economic_grid_authorized=True),
                 pinned_digest=pin)
-        with pytest.raises(ReadinessError, match="exact production"):
+        with pytest.raises(ReadinessError, match="exact schema"):
             _check_consumable_consistency(
                 _mutate(extra_field=1), pinned_digest=pin)
-        with pytest.raises(ReadinessError, match="exact production"):
+        with pytest.raises(ReadinessError, match="exact schema"):
             _check_consumable_consistency(
                 _mutate(authoritative=...), pinned_digest=pin)
 
@@ -979,3 +979,326 @@ class TestC37SingleProductionFactory:
         assert pkg["trust_status"] == \
             "NOT_PROVISIONED_NON_AUTHORIZING"
         assert pkg["verdict"]["collector_active"] is False
+
+
+# ================================================================== #
+# C38: strict nested schemas + full provisioned end-to-end           #
+# ================================================================== #
+
+def _stamp_production_shape(body):
+    pkg = {"schema": PRODUCTION_SCHEMA, "fixture_marker": False,
+           **{k: v for k, v in body.items()
+              if k not in ("schema", "fixture_marker", "digest")}}
+    pkg["digest"] = sha256_hex(canonical_bytes(pkg))
+    return pkg
+
+
+def _remut(pkg, mutate):
+    """Copy the package minus digest, apply a mutation, re-digest —
+    the adversary who controls the whole dict."""
+    m = {k: (dict(v) if isinstance(v, dict) else v)
+         for k, v in pkg.items() if k != "digest"}
+    mutate(m)
+    return _stamp_production_shape(m)
+
+
+class TestC38NestedSchemas:
+    """C38.1/C38.2: the frozen counterexample and its variants all
+    refuse TYPED, naming the field; no raw exception escapes."""
+
+    @pytest.fixture(scope="class")
+    def sufficient(self, provisioned, key):
+        return _stamp_production_shape(
+            _sufficient_fixture_body(provisioned, key))
+
+    def test_pre_exact_counterexample_dead(self, sufficient,
+                                           provisioned):
+        pin = provisioned.manifest_digest
+        _check_consumable_consistency(sufficient, pinned_digest=pin)
+        forged = _remut(sufficient, lambda m: m.__setitem__(
+            "authoritative",
+            {k: v for k, v in m["authoritative"].items()
+             if k != "required_pre_bars"}))
+        with pytest.raises(ReadinessError,
+                           match="required_pre_bars"):
+            _check_consumable_consistency(forged, pinned_digest=pin)
+
+    @pytest.mark.parametrize("label,mutate,match", [
+        ("missing_required_post_bars",
+         lambda m: m["authoritative"].pop("required_post_bars"),
+         "required_post_bars"),
+        ("pre_bars_bool",
+         lambda m: m["authoritative"].__setitem__(
+             "required_pre_bars", True), "positive int"),
+        ("post_bars_string",
+         lambda m: m["authoritative"].__setitem__(
+             "required_post_bars", "4"), "positive int"),
+        ("bar_hours_string",
+         lambda m: m.__setitem__("bar_hours", "4.0"),
+         "bar_hours"),
+        ("vol_window_bool",
+         lambda m: m.__setitem__("realized_vol_window_bars", True),
+         "positive int"),
+        ("verdict_extra_key",
+         lambda m: m["verdict"].__setitem__("extra", 1),
+         "exact schema"),
+        ("accounting_missing_deficit",
+         lambda m: m["verdict"].__setitem__(
+             "paired_week_accounting",
+             {k: v for k, v in
+              m["verdict"]["paired_week_accounting"].items()
+              if k != "exact_deficit"}), "exact schema"),
+        ("inventory_missing_bars",
+         lambda m: m.__setitem__(
+             "inventory_summary",
+             {k: v for k, v in m["inventory_summary"].items()
+              if k != "bars"}), "exact schema"),
+        ("source_extra_key",
+         lambda m: m["source"].__setitem__("path", "x"),
+         "exact schema"),
+        ("as_of_not_string",
+         lambda m: m.__setitem__("evaluation_as_of", 12345),
+         "RFC3339"),
+        ("impossible_date",
+         lambda m: m.__setitem__("evaluation_as_of",
+                                 "2024-13-45T00:00:00Z"),
+         "not a real timestamp"),
+        ("pairing_record_not_dict",
+         lambda m: m["authoritative"].__setitem__(
+             "pairing_records", ["x"] * 30), "must be a dict"),
+        ("supported_count_lie",
+         lambda m: m["verdict"].__setitem__(
+             "paired_week_accounting",
+             dict(m["verdict"]["paired_week_accounting"],
+                  supported_paired_weeks=31, exact_deficit=0)),
+         "concord"),
+        ("collector_active_int_one",
+         lambda m: m["verdict"].__setitem__("collector_active", 1),
+         "must be a bool"),
+        ("grid_none",
+         lambda m: m["verdict"].__setitem__(
+             "economic_grid_authorized", None), "must be a bool"),
+        ("provenance_reordered",
+         lambda m: m.__setitem__(
+             "provenance_classes",
+             list(reversed(m["provenance_classes"]))),
+         "canonical ordered"),
+        ("kind_counts_lie",
+         lambda m: m.__setitem__(
+             "inventory_summary",
+             dict(m["inventory_summary"],
+                  kind_counts={"weekend_shaped_observed_gap": 999})),
+         "concord"),
+        ("acq_range_inverted",
+         lambda m: m["authoritative"].__setitem__(
+             "acquisition_range",
+             list(reversed(m["authoritative"]["acquisition_range"]))),
+         "ordered"),
+        ("as_of_chain_broken",
+         lambda m: m["authoritative"].__setitem__(
+             "activated_at", "2030-01-01T00:00:00Z"),
+         "not ordered|concord"),
+        ("pairing_digest_lie",
+         lambda m: m["authoritative"].__setitem__(
+             "authoritative_pairing_digest", "e" * 64),
+         "concord"),
+    ])
+    def test_variants_refuse_typed(self, sufficient, provisioned,
+                                   label, mutate, match):
+        forged = _remut(sufficient, mutate)
+        with pytest.raises(ReadinessError, match=match):
+            _check_consumable_consistency(
+                forged, pinned_digest=provisioned.manifest_digest)
+
+    @pytest.mark.parametrize("weird", [
+        None, 7, "x", [], {"schema": PRODUCTION_SCHEMA},
+        {"schema": None}, {f: None for f in (
+            "schema", "fixture_marker", "source",
+            "column_role_contract_digest", "bar_hours", "timezone",
+            "evaluation_as_of", "trust_manifest_digest",
+            "trust_status", "realized_vol_window_bars",
+            "inventory_summary", "observed_gap_ledger_digest",
+            "observed_gap_count", "authoritative", "verdict",
+            "provenance_classes", "eth_conclusion_when_spot",
+            "digest")}])
+    def test_fuzz_shapes_only_typed_refusals(self, weird):
+        """No KeyError/TypeError/AttributeError/pandas exception may
+        escape — pytest.raises(ReadinessError) fails on any other."""
+        with pytest.raises(ReadinessError):
+            _check_consumable_consistency(
+                weird, pinned_digest=PINNED_TRUST_MANIFEST_DIGEST)
+
+    def test_garbage_source_bytes_refuse_typed(self):
+        with pytest.raises(ReadinessError, match="parseable"):
+            VerifiedSource.from_csv_bytes(
+                b"\x00\xff\x00garbage", roles=ROLES,
+                source_logical_id="fx:e")
+
+    def test_missing_column_refuses_typed(self):
+        with pytest.raises(ReadinessError, match="parseable"):
+            VerifiedSource.from_csv_bytes(
+                b"A,B\n1,2\n", roles=ROLES, source_logical_id="fx:e")
+
+
+class TestC38ProvisionedEndToEnd:
+    """C38.3: the EXACT production sequence under an ephemeral
+    provisioned manifest whose pin is fixed ONLY by monkeypatching
+    internal test constants — no public trust/pin/digest parameter,
+    no TEST_ONLY door in the distributed module."""
+
+    @pytest.fixture()
+    def pinned_provisioned(self, tmp_path, key, monkeypatch):
+        pub = binascii.hexlify(
+            key.public_key().public_bytes_raw()).decode()
+        manifest = {"schema": TRUST_MANIFEST_SCHEMA,
+                    "status": STATUS_PROVISIONED,
+                    "public_key_hex": pub, "venue": VENUE,
+                    "account_fingerprint": ACCT, "symbol": SYM,
+                    "exporter_code_digest": EXP_D,
+                    "parser_code_digest": PAR_D,
+                    "code_identity_digest": COD_D,
+                    "max_activation_age_days": 3650.0,
+                    "approving_order_reference": "c38-e2e",
+                    "approving_order_digest": "d" * 64}
+        digest = sha256_hex(canonical_bytes(manifest))
+        path = tmp_path / "e2e_provisioned.json"
+        path.write_text(json.dumps(
+            {**manifest, "manifest_digest": digest}))
+        monkeypatch.setattr(mod, "PINNED_TRUST_MANIFEST_PATH", path)
+        monkeypatch.setattr(mod, "PINNED_TRUST_MANIFEST_DIGEST",
+                            digest)
+        return digest
+
+    def _evidence(self, key):
+        ivs = _weekly(WP4_MIN_PAIRED_WEEKS)
+        exp = _export(
+            ivs, key,
+            acq=["2024-01-01T00:00:00Z", "2024-08-05T00:00:00Z"],
+            observed="2024-08-05T00:00:00Z",
+            exported="2024-08-06T00:00:00Z")
+        rec = _receipt(exp, key)
+        raw = _bars(ivs).to_csv(index=False).encode()
+        return raw, exp, rec
+
+    def test_full_provisioned_path_consumable(
+            self, pinned_provisioned, key):
+        raw, exp, rec = self._evidence(key)
+        pkg = mod.build_readiness_package(
+            VerifiedSource.from_csv_bytes(
+                raw, roles=ROLES, source_logical_id="fx:eth"),
+            bar_hours=4.0,
+            evaluation_as_of=datetime(2024, 8, 7,
+                                      tzinfo=timezone.utc),
+            session_export=exp, activation_receipt=rec)
+        assert pkg["trust_status"] == STATUS_PROVISIONED
+        assert pkg["verdict"]["collector_active"] is True
+        assert pkg["verdict"]["state"] == \
+            "AUTHORITATIVE_SUPPORT_SUFFICIENT_FOR_CALIBRATION"
+        out = mod.verify_consumable_readiness(
+            pkg, source_bytes=raw, source_logical_id="fx:eth",
+            roles=ROLES, session_export=exp, activation_receipt=rec)
+        assert out["consumable"] is True
+        assert out["state"] == \
+            "AUTHORITATIVE_SUPPORT_SUFFICIENT_FOR_CALIBRATION"
+
+    def test_missing_evidence_refuses(self, pinned_provisioned, key):
+        raw, exp, rec = self._evidence(key)
+        pkg = mod.build_readiness_package(
+            VerifiedSource.from_csv_bytes(
+                raw, roles=ROLES, source_logical_id="fx:eth"),
+            bar_hours=4.0,
+            evaluation_as_of=datetime(2024, 8, 7,
+                                      tzinfo=timezone.utc),
+            session_export=exp, activation_receipt=rec)
+        with pytest.raises(ReadinessError, match="evidence required"):
+            mod.verify_consumable_readiness(pkg)
+
+    def test_tampered_evidence_and_package_refuse(
+            self, pinned_provisioned, key):
+        raw, exp, rec = self._evidence(key)
+        pkg = mod.build_readiness_package(
+            VerifiedSource.from_csv_bytes(
+                raw, roles=ROLES, source_logical_id="fx:eth"),
+            bar_hours=4.0,
+            evaluation_as_of=datetime(2024, 8, 7,
+                                      tzinfo=timezone.utc),
+            session_export=exp, activation_receipt=rec)
+        # (a) tampered export signature -> typed trust refusal
+        bad = json.loads(exp)
+        bad["signature"] = "0" * 128
+        with pytest.raises(ReadinessError):
+            mod.verify_consumable_readiness(
+                pkg, source_bytes=raw, source_logical_id="fx:eth",
+                roles=ROLES, session_export=json.dumps(bad),
+                activation_receipt=rec)
+        # (b) different source bytes -> rederivation cannot match
+        other = raw + b"\n"
+        with pytest.raises(ReadinessError):
+            mod.verify_consumable_readiness(
+                pkg, source_bytes=other, source_logical_id="fx:eth",
+                roles=ROLES, session_export=exp,
+                activation_receipt=rec)
+        # (c) nested field tampered + re-digested -> typed refusal
+        forged = _remut(pkg, lambda m: m["verdict"].__setitem__(
+            "paired_week_accounting",
+            dict(m["verdict"]["paired_week_accounting"],
+                 supported_paired_weeks=29,
+                 exact_deficit=1)))
+        with pytest.raises(ReadinessError):
+            mod.verify_consumable_readiness(
+                forged, source_bytes=raw, source_logical_id="fx:eth",
+                roles=ROLES, session_export=exp,
+                activation_receipt=rec)
+        # (d) fixture marker forged onto the provisioned package
+        # (built by hand: _stamp_production_shape re-stamps False)
+        marked = {k: v for k, v in pkg.items() if k != "digest"}
+        marked["fixture_marker"] = True
+        marked["digest"] = sha256_hex(canonical_bytes(marked))
+        with pytest.raises(ReadinessError, match="fixture_marker"):
+            mod.verify_consumable_readiness(
+                marked, source_bytes=raw, source_logical_id="fx:eth",
+                roles=ROLES, session_export=exp,
+                activation_receipt=rec)
+
+    def test_wrong_pin_refuses(self, tmp_path, key, monkeypatch):
+        # manifest digest and patched pin disagree -> trust refusal
+        pub = binascii.hexlify(
+            key.public_key().public_bytes_raw()).decode()
+        manifest = {"schema": TRUST_MANIFEST_SCHEMA,
+                    "status": STATUS_PROVISIONED,
+                    "public_key_hex": pub, "venue": VENUE,
+                    "account_fingerprint": ACCT, "symbol": SYM,
+                    "exporter_code_digest": EXP_D,
+                    "parser_code_digest": PAR_D,
+                    "code_identity_digest": COD_D,
+                    "max_activation_age_days": 3650.0,
+                    "approving_order_reference": "c38-e2e",
+                    "approving_order_digest": "d" * 64}
+        digest = sha256_hex(canonical_bytes(manifest))
+        path = tmp_path / "m.json"
+        path.write_text(json.dumps(
+            {**manifest, "manifest_digest": digest}))
+        monkeypatch.setattr(mod, "PINNED_TRUST_MANIFEST_PATH", path)
+        monkeypatch.setattr(mod, "PINNED_TRUST_MANIFEST_DIGEST",
+                            "f" * 64)
+        with pytest.raises(TrustError, match="pinned"):
+            mod.load_pinned_production_trust()
+
+    def test_shipped_manifest_still_refuses_everything(self, key):
+        """Under the committed NOT_PROVISIONED manifest, the full
+        evidence set changes nothing: consumption refuses."""
+        raw, exp, rec = self._evidence(key)
+        pkg = mod.build_readiness_package(
+            VerifiedSource.from_csv_bytes(
+                raw, roles=ROLES, source_logical_id="fx:eth"),
+            bar_hours=4.0,
+            evaluation_as_of=datetime(2024, 8, 7,
+                                      tzinfo=timezone.utc),
+            session_export=exp, activation_receipt=rec)
+        assert pkg["verdict"]["collector_active"] is False
+        with pytest.raises(ReadinessError,
+                           match=NOT_PROVISIONED_NON_CONSUMABLE):
+            mod.verify_consumable_readiness(
+                pkg, source_bytes=raw, source_logical_id="fx:eth",
+                roles=ROLES, session_export=exp,
+                activation_receipt=rec)
