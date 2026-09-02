@@ -316,19 +316,16 @@ def load_pinned_production_trust() -> ResolvedTrust:
         expected_digest=PINNED_TRUST_MANIFEST_DIGEST)
 
 
-def load_trust_manifest_TEST_ONLY(path: Any, *,
-                                  expected_digest: str) -> \
-        ResolvedTrust:
-    """TEST-ONLY trust injection. The production path never calls
-    this — it is the isolated-fixture door the acceptance battery
-    uses to exercise a PROVISIONED manifest. Its name carries the
-    warning so no production code reaches for it."""
-    raw = Path(path).read_bytes()
-    return _resolve_manifest(strict_json_loads(raw),
-                             expected_digest=expected_digest)
+# NOTE: trust-injecting loaders/builders do NOT live in this
+# distributed module (C35). The only public entry points are the
+# production build_readiness_package (which loads the code-pinned
+# manifest itself) and verify_consumable_readiness. The provisioned
+# fixture seam lives under tests/ and drives the private _resolve_
+# manifest / _build_package with fixture=True, which can only emit
+# the FIXTURE schema.
 
 
-def verify_signed_artifact(raw: Any, trust: ResolvedTrust, *,
+def _verify_signed_artifact(raw: Any, trust: ResolvedTrust, *,
                            schema: str, required_fields: Sequence[str],
                            what: str) -> dict:
     """C23/C28/C27: strict-parse, then verify the DETACHED signature
@@ -423,10 +420,10 @@ def _load_authoritative_bundle(export_raw: Any, receipt_raw: Any,
                                operator_exceptions:
                                Optional[Sequence[Any]],
                                evaluation_as_of: datetime) -> dict:
-    export = verify_signed_artifact(
+    export = _verify_signed_artifact(
         export_raw, trust, schema=SESSION_EXPORT_SCHEMA,
         required_fields=_EXPORT_FIELDS, what="session export")
-    receipt = verify_signed_artifact(
+    receipt = _verify_signed_artifact(
         receipt_raw, trust, schema=ACTIVATION_RECEIPT_SCHEMA,
         required_fields=_RECEIPT_FIELDS, what="activation receipt")
     _bind_identity(export, trust, "export",
@@ -519,7 +516,7 @@ def _load_authoritative_bundle(export_raw: Any, receipt_raw: Any,
         intervals.append(iv)
 
     for artifact in (operator_exceptions or []):
-        art = verify_signed_artifact(
+        art = _verify_signed_artifact(
             artifact, trust, schema=OPERATOR_EXCEPTION_SCHEMA,
             required_fields=_EXCEPTION_FIELDS,
             what="operator exception")
@@ -826,19 +823,61 @@ def inventory_observed_gaps(frame: pd.DataFrame, *,
 # C24/C26: the one wired package                                     #
 # ------------------------------------------------------------------ #
 
-@dataclass(frozen=True)
-class VerifiedSource:
-    """C29: ONE data population. Bytes, their digest and the parsed
-    frame are inseparable — the public constructor parses the frame
-    FROM the bytes, so a caller can never hand a frame that is not
-    the hashed source. Two sources with distinct rows yield distinct
-    digests even without observed gaps."""
+_SOURCE_FACTORY_TOKEN = object()
 
-    source_bytes: bytes
-    source_digest: str
-    source_logical_id: str
-    roles: "ColumnRoleContract"
-    frame: pd.DataFrame
+
+class VerifiedSource:
+    """C29/C33/C34: ONE data population, built by ONE path. The
+    public constructor refuses — a VerifiedSource exists only via
+    from_csv_bytes, which parses FROM the hashed bytes. The object
+    holds the raw BYTES and their digest, never a mutable frame; the
+    frame() accessor returns a FRESH copy parsed from the bytes each
+    time, so mutating a copy can never alter a later build, and the
+    source_digest is always recomputed from the bytes, never
+    accepted."""
+
+    __slots__ = ("_raw", "_digest", "_logical_id", "_roles",
+                 "_usecols")
+
+    def __init__(self, token, raw, logical_id, roles, usecols):
+        if token is not _SOURCE_FACTORY_TOKEN:
+            raise ReadinessError(
+                "VerifiedSource has no public constructor — build it "
+                "via VerifiedSource.from_csv_bytes over the hashed "
+                "bytes; fabricated components are refused")
+        object.__setattr__(self, "_raw", bytes(raw))
+        object.__setattr__(self, "_digest", sha256_hex(bytes(raw)))
+        object.__setattr__(self, "_logical_id", logical_id)
+        object.__setattr__(self, "_roles", roles)
+        object.__setattr__(self, "_usecols", tuple(usecols))
+
+    def __setattr__(self, name, value):
+        raise ReadinessError("VerifiedSource is immutable")
+
+    @property
+    def source_digest(self) -> str:
+        return self._digest
+
+    @property
+    def source_logical_id(self) -> str:
+        return self._logical_id
+
+    @property
+    def roles(self) -> "ColumnRoleContract":
+        return self._roles
+
+    def frame(self) -> pd.DataFrame:
+        """A FRESH copy parsed from the bytes — never a shared
+        mutable reference."""
+        return pd.read_csv(io.BytesIO(self._raw),
+                           usecols=list(self._usecols))
+
+    def revalidate(self) -> None:
+        """C33: last-point-of-use revalidation — the digest still
+        matches the bytes and the logical identity is still clean."""
+        if sha256_hex(self._raw) != self._digest:
+            raise ReadinessError("source bytes/digest disagree")
+        require_logical_id("source_logical_id", self._logical_id)
 
     @staticmethod
     def from_csv_bytes(raw: bytes, *, roles: "ColumnRoleContract",
@@ -850,12 +889,16 @@ class VerifiedSource:
             raise ReadinessError(
                 "source must be provided as BYTES and parsed here, "
                 "never as a detached frame")
-        digest = sha256_hex(bytes(raw))
         cols = list(usecols) if usecols else [
             roles.datetime_col, roles.open_col, roles.close_col]
-        frame = pd.read_csv(io.BytesIO(bytes(raw)), usecols=cols)
-        return VerifiedSource(bytes(raw), digest, source_logical_id,
-                              roles, frame)
+        # parse once to fail fast on a malformed source
+        pd.read_csv(io.BytesIO(bytes(raw)), usecols=cols)
+        return VerifiedSource(_SOURCE_FACTORY_TOKEN, raw,
+                              source_logical_id, roles, cols)
+
+
+PRODUCTION_SCHEMA = "gymfx.wp4.session_readiness.v4"
+FIXTURE_SCHEMA = "gymfx.wp4.session_readiness.fixture.v4"
 
 
 def _build_package(source: VerifiedSource, trust: ResolvedTrust, *,
@@ -865,10 +908,26 @@ def _build_package(source: VerifiedSource, trust: ResolvedTrust, *,
                    session_export: Optional[Any],
                    activation_receipt: Optional[Any],
                    required_pre_bars: int, required_post_bars: int,
-                   operator_exceptions: Optional[Sequence[Any]]
-                   ) -> dict:
+                   operator_exceptions: Optional[Sequence[Any]],
+                   fixture: bool) -> dict:
+    if not isinstance(source, VerifiedSource):
+        raise ReadinessError(
+            "source must be a VerifiedSource built from hashed bytes")
+    source.revalidate()
+    # C35: a PRODUCTION-schema package can only carry authority under
+    # the code-pinned manifest. A caller-supplied (fixture) trust
+    # must declare fixture=True and produces the FIXTURE schema, so a
+    # fixture can never masquerade as production authority.
+    is_pinned = trust.manifest_digest == PINNED_TRUST_MANIFEST_DIGEST
+    if fixture and is_pinned:
+        raise ReadinessError(
+            "the fixture seam cannot use the pinned production trust")
+    if not fixture and not is_pinned:
+        raise ReadinessError(
+            "a non-pinned trust cannot build a production package — "
+            "use the isolated fixture seam")
     roles = source.roles
-    frame = source.frame
+    frame = source.frame()
     as_of = (pd.Timestamp(evaluation_as_of).tz_convert("UTC")
              if pd.Timestamp(evaluation_as_of).tzinfo
              else pd.Timestamp(evaluation_as_of, tz="UTC"))
@@ -919,7 +978,8 @@ def _build_package(source: VerifiedSource, trust: ResolvedTrust, *,
     assert verdict_state in READINESS_STATES
 
     package = {
-        "schema": "gymfx.wp4.session_readiness.v4",
+        "schema": FIXTURE_SCHEMA if fixture else PRODUCTION_SCHEMA,
+        "fixture_marker": bool(fixture),
         "source": {"logical_id": source.source_logical_id,
                    "source_digest": source.source_digest},
         "column_role_contract_digest": roles.digest(),
@@ -977,27 +1037,38 @@ def build_readiness_package(source: VerifiedSource, *,
         activation_receipt=activation_receipt,
         required_pre_bars=required_pre_bars,
         required_post_bars=required_post_bars,
-        operator_exceptions=operator_exceptions)
+        operator_exceptions=operator_exceptions, fixture=False)
 
 
-def build_readiness_package_with_trust_TEST_ONLY(
-        source: VerifiedSource, trust: ResolvedTrust, *,
-        bar_hours: float, evaluation_as_of: datetime,
-        realized_vol_window_bars: int = 3,
-        calendar_tz: Optional[str] = None,
-        session_export: Optional[Any] = None,
-        activation_receipt: Optional[Any] = None,
-        required_pre_bars: int = 4, required_post_bars: int = 4,
-        operator_exceptions: Optional[Sequence[Any]] = None) -> dict:
-    """TEST-ONLY door for an isolated PROVISIONED fixture manifest.
-    The production path never calls this; its name carries the
-    warning so no production code injects trust."""
-    return _build_package(
-        source, trust, bar_hours=bar_hours,
-        evaluation_as_of=evaluation_as_of,
-        realized_vol_window_bars=realized_vol_window_bars,
-        calendar_tz=calendar_tz, session_export=session_export,
-        activation_receipt=activation_receipt,
-        required_pre_bars=required_pre_bars,
-        required_post_bars=required_post_bars,
-        operator_exceptions=operator_exceptions)
+# C35: a consumption verifier every future readiness consumer MUST
+# call before trusting sufficiency — even while the grid is blocked.
+def verify_consumable_readiness(
+        package: dict, *, expected_manifest_digest: str) -> dict:
+    """Refuse anything that is not a genuine PRODUCTION package with
+    the pinned provisioned manifest, no fixture marker and an intact
+    digest. A fixture package (fixture schema or marker) refuses."""
+    if not isinstance(package, dict):
+        raise ReadinessError("package must be a dict")
+    if package.get("schema") != PRODUCTION_SCHEMA:
+        raise ReadinessError(
+            f"not a production package: schema "
+            f"{package.get('schema')!r}")
+    if package.get("fixture_marker") is not False:
+        raise ReadinessError("package carries a fixture marker")
+    body = {k: v for k, v in package.items() if k != "digest"}
+    if package.get("digest") != sha256_hex(canonical_bytes(body)):
+        raise ReadinessError("package digest mismatch — altered")
+    if package.get("trust_manifest_digest") != \
+            expected_manifest_digest:
+        raise ReadinessError(
+            "trust_manifest_digest is not the expected pin")
+    if package.get("trust_status") != STATUS_PROVISIONED:
+        raise ReadinessError(
+            f"trust status {package.get('trust_status')!r} is not "
+            f"{STATUS_PROVISIONED}")
+    verdict = package.get("verdict", {})
+    if verdict.get("economic_grid_authorized") is not False:
+        raise ReadinessError("economic grid must never be authorized")
+    return {"consumable": True,
+            "state": verdict.get("state"),
+            "note": "sufficiency may be read; grid stays blocked"}
