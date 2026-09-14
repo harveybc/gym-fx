@@ -33,6 +33,15 @@ evidence contract of ongoing experiments.
 > synthetic data in simulation/backtest mode. Nothing here executes real-capital
 > trades, and none of the examples or configurations are financial advice.
 
+## Use with a coding agent
+
+> Inspect the environment config, observation/action spaces and execution-cost
+> implementation for this revision. Run bounded CPU tests on local fixtures,
+> including timing, episode termination and cost accounting. Report the exact
+> data and environment identities and any limitations. Do not start training,
+> download market data or connect to a venue. Compare agents only when their
+> environment and execution semantics are matched.
+
 ## Role and non-responsibilities
 
 **Role:** provide the trading *environment only* — observation construction,
