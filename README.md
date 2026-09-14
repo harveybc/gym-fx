@@ -11,6 +11,19 @@ name from a JSON config.
 
 ## Status
 
+**Publication scope (2026-09-14):** the additional execution-accounting and
+trade-reconciliation work is preserved in
+[this research snapshot](https://github.com/harveybc/gym-fx/tree/6d779afdd7cd4e8b2d7c2dfadc6395482e831269),
+not bulk-merged into the default branch. Reproducing a reported experiment
+requires its pinned environment version, data contract and cost configuration.
+Do not compare results from different fill or commission models as if they
+were the same experiment.
+
+The [research repository map](https://github.com/harveybc/predictor/blob/master/docs/RESEARCH_STACK.md)
+separates this simulator from data preparation, RL training and real execution.
+Simulation fidelity and causal inputs need independent tests; neither follows
+merely from compatibility with the Gymnasium API.
+
 **Lifecycle: ACTIVE-CORE.** This environment is the execution layer consumed by
 the [agent-multi](https://github.com/harveybc/agent-multi) RL training and
 optimization pipelines. It is actively maintained; its behavior is part of the
