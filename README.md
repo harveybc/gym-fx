@@ -73,6 +73,18 @@ Key mechanisms, each covered by tests:
   values, and the end-of-episode summary contains `action_diagnostics` and
   `execution_diagnostics` counters (entries seen, protected rejections,
   forced-flat orders, deadband actions, ...).
+- **Observation building outside an episode** —
+  [`gym_fx.observation_builder`](app/observation_builder.py) rebuilds the exact
+  vector the env's preprocessor emits, from market data rows, for a consumer
+  that holds a fitted policy but no env (see
+  [agent-multi's M5PHET policy provider](https://github.com/harveybc/agent-multi)).
+  An `ObservationContract` carries the feature configuration the policy was
+  fitted with, an `AgentState` supplies the env-side elements no price row
+  contains, and everything that could otherwise yield a plausible-but-wrong
+  vector — a short window padded to length, a missing feature column, a NaN
+  turned into 0.0, a file whose feature columns come out in a different order —
+  is refused by name. Importable without gymnasium or backtrader. See
+  [`tests/test_observation_builder.py`](tests/test_observation_builder.py).
 - **Execution-cost and event context** — spread/slippage/financing profiles
   under [`examples/config/execution_cost_profiles/`](examples/config/execution_cost_profiles/)
   and an OANDA-style session/event calendar
