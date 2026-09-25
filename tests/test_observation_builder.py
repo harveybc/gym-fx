@@ -275,3 +275,47 @@ def test_rows_of_strings_from_a_parsed_csv_build_the_same_vector_as_the_frame():
     from_frame = build_observation(frame, contract, state)
     from_rows = build_observation(rows_from_csv(frame.to_csv(index=False)), contract, state)
     assert from_rows.observation_sha256 == from_frame.observation_sha256
+
+
+# --- comparing a DERIVED contract against the fitted one ---------------------------------------
+# A consumer that derives a contract -- from a representation spec, from a campaign config it
+# re-read -- has to know whether the derivation describes the policy it is about to question.
+# `differences_from` is what lets its refusal name the length and the columns instead of saying
+# only that two digests differ.
+
+def test_the_same_contract_differs_from_itself_in_nothing():
+    assert _contract().differences_from(_contract()) == []
+
+
+def test_a_different_length_is_named_first_because_it_is_what_a_person_can_act_on():
+    found = _contract(window_size=WINDOW * 2).differences_from(_contract())
+    assert found[0].startswith("length: "), found
+    assert str(_contract(window_size=WINDOW * 2).expected_length) in found[0]
+    assert str(_contract().expected_length) in found[0]
+
+
+def test_a_missing_column_is_named_and_not_merely_counted():
+    fewer = _contract(feature_columns=FEATURES[:-1], feature_binary_columns=[])
+    found = fewer.differences_from(_contract())
+    assert any("bin_flag" in line for line in found), found
+
+
+def test_the_same_columns_in_a_different_order_are_a_difference_with_a_position():
+    """Same length, same set, different observation -- the case a digest alone cannot explain."""
+    swapped = list(FEATURES)
+    swapped[0], swapped[1] = swapped[1], swapped[0]
+    found = _contract(feature_columns=swapped).differences_from(_contract())
+    assert any(line.startswith("feature column order: position 0") for line in found), found
+    assert not any(line.startswith("length: ") for line in found), (
+        "the two build the same number of elements; saying otherwise would send the caller "
+        "looking for the wrong mistake")
+
+
+def test_a_scaling_that_moves_every_value_without_moving_the_length_is_named():
+    found = _contract(feature_scaling_window=SCALING_WINDOW * 2).differences_from(_contract())
+    assert any(line.startswith("feature_scaling_window: ") for line in found), found
+
+
+def test_only_a_contract_may_be_compared_against():
+    with pytest.raises(ObservationRefusal, match="INVALID_CONTRACT"):
+        _contract().differences_from({"window_size": WINDOW})

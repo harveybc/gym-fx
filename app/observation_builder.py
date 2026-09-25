@@ -249,6 +249,52 @@ class ObservationContract:
     def digest(self) -> str:
         return _canonical_digest({"schema": CONTRACT_SCHEMA, **self.to_config()})
 
+    def differences_from(self, other: "ObservationContract") -> List[str]:
+        """What separates this contract from another, one sentence per difference.
+
+        A caller that DERIVED a contract -- from a representation spec, from a campaign config it
+        re-read, from a second export of the same bundle -- needs to know whether the derivation
+        describes the policy it is about to question. Comparing digests answers "no" without
+        saying what to fix, and comparing lengths answers "yes" when 83 columns came out in a
+        different order. So the comparison lives here, beside the fields, and it names the length
+        and the columns first because those are the two a person can act on.
+
+        Empty means the two contracts build the same observation, element for element.
+        """
+        if not isinstance(other, ObservationContract):
+            raise _refuse("INVALID_CONTRACT", "a contract is compared against another contract")
+        found: List[str] = []
+        if self.expected_length != other.expected_length:
+            found.append(
+                f"length: this contract builds {self.expected_length} elements and the other "
+                f"builds {other.expected_length}")
+        if list(self.feature_columns) != list(other.feature_columns):
+            mine, theirs = list(self.feature_columns), list(other.feature_columns)
+            if len(mine) != len(theirs):
+                found.append(
+                    f"feature columns: {len(mine)} here against {len(theirs)} there")
+            missing = [name for name in theirs if name not in set(mine)]
+            extra = [name for name in mine if name not in set(theirs)]
+            if missing:
+                found.append(f"feature columns absent here: {missing[:8]}"
+                             + (" ..." if len(missing) > 8 else ""))
+            if extra:
+                found.append(f"feature columns absent there: {extra[:8]}"
+                             + (" ..." if len(extra) > 8 else ""))
+            if not missing and not extra:
+                position = next(i for i, (a, b) in enumerate(zip(mine, theirs)) if a != b)
+                found.append(
+                    f"feature column order: position {position} is {mine[position]!r} here and "
+                    f"{theirs[position]!r} there")
+        for field_name in ("window_size", "price_column", "feature_binary_columns",
+                           "feature_scaling", "feature_scaling_window", "feature_clip",
+                           "include_price_window", "include_agent_state",
+                           "agent_state_contract", "position_size"):
+            mine, theirs = getattr(self, field_name), getattr(other, field_name)
+            if mine != theirs:
+                found.append(f"{field_name}: {mine!r} here and {theirs!r} there")
+        return found
+
     def declaration(self) -> Dict[str, Any]:
         """Everything about this contract that a receipt should carry."""
         return {
