@@ -6,12 +6,16 @@ Gymnasium-style environment. The BTBridgeStrategy runs inside a background
 thread driven by cerebro.run(); the GymFxEnv on the main thread submits
 actions and waits for observations using two threading.Event primitives.
 
-Flow per step:
+Flow per step in the explicit next_open_v2 contract:
   1. env.step(action) -> writes action into bridge.action_slot,
                          sets action_ready.
-  2. BTBridgeStrategy.next() wakes, applies the action (buy/sell/close),
-     updates bridge.state, sets obs_ready, and waits for the next action.
+  2. BTBridgeStrategy.next() wakes at completed bar t and submits the action.
+     Backtrader advances and fills at the next open. At the next completed
+     bar, protection settles before bridge.state and obs_ready are published.
   3. env.step returns (obs, reward, terminated, truncated, info).
+
+The legacy_delayed_v1 default is retained for older configurations; curated
+RL inputs require next_open_v2 at the agent/environment boundary.
 
 Termination / close semantics:
   - env.close() sets bridge.stop_requested = True and releases action_ready
@@ -46,6 +50,7 @@ class BTBridge:
         self.raw_action_slot: float = 0.0
         self.stop_requested: bool = False
         self.terminated: bool = False
+        self.execution_error: Optional[Exception] = None
 
         # populated by the strategy on each bar
         self.equity: float = float(initial_cash)
@@ -388,6 +393,9 @@ class BTBridgeStrategy(bt.Strategy):
         self._strategy_plugin = self.p.strategy_plugin
         self._plugin_apply = getattr(self._strategy_plugin, "apply_action", None) if self._strategy_plugin else None
         self._plugin_config = self.p.config or {}
+        self._transition = self._plugin_config.get('execution_transition', 'legacy_delayed_v1')
+        if self._transition not in ('legacy_delayed_v1', 'next_open_v2'):
+            raise ValueError('UNKNOWN_EXECUTION_TRANSITION')
         self._require_protected_entries = bool(
             self._plugin_config.get("require_protected_entries", False)
         )
@@ -453,7 +461,7 @@ class BTBridgeStrategy(bt.Strategy):
                                or 0.0),
                 "size": float(getattr(executed, "size", 0.0) or 0.0),
                 "commission": comm,
-                "bar_index": int(self.bridge.bar_index),
+                "bar_index": int(len(self.data)) if self._transition == 'next_open_v2' else int(self.bridge.bar_index),
             })
             del self._completed_fills[:-8]  # bounded evidence window
         plugin_notify = (
@@ -477,7 +485,7 @@ class BTBridgeStrategy(bt.Strategy):
             # the identity. Without lineage, more than one unconsumed
             # reconciling ORDER identity refuses — even when price and
             # size are economically identical.
-            bar = int(self.bridge.bar_index)
+            bar = int(len(self.data)) if self._transition == 'next_open_v2' else int(self.bridge.bar_index)
             direction = 1.0 if long_side else -1.0
             pool = getattr(self, "_completed_fills", [])
             lineage_ref = None
@@ -560,6 +568,9 @@ class BTBridgeStrategy(bt.Strategy):
                 net_pnl=net)
 
     def next(self) -> None:
+        if self._transition == 'next_open_v2':
+            self._next_open_transition()
+            return
         # If the env requested stop, exit the run as quickly as possible.
         if self.bridge.stop_requested:
             self.env.runstop()
@@ -611,6 +622,39 @@ class BTBridgeStrategy(bt.Strategy):
         if self.bridge.stop_requested:
             self.env.runstop()
             return
+
+    def _next_open_transition(self) -> None:
+        if self.bridge.stop_requested:
+            self.env.runstop()
+            return
+        # Broker fills for this bar have occurred. Finish protective accounting
+        # before exposing the resulting state, then wait for its next action.
+        on_bar_close = getattr(self._strategy_plugin, 'on_bar_close', None)
+        if callable(on_bar_close):
+            on_bar_close(self, self._plugin_config)
+        self._publish_obs(signal=False)
+        if self._is_broke():
+            if self.p.solvency_mode == 'easy_chronological_continuation':
+                self._continue_after_would_margin_call()
+            else:
+                self.bridge.termination_cause = 'min_equity'
+                self.bridge.terminated = True
+        if not self.bridge.terminated and self.bridge.bar_index >= self.bridge.total_bars:
+            self.bridge.termination_cause = 'data_end'
+            self.bridge.terminated = True
+        self.bridge.obs_ready.set()
+        if self.bridge.terminated:
+            self.env.runstop()
+            return
+        self.bridge.action_ready.wait()
+        self.bridge.action_ready.clear()
+        if self.bridge.stop_requested:
+            self.env.runstop()
+            return
+        self._process_cancel_requests()
+        self._apply_action(int(self.bridge.action_slot))
+        # Returning from next lets Backtrader execute orders at the next open.
+        # Only that bar's publication releases env.step; no duplicate t state.
 
     def _process_cancel_requests(self) -> None:
         """C2: cancel exactly the refs the overlay identified from the
@@ -734,6 +778,8 @@ class BTBridgeStrategy(bt.Strategy):
                 self._plugin_apply(self, int(action), self._plugin_config)
                 return
             except Exception:
+                if getattr(self, '_transition', 'legacy_delayed_v1') == 'next_open_v2':
+                    raise
                 self.bridge.execution_diagnostics["plugin_apply_errors"] = (
                     self.bridge.execution_diagnostics.get("plugin_apply_errors", 0) + 1
                 )

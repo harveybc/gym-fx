@@ -12,6 +12,7 @@ using bt.stores.OandaStore for live trading.
 from __future__ import annotations
 
 from typing import Any, Dict
+import math
 
 import backtrader as bt
 
@@ -43,11 +44,26 @@ class Plugin:
             )
         )
         leverage = float(config.get("leverage", self.params["leverage"]))
+        financing = config.get("financing_enabled", False)
+        if not isinstance(financing, bool):
+            raise ValueError("FINANCING_ENABLED_MUST_BE_BOOLEAN")
+        interest = 0.0
+        if financing:
+            if config.get("financing_model") != "backtrader_annual_notional_daily_v1":
+                raise ValueError("FINANCING_MODEL_REQUIRED_OR_UNSUPPORTED")
+            try:
+                interest = float(config["financing_annual_rate"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError("FINANCING_ANNUAL_RATE_REQUIRED") from exc
+            if not math.isfinite(interest) or interest < 0:
+                raise ValueError("FINANCING_ANNUAL_RATE_INVALID")
 
         broker = bt.brokers.BackBroker()
         broker.setcash(cash)
         # Commission scaled by notional (price * size) since commtype=PERC
-        broker.setcommission(commission=commission, leverage=leverage)
+        # Explicit analytical scenario, not a broker-specific FX swap model.
+        broker.setcommission(commission=commission, leverage=leverage,
+                             interest=interest, interest_long=financing)
         if slip > 0:
             broker.set_slippage_perc(perc=slip, slip_open=True, slip_limit=True, slip_match=True)
         return broker

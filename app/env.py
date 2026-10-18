@@ -131,6 +131,13 @@ class GymFxEnv(gym.Env):
     ):
         super().__init__()
         self.config = dict(config)
+        self.execution_transition = self.config.get('execution_transition', 'legacy_delayed_v1')
+        if self.execution_transition not in ('legacy_delayed_v1', 'next_open_v2'):
+            raise ValueError('UNKNOWN_EXECUTION_TRANSITION')
+        if self.execution_transition == 'next_open_v2' and self.config.get('session_exposure_enabled'):
+            delay = float(self.config.get('execution_max_delay_hours', 0))
+            if not np.isfinite(delay) or delay <= 0:
+                raise ValueError('EXECUTION_MAX_DELAY_HOURS_REQUIRED')
         self.data_feed_plugin = data_feed_plugin
         self.broker_plugin = broker_plugin
         self.strategy_plugin = strategy_plugin
@@ -585,6 +592,8 @@ class GymFxEnv(gym.Env):
                 "full_spread_rate": full_spread,
                 "slippage_bps_per_side": slippage_bps,
                 "financing_enabled": financing,
+                "financing_model": cost_patch.get("financing_model"),
+                "financing_annual_rate": cost_patch.get("financing_annual_rate"),
             }
         )
         self.config.update(self._execution_cost_context)
@@ -1132,7 +1141,7 @@ class GymFxEnv(gym.Env):
                 continue
             # a bar is FULLY CLOSED only if the next bar's stamp has
             # been reached; the bar under decision is still forming
-            if idx >= step_idx:
+            if idx >= step_idx and self.execution_transition != 'next_open_v2':
                 continue
             closed_bars += 1
             check = self._session_stability_check(idx)
@@ -1167,6 +1176,8 @@ class GymFxEnv(gym.Env):
         step_idx = max(0, min(
             int(getattr(self.bridge, "bar_index", 0) or 0),
             self.total_bars))
+        if self.execution_transition == 'next_open_v2':
+            step_idx = max(0, step_idx - 1)
         now = self._session_now(step_idx)
         reopen_evidence, reopen_info = self._session_reopen_evidence(
             step_idx, now)
@@ -1186,6 +1197,22 @@ class GymFxEnv(gym.Env):
                 expected_account_fingerprint=(
                     self.session_account_fingerprint or None),
                 expected_symbol=self.session_symbol or None)
+
+            if self.execution_transition == 'next_open_v2':
+                # Only the known calendar is projected; prices, spread and
+                # stability evidence remain bounded by the completed bar t.
+                from datetime import timedelta
+                deadline = now + timedelta(hours=float(self.config['execution_max_delay_hours']))
+                future = session_state(
+                    self._session_policy, now=deadline, calendar=self._session_calendar,
+                    reopen_evidence=reopen_evidence,
+                    expected_venue=self.session_venue or None,
+                    expected_account_fingerprint=self.session_account_fingerprint or None,
+                    expected_symbol=self.session_symbol or None)
+                if future['state'] in ('FORCED_FLATTEN', 'WIND_DOWN') and state_block['state'] == 'NORMAL_TRADING':
+                    state_block = future
+                elif future['state'] == 'FORCED_FLATTEN' and state_block['state'] == 'WIND_DOWN':
+                    state_block = future
 
         state = state_block["state"]
         if state == "EXPECTED_MARKET_CLOSED":
@@ -1515,8 +1542,9 @@ class GymFxEnv(gym.Env):
         bar = require_count(
             "bar_index", getattr(self.bridge, "bar_index", None),
             minimum=0)
-        observed = self._session_now(bar)
-        evaluated = self._session_now(bar)
+        observed_index = max(0, bar - 1) if self.execution_transition == 'next_open_v2' else bar
+        observed = self._session_now(observed_index)
+        evaluated = observed
         if self._session_last_evidence_bar is not None and \
                 bar < self._session_last_evidence_bar:
             raise SessionEvidenceError(
@@ -1741,7 +1769,8 @@ class GymFxEnv(gym.Env):
         try:
             result = self._cerebro.run(maxcpus=1, stdstats=False)
             self._strategy_instance = result[0] if result else None
-        except Exception:  # pragma: no cover
+        except Exception as exc:
+            self.bridge.execution_error = exc
             self.bridge.terminated = True
             self.bridge.obs_ready.set()
 
@@ -1757,6 +1786,10 @@ class GymFxEnv(gym.Env):
     def _wait_obs(self) -> None:
         if not self.bridge.obs_ready.wait(timeout=30.0):
             self.bridge.terminated = True
+            raise TimeoutError('SIMULATOR_OBSERVATION_TIMEOUT')
+        error = getattr(self.bridge, 'execution_error', None)
+        if error is not None:
+            raise RuntimeError('SIMULATOR_EXECUTION_FAILED') from error
 
     def _make_observation(self) -> Dict[str, np.ndarray]:
         assert self.bridge is not None
@@ -2037,6 +2070,7 @@ class GymFxEnv(gym.Env):
     def _make_info(self) -> Dict[str, Any]:
         assert self.bridge is not None
         info = {
+            "execution_transition": self.execution_transition,
             "equity": self.bridge.equity,
             "position": self.bridge.position,
             "position_units": getattr(self.bridge, "position_units", None),

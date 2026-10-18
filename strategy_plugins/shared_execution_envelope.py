@@ -63,6 +63,7 @@ class Plugin:
         self._entry_bar_check = None  # (bar_index, dir, sl, tp, units)
         self._parent = None           # in-flight parent order ref
         self._entry_fill_bar = None   # bar of the last parent fill
+        self._processed_bar = None
         p = self._resolve(config or {})
         self._daily_quota = DailyEntryQuota(
             p["max_entries_per_day"], p["entry_day_timezone"])
@@ -205,15 +206,32 @@ class Plugin:
         # closing proceeds: long sells at fill, short buys back at fill
         entry_price = float(getattr(position, "price", 0.0) or 0.0)
         gross = float(size) * (float(fill_price) - entry_price)
-        s.broker.add_cash(size * fill_price - commission)
+        entry_commission = 0.0
+        cash_return = size * fill_price
+        if getattr(s, '_transition', None) == 'next_open_v2':
+            fills = [f for f in s._completed_fills if f['order_ref'] == self._entry_order_ref]
+            if len(fills) != 1 or not comminfo.stocklike or not s.broker.p.shortcash:
+                raise ValueError('ENTRY_SETTLEMENT_ACCOUNTING_CONTRACT_MISMATCH')
+            entry_commission = fills[0]['commission']
+            # Match BackBroker._execute's return of entry capital and PnL.
+            capital = comminfo.getvaluesize(size, entry_price)
+            if capital > 0:
+                capital /= comminfo.get_leverage()
+            cash_return = capital + gross
+        s.broker.add_cash(cash_return - commission)
         position.update(-size, fill_price)
         s.bridge.commission_paid += commission
+        if getattr(s, '_transition', None) == 'next_open_v2':
+            s._order_cost_accum += commission
+            # Backtrader queues add_cash; settle it before publishing this bar.
+            s.broker._get_value()
         # Steps-1-2 correction order 2026-08-28: a direct settlement
         # is a real closure that backtrader's trade lifecycle never
         # sees — recorded ECONOMICALLY COMPLETE in the ONE
         # authoritative stream (side/size/entry/exit/gross/costs/net),
         # idempotent per settlement bar.
-        bar = int(getattr(s.bridge, "bar_index", 0))
+        bar = (int(len(s.data)) if getattr(s, '_transition', None) == 'next_open_v2'
+               else int(getattr(s.bridge, "bar_index", 0)))
         # deterministic identity: episode + position lineage (the bar
         # the position opened) + settlement bar — two legitimate
         # closures sharing a bar have distinct lineages, a retried
@@ -231,8 +249,8 @@ class Plugin:
             entry_price=entry_price,
             exit_price=float(fill_price),
             gross_pnl=gross,
-            costs=float(commission),
-            net_pnl=gross - float(commission))
+            costs=float(commission + entry_commission),
+            net_pnl=gross - float(commission + entry_commission))
 
     def _cancel_children(self, s) -> None:
         for order in self._children:
@@ -272,14 +290,16 @@ class Plugin:
         self._parent = None
         self._relevel_todo = None
         self._entry_fill_bar = None
+        self._entry_order_ref = None
+        self._processed_bar = None
 
-    def apply_action(self, s, action: int, config: Dict[str, Any]) -> None:
-        p = self._resolve(config)
-        raw = abs(float(getattr(s.bridge, "raw_action_slot", 0.0)))
-        equity = float(s.broker.getvalue())
+    def on_bar_close(self, s, config: Dict[str, Any]) -> bool:
         price = float(s.data.close[0])
         pos = float(s.position.size)
         bar = int(len(s.data))
+        if self._processed_bar == bar:
+            return False
+        self._processed_bar = bar
 
         # WP1 (finding 324): protection is ATOMIC — parent and both
         # children are one bracket, children active from the parent
@@ -318,7 +338,7 @@ class Plugin:
                     "bar_index": bar, "reason": reason, "price": fill,
                     "detail": "entry_bar_settlement_at_level"})
                 self._entry_anchor = None
-                return
+                return True
         if getattr(self, "_relevel_todo", None) is not None and pos != 0:
             rl_dir, rl_sl, rl_tp, rl_units = self._relevel_todo
             self._relevel_todo = None
@@ -340,7 +360,18 @@ class Plugin:
             diag = s.bridge.execution_diagnostics
             diag["envelope_residual_sweeps"] = diag.get(
                 "envelope_residual_sweeps", 0) + 1
+            return True
+        return False
+
+    def apply_action(self, s, action: int, config: Dict[str, Any]) -> None:
+        if self.on_bar_close(s, config):
             return
+        p = self._resolve(config)
+        raw = abs(float(getattr(s.bridge, "raw_action_slot", 0.0)))
+        equity = float(s.broker.getvalue())
+        price = float(s.data.close[0])
+        pos = float(s.position.size)
+        bar = int(len(s.data))
 
         if action == 0:
             return  # hold: envelope children keep working
@@ -461,6 +492,7 @@ class Plugin:
         self._parent = None
         self._entry_anchor = exec_price
         self._entry_fill_bar = bar
+        self._entry_order_ref = int(order.ref)
         # N1: re-anchor geometry to the ACTUAL parent fill; the resting
         # children (decision-anchored) are re-leveled on the next apply
         # if the fill moved the anchor. For the entry bar itself the
