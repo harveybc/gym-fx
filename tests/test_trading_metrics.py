@@ -30,3 +30,13 @@ def test_trading_metrics_does_not_invent_annual_period() -> None:
     )
     assert "annual_return" not in result
     assert "annual_rap" not in result
+    assert result["win_rate_pct"] is None
+    assert result["net_profit"] == 100.0
+
+
+def test_win_rate_counts_only_closed_trades():
+    result = Plugin().summarize(initial_cash=1000, final_equity=1100,
+        analyzers={"trades": {"total": {"total": 5, "closed": 4},
+                              "won": {"total": 3}, "lost": {"total": 1}}}, config={})
+    assert result["win_rate_pct"] == 75.0
+    assert result["trades_closed"] == 4

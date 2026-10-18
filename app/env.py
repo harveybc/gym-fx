@@ -254,6 +254,13 @@ class GymFxEnv(gym.Env):
             self.config,
             window_size=self.window_size,
         )
+        quota = getattr(self.strategy_plugin, "_daily_quota", None)
+        self.daily_entry_quota_enabled = quota is not None and quota.limit is not None
+        if self.daily_entry_quota_enabled:
+            self.observation_space = spaces.Dict({
+                **self.observation_space.spaces,
+                "daily_entry_budget_available": spaces.Box(0.0, 1.0, (1,), dtype=np.float32),
+            })
 
         # Optional Stage B force-close / session-window context. Disabled by
         # default so legacy PPO/SAC/DQN configs are unaffected; when enabled
@@ -424,6 +431,24 @@ class GymFxEnv(gym.Env):
         self._runner = threading.Thread(target=self._run_cerebro, name="gym-fx-cerebro", daemon=True)
         self._runner.start()
         self._wait_obs()
+
+        if self.config.get("require_full_observation_window", False):
+            stride = self.config.get("observation_stride_bars", 1)
+            if type(stride) is not int or stride < 1:
+                self._teardown_runner()
+                raise ValueError("OBSERVATION_STRIDE_POSITIVE_INTEGER_REQUIRED")
+            required = 1 + (self.window_size - 1) * stride
+            # Consume actual context with HOLD, not synthetic left-padded bars.
+            # No policy action, reward sample or replay transition is made here.
+            while self.bridge.bar_index < required and not self.bridge.terminated:
+                self.bridge.action_slot = 0
+                self.bridge.raw_action_slot = 0.0
+                self.bridge.obs_ready.clear()
+                self.bridge.action_ready.set()
+                self._wait_obs()
+            if self.bridge.terminated:
+                self._teardown_runner()
+                raise ValueError("INSUFFICIENT_OBSERVED_WINDOW")
 
         return self._make_observation(), self._make_info()
 
@@ -1753,6 +1778,12 @@ class GymFxEnv(gym.Env):
             bridge_state=bridge_state,
             config=self.config,
         )
+        if self.daily_entry_quota_enabled:
+            quota = self.strategy_plugin._daily_quota
+            # bar_index is a count of completed bars, not the next-row index.
+            stamp = self._bar_timestamp(max(0, step_idx - 1))
+            obs["daily_entry_budget_available"] = np.array(
+                [float(quota.allows(stamp))], dtype=np.float32)
         if self.stage_b_force_close_obs:
             fc = self._force_close_features(step_idx)
             obs = dict(obs)
@@ -2066,7 +2097,7 @@ class GymFxEnv(gym.Env):
         # authoritative totals again.
         stream = list(getattr(self.bridge, "closed_trade_stream", []))
         for legacy_key in ("trades_total", "trades_won",
-                           "trades_lost", "avg_trade_pnl"):
+                           "trades_lost", "avg_trade_pnl", "trades_closed", "win_rate_pct"):
             summary[f"analyzer_{legacy_key}_diagnostic"] =                 summary.pop(legacy_key, None)
         # final hardening 2026-08-28: events are STRICTLY validated
         # at append time, so fields are accessed directly — a missing
@@ -2092,6 +2123,11 @@ class GymFxEnv(gym.Env):
         net_values = [e["net_pnl"] for e in stream]
         summary["trade_stats_authority"] = "closed_trade_stream_v2"
         summary["trades_total"] = len(stream)
+        summary["trades_closed"] = len(stream)
+        summary["win_rate_pct"] = 100.0 * won / len(stream) if stream else None
+        gains = sum(max(0.0, value) for value in net_values)
+        losses = -sum(min(0.0, value) for value in net_values)
+        summary["profit_factor"] = gains / losses if losses > 0 else None
         summary["trades_won"] = won
         summary["trades_lost"] = lost
         summary["trades_breakeven"] = breakeven
@@ -2109,6 +2145,14 @@ class GymFxEnv(gym.Env):
             if self.bridge else 0)
         summary["action_diagnostics"] = dict(self._action_diagnostics)
         summary["execution_diagnostics"] = dict(getattr(self.bridge, "execution_diagnostics", {}) or {})
+        quota = getattr(self.strategy_plugin, "_daily_quota", None)
+        if quota is not None and quota.limit is not None:
+            summary["entry_submissions"] = sum(quota.submissions.values())
+            summary["filled_entries"] = sum(quota.fills.values())
+            summary["max_entries_filled_in_day"] = max(quota.fills.values(), default=0)
+            summary["daily_entry_limit"] = quota.limit
+            summary["entry_day_timezone"] = str(quota.timezone)
+            summary["entry_fill_days"] = dict(quota.fills)
         summary["event_context_diagnostics"] = dict(getattr(self, "_last_event_context_info", {}) or {})
         if getattr(self, "execution_cost_observation_enabled", False):
             summary["execution_cost_context"] = dict(self._execution_cost_context)

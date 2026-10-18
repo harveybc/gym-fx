@@ -31,6 +31,8 @@ _VALID_SCALINGS = ("none", "rolling_zscore", "expanding_zscore")
 class Plugin:
     plugin_params: Dict[str, Any] = {
         "window_size": 32,
+        "observation_stride_bars": 1,
+        "require_full_observation_window": False,
         "price_column": "CLOSE",
         "feature_columns": [],
         "feature_binary_columns": [],
@@ -172,9 +174,11 @@ class Plugin:
             self._cached_matrix = values
         n_rows, n_features = values.shape
 
-        # Slice [step - window_size, step)
-        left = max(0, step - window_size)
-        win = values[left:step] if step > 0 else values[:0]
+        indices = self._observation_indices(step, window_size, config)
+        win = values[indices]
+        if config.get("require_full_observation_window", self.params["require_full_observation_window"]):
+            if not np.isfinite(win).all():
+                raise ValueError("NONFINITE_OBSERVATION_INPUT")
         if win.shape[0] < window_size:
             pad_row = win[0] if win.shape[0] else (
                 values[0] if n_rows else np.zeros(n_features, dtype=np.float64)
@@ -191,7 +195,21 @@ class Plugin:
         else:
             history = np.empty((0, n_features), dtype=np.float64)
 
+        if (config.get("require_full_observation_window", self.params["require_full_observation_window"])
+                and not np.isfinite(history).all()):
+            raise ValueError("NONFINITE_OBSERVATION_SCALING_HISTORY")
+
         return self._scale_window(win, history, binary_mask, scale_mode, clip)
+
+    def _observation_indices(self, step, window_size, config):
+        stride = config.get("observation_stride_bars", self.params["observation_stride_bars"])
+        if type(stride) is not int or stride < 1:
+            raise ValueError("OBSERVATION_STRIDE_POSITIVE_INTEGER_REQUIRED")
+        indices = step - 1 - np.arange(window_size - 1, -1, -1) * stride
+        if (indices[0] < 0 and config.get(
+                "require_full_observation_window", self.params["require_full_observation_window"])):
+            raise ValueError("INSUFFICIENT_OBSERVED_WINDOW")
+        return indices[indices >= 0]
 
     # ------------------------------------------------------------------
     def make_observation(
@@ -217,8 +235,11 @@ class Plugin:
         )
         if include_price:
             prices_full = data[price_col].astype(float).to_numpy()
-            left = max(0, step - window_size)
-            window = prices_full[left:step] if step > 0 else prices_full[:0]
+            indices = self._observation_indices(step, window_size, config)
+            window = prices_full[indices]
+            if config.get("require_full_observation_window", self.params["require_full_observation_window"]):
+                if not np.isfinite(window).all():
+                    raise ValueError("NONFINITE_OBSERVATION_INPUT")
             if len(window) < window_size:
                 fill = float(window[0]) if len(window) else float(
                     prices_full[0] if len(prices_full) else 0.0

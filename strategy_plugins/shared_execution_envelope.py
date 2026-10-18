@@ -27,6 +27,7 @@ ONE typed protection/sizing contract consumed by mechanical rule arms
 from __future__ import annotations
 
 from typing import Any, Dict
+from app.daily_entry_quota import DailyEntryQuota
 
 
 class Plugin:
@@ -46,6 +47,8 @@ class Plugin:
         # of the evidence-backed primary cost (~5.5 bp) with margin.
         "entry_cost_headroom": 0.002,
         "min_units": 1e-9,
+        "max_entries_per_day": None,
+        "entry_day_timezone": "America/New_York",
     }
 
     def __init__(self, config: Dict[str, Any] | None = None):
@@ -60,6 +63,9 @@ class Plugin:
         self._entry_bar_check = None  # (bar_index, dir, sl, tp, units)
         self._parent = None           # in-flight parent order ref
         self._entry_fill_bar = None   # bar of the last parent fill
+        p = self._resolve(config or {})
+        self._daily_quota = DailyEntryQuota(
+            p["max_entries_per_day"], p["entry_day_timezone"])
 
     def set_params(self, **kwargs) -> None:
         """Bundle-loader contract: absorb known envelope keys; the
@@ -112,6 +118,11 @@ class Plugin:
         (the parent fills at the next open; the entry-bar synthetic
         check covers that bar). Stop submitted first = collision rule."""
         import backtrader as bt
+        if (self._daily_quota.limit is not None
+                and not self._daily_quota.allows(s.data.datetime.datetime(0))):
+            diag = s.bridge.execution_diagnostics
+            diag["blocked_daily_entry_limit"] = diag.get("blocked_daily_entry_limit", 0) + 1
+            return
         sl_d, tp_d = self._distances(s, p, decision_price)
         if direction > 0:
             sl = decision_price - sl_d
@@ -132,6 +143,8 @@ class Plugin:
         self._register_roles(s, entry=parent, stop=stop, limit=limit)
         self._children = [stop, limit]
         self._parent = int(parent.ref)
+        if self._daily_quota.limit is not None:
+            self._daily_quota.submitted(s.data.datetime.datetime(0), self._parent)
         self._pending_entry = {"dir": direction, "units": units,
                                "params": p, "sl": sl, "tp": tp}
 
@@ -249,6 +262,9 @@ class Plugin:
 
     # -- BTBridgeStrategy contract ----------------------------------------
     def on_reset(self, s, config: Dict[str, Any]) -> None:
+        p = self._resolve(config)
+        self._daily_quota = DailyEntryQuota(
+            p["max_entries_per_day"], p["entry_day_timezone"])
         self._pending_entry = None
         self._children = []
         self._entry_anchor = None
@@ -376,11 +392,15 @@ class Plugin:
                                     "reason": "reversal_close",
                                     "price": price})
             self._entry_anchor = None
+            if self._daily_quota.limit is not None:
+                return  # daily-budget mode closes first; a later action may enter
             self._submit_bracket(s, p, target_dir, units, price)
             return
 
         if pos == 0:
             if self._pending_entry is not None:
+                if self._daily_quota.limit is not None:
+                    return  # never allow two pending entry parents in quota mode
                 if self._pending_entry["dir"] == target_dir:
                     return  # declared: same-direction while pending drops
                 self._cancel_children(s)
@@ -400,6 +420,15 @@ class Plugin:
 
     def notify_order(self, s, order, config: Dict[str, Any]) -> None:
         import backtrader as bt
+        if (self._daily_quota.limit is not None
+                and order.status in (order.Partial, order.Completed)
+                and order.executed.size):
+            self._daily_quota.filled(bt.num2date(order.executed.dt), int(order.ref))
+        if (self._daily_quota.limit is not None
+                and order.status in (order.Margin, order.Rejected, order.Canceled, order.Expired)
+                and int(order.ref) == self._parent):
+            self._pending_entry = None
+            self._parent = None
         if order.status in (order.Margin, order.Rejected):
             # NEVER silent (first v2 run: a margin-rejected 100% entry
             # produced a zero-trade arm with no trace)

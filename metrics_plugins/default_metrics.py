@@ -48,12 +48,19 @@ class Plugin:
         return {
             "initial_cash": float(initial_cash),
             "final_equity": float(final_equity),
+            "net_profit": float(final_equity) - float(initial_cash),
             "total_return": float(total_return),
             "max_drawdown_pct": _get(drawdown, "max", "drawdown"),
             "max_drawdown_money": _get(drawdown, "max", "moneydown"),
             "sharpe_ratio": _get(sharpe, "sharperatio"),
             "sqn": _get(sqn, "sqn"),
             "trades_total": _get(trades, "total", "total", default=0),
+            "trades_closed": _get(trades, "total", "closed", default=0),
+            "win_rate_pct": (
+                100.0 * _get(trades, "won", "total", default=0)
+                / _get(trades, "total", "closed")
+                if _get(trades, "total", "closed", default=0) else None
+            ),
             "trades_won": _get(trades, "won", "total", default=0),
             "trades_lost": _get(trades, "lost", "total", default=0),
             "avg_trade_pnl": _get(trades, "pnl", "net", "average"),
