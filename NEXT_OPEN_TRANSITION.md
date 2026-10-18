@@ -46,8 +46,24 @@ Backtrader attaches accrued interest to closing trade costs in its normal path.
 The v2 synthetic entry-bar settlement requires stocklike accounting with
 `shortcash=true` and authenticated parent-fill commission evidence. It returns
 entry capital with leverage using Backtrader's accounting convention. Legacy
-settlement is unchanged. Complete repeated-trade reconciliation, alternate
-broker/margin models and nonzero spread/slippage acceptance remain separate work.
+settlement is unchanged. Alternate broker/margin models and broker-measured
+spread/slippage acceptance remain separate work.
+
+## Repeated-close accounting correction
+
+The synthetic entry-bar settlement previously flattened broker position/cash
+but left Backtrader's native Trade open. A subsequent entry was merged into the
+old trade, and an ordinary protective close was missing from the trade ledger.
+PRE: four long/short x leverage 1/5 round-trip tests failed with one close event
+instead of two. The v2 path now closes the native Trade lifecycle with the actual
+settlement price/commission and notifies its analyzers once, without submitting
+another broker order or duplicating the bridge event. A net PnL of exactly zero
+also remains zero rather than falling back to gross PnL.
+
+POST: nine new tests pass, including repeated synthetic/native closes and a
+hand ledger with nonzero slippage, commissions and two days of analytical
+financing. The consolidated focused suite is now 256/256, zero skips. This does
+not certify every margin model or substitute for actual broker cost evidence.
 
 ## Automated verification
 

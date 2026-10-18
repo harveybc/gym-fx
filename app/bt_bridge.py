@@ -26,6 +26,9 @@ Termination / close semantics:
 from __future__ import annotations
 
 import threading
+import copy
+import itertools
+import math
 from typing import Any, Dict, Optional
 
 import backtrader as bt
@@ -472,10 +475,35 @@ class BTBridgeStrategy(bt.Strategy):
         if callable(plugin_notify):
             plugin_notify(self, order, self._plugin_config)
 
+    def reconcile_direct_settlement(self, size: float, price: float, commission: float) -> None:
+        """Close Backtrader's trade state after the declared synthetic entry-bar fill.
+
+        Cash and the authoritative close event are owned by the envelope. Use
+        Backtrader's Trade.update for its lifecycle; otherwise the next entry
+        gets merged into the already closed trade and disappears from metrics.
+        """
+        trades = self._trades[self.data][0]
+        trade = trades[-1] if trades else None
+        if (trade is None or not trade.isopen
+                or not math.isclose(trade.size, size, rel_tol=1e-12, abs_tol=1e-12)):
+            raise TradeCloseValidationError('DIRECT_SETTLEMENT_NATIVE_TRADE_MISMATCH')
+        order_type = bt.SellOrder if size > 0 else bt.BuyOrder
+        marker = order_type(owner=self, data=self.data, size=abs(size),
+                            exectype=bt.Order.Market)
+        marker.addinfo(execution_path='envelope_direct_settlement_not_broker_order')
+        trade.update(marker, -size, price, 0.0, commission, 0.0,
+                     comminfo=self.broker.getcommissioninfo(self.data))
+        if not trade.isclosed:
+            raise TradeCloseValidationError('DIRECT_SETTLEMENT_NATIVE_TRADE_NOT_CLOSED')
+        # This close already has its own authoritative event. Notify analyzers,
+        # not notify_trade(), which would duplicate that event as a broker fill.
+        for analyzer in itertools.chain(self.analyzers, self._slave_analyzers):
+            analyzer._notify_trade(copy.copy(trade))
+
     def notify_trade(self, trade: bt.Trade) -> None:
         if trade.isclosed:
             gross = float(getattr(trade, "pnl", 0.0) or 0.0)
-            net = float(getattr(trade, "pnlcomm", gross) or gross)
+            net = float(getattr(trade, "pnlcomm", gross))
             entry = float(getattr(trade, "price", 0.0) or 0.0)
             long_side = bool(getattr(trade, "long", True))
             # Fill-lineage order 2026-08-28: the PRIMARY join key is

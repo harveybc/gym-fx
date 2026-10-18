@@ -225,6 +225,7 @@ class Plugin:
             s._order_cost_accum += commission
             # Backtrader queues add_cash; settle it before publishing this bar.
             s.broker._get_value()
+            s.reconcile_direct_settlement(size, fill_price, commission)
         # Steps-1-2 correction order 2026-08-28: a direct settlement
         # is a real closure that backtrader's trade lifecycle never
         # sees — recorded ECONOMICALLY COMPLETE in the ONE
