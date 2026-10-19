@@ -41,6 +41,15 @@ session guard. PRE: both immediate bracket/OCO cancellation probes filled
 orders despite cancellation. Failed campaigns remain failed; new training
 requires a new engine pin and campaign identity.
 
+Reopen evidence no longer scans the entire historical prefix on every tick.
+For an ordered DatetimeIndex it locates bars strictly after the most recent
+reopen by binary search; other layouts retain explicit causal filtering.
+Only the trailing run of passing stability checks is evaluated backwards,
+stopping at the first failure. Counts, last check and streak equal the original
+full scan, including legacy/exact availability boundaries and out-of-order
+queries. No data cache or relaxed stability threshold is introduced.
+`tests/test_reopen_evidence_equivalence.py` retains the old full-scan oracle.
+
 PRE: financing tests 7 failed; entry-bar net-cost tests 4 failed. POST: focused
 suite 247 passed, no skips. These are synthetic engine tests, not financial
 performance or complete simulator certification.

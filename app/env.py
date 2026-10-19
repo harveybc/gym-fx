@@ -1179,21 +1179,34 @@ class GymFxEnv(gym.Env):
         reopen_at = calendar.most_recent_reopen(now)
         if reopen_at is None:
             return None, {}
-        closed_bars = 0
+        end = step_idx + (self.execution_transition == 'next_open_v2')
+        index = self.dataframe.index
+        if (self._date_column not in self.dataframe.columns
+                and isinstance(index, pd.DatetimeIndex)
+                and index.is_monotonic_increasing and not index.hasnans):
+            # _session_now exposes Python datetime's microsecond precision.
+            # Exclude the whole microsecond containing the reopen boundary.
+            boundary = (pd.Timestamp(reopen_at).tz_convert('UTC').floor('us')
+                        + pd.Timedelta(microseconds=1))
+            boundary = (boundary.tz_localize(None) if index.tz is None
+                        else boundary.tz_convert(index.tz))
+            indices = range(int(index.searchsorted(boundary, side='left')), end)
+        else:
+            indices = [idx for idx in range(end)
+                       if (stamp := self._session_now(idx)) is not None
+                       and stamp > reopen_at]
+        closed_bars = len(indices)
         streak = 0
-        detail = []
-        for idx in range(step_idx + 1):
-            stamp = self._session_now(idx)
-            if stamp is None or stamp <= reopen_at:
-                continue
-            # a bar is FULLY CLOSED only if the next bar's stamp has
-            # been reached; the bar under decision is still forming
-            if idx >= step_idx and self.execution_transition != 'next_open_v2':
-                continue
-            closed_bars += 1
+        last_check = None
+        # Only the trailing passing run and the last check are observable.
+        # Walking backward stops at its first failure without changing either.
+        for idx in reversed(indices):
             check = self._session_stability_check(idx)
-            streak = streak + 1 if check["passed"] else 0
-            detail.append({"bar": idx, **check})
+            if last_check is None:
+                last_check = {"bar": idx, **check}
+            if not check['passed']:
+                break
+            streak += 1
         evidence = ReopenEvidence.build(
             closed_bars_since_reopen=closed_bars,
             stability_checks_passed=streak,
@@ -1201,7 +1214,7 @@ class GymFxEnv(gym.Env):
         return evidence, {
             "session_reopen_closed_bars": closed_bars,
             "session_reopen_stability_streak": streak,
-            "session_reopen_last_check": detail[-1] if detail else None,
+            "session_reopen_last_check": last_check,
         }
 
     def _apply_session_exposure_overlay(
