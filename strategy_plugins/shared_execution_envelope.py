@@ -27,6 +27,8 @@ ONE typed protection/sizing contract consumed by mechanical rule arms
 from __future__ import annotations
 
 from typing import Any, Dict
+from decimal import Decimal, ROUND_FLOOR
+import math
 from app.daily_entry_quota import DailyEntryQuota
 from app.bar_clock import entry_fill_clock
 
@@ -42,6 +44,11 @@ class Plugin:
         "collision_rule": "stop_first_pessimistic",
         "sizing_mode": "portfolio_fraction",
         "leverage_cap": 1.0,
+        "leverage": 1.0,
+        "rel_volume": 0.1,
+        "min_order_volume": 1.0,
+        "max_order_volume": 1e12,
+        "volume_step": 1.0,
         # Entry cost headroom: a 100%-of-equity entry is margin-rejected
         # once commission is due, so the effective fraction is scaled by
         # (1 - entry_cost_headroom). DECLARED constant, covers two sides
@@ -126,6 +133,11 @@ class Plugin:
             diag["blocked_daily_entry_limit"] = diag.get("blocked_daily_entry_limit", 0) + 1
             return
         sl_d, tp_d = self._distances(s, p, decision_price)
+        if (not all(math.isfinite(v) and v > 0
+                    for v in (decision_price, units, sl_d, tp_d))
+                or (direction > 0 and decision_price - sl_d <= 0)
+                or (direction < 0 and decision_price - tp_d <= 0)):
+            raise ValueError("ENVELOPE_INVALID_PROTECTION")
         if direction > 0:
             sl = decision_price - sl_d
             tp = decision_price + tp_d
@@ -149,6 +161,40 @@ class Plugin:
             self._daily_quota.submitted(s.data.datetime.datetime(0), self._parent)
         self._pending_entry = {"dir": direction, "units": units,
                                "params": p, "sl": sl, "tp": tp}
+
+    @staticmethod
+    def _entry_units(s, p, raw: float, price: float) -> float:
+        mode = p.get("sizing_mode", "portfolio_fraction")
+        if mode == "portfolio_fraction":
+            frac = min(float(p["leverage_cap"]), raw) * (
+                1.0 - float(p["entry_cost_headroom"]))
+            return float(s.broker.getvalue()) * frac / price if price > 0 else 0.0
+        if mode != "balance_budget":
+            raise ValueError("ENVELOPE_UNKNOWN_SIZING_MODE")
+        keys = ("rel_volume", "leverage", "leverage_cap", "entry_cost_headroom",
+                "min_order_volume", "max_order_volume", "volume_step")
+        values = {k: float(p[k]) for k in keys}
+        if (not all(math.isfinite(v) for v in values.values())
+                or not 0 < values["rel_volume"] <= 1
+                or not 0 <= values["entry_cost_headroom"] < 1
+                or any(values[k] <= 0 for k in
+                       ("leverage", "leverage_cap", "max_order_volume", "volume_step"))
+                or not 0 <= values["min_order_volume"] <= values["max_order_volume"]):
+            raise ValueError("ENVELOPE_INVALID_BUDGET_CONFIG")
+        balance = float(s.broker.getcash())
+        if not all(math.isfinite(v) for v in (balance, price, raw)) or price <= 0 or raw < 0:
+            raise ValueError("ENVELOPE_INVALID_BUDGET_INPUT")
+        if balance <= 0:
+            return 0.0
+        # Decimal rounding never rounds a broker step upward through the budget.
+        d = lambda value: Decimal(str(value))
+        budget = d(balance) * d(values["rel_volume"]) * d(min(raw, 1.0))
+        units = (budget * d(min(values["leverage"], values["leverage_cap"]))
+                 * (Decimal(1) - d(values["entry_cost_headroom"])) / d(price))
+        step = d(values["volume_step"])
+        units = (min(units, d(values["max_order_volume"])) / step).to_integral_value(
+            rounding=ROUND_FLOOR) * step
+        return 0.0 if units < d(values["min_order_volume"]) else float(units)
 
     def _submit_children(self, s, p, anchor: float, units: float,
                          direction: int) -> None:
@@ -370,7 +416,6 @@ class Plugin:
             return
         p = self._resolve(config)
         raw = abs(float(getattr(s.bridge, "raw_action_slot", 0.0)))
-        equity = float(s.broker.getvalue())
         price = float(s.data.close[0])
         pos = float(s.position.size)
         bar = int(len(s.data))
@@ -389,9 +434,7 @@ class Plugin:
             return
 
         target_dir = +1 if action == 1 else -1
-        frac = min(float(p["leverage_cap"]), raw) * (
-            1.0 - float(p["entry_cost_headroom"]))
-        units = equity * frac / price if price > 0 else 0.0
+        units = self._entry_units(s, p, raw, price)
 
         if units <= float(p["min_units"]):
             # directional signal with ~zero fraction = target flat

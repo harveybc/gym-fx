@@ -182,6 +182,30 @@ def test_leverage_cap_binds(tmp_path):
     assert units <= 10000.0 / 100.0 * 1.0001   # capped at equity/price
 
 
+def test_balance_budget_real_bracket_has_both_protections(tmp_path):
+    env = _env(tmp_path, [100.0] * 20, leverage=10,
+               execution_envelope=dict(envelope_mode="fixed_fraction",
+                   sl_fraction=.05, tp_fraction=.1, sizing_mode="balance_budget",
+                   rel_volume=.1, leverage_cap=10, entry_cost_headroom=0,
+                   min_order_volume=1, max_order_volume=1e12, volume_step=1))
+    _drive(env, [.2] + [0.] * 6)
+    assert abs(env.bridge.position_units) == 20
+    children = env.strategy._children if hasattr(env, 'strategy') else env.strategy_plugin._children
+    assert len(children) == 2
+    assert sorted(float(o.created.price) for o in children) == [95, 110]
+
+
+def test_balance_budget_below_broker_minimum_never_enters(tmp_path):
+    env = _env(tmp_path, [100.0] * 20,
+               execution_envelope=dict(envelope_mode="fixed_fraction",
+                   sl_fraction=.05, tp_fraction=.1, sizing_mode="balance_budget",
+                   rel_volume=.1, leverage_cap=1, entry_cost_headroom=0,
+                   min_order_volume=100, max_order_volume=1e12, volume_step=1))
+    _infos, events = _drive(env, [1.] + [0.] * 6)
+    assert env.bridge.position_units == 0
+    assert not any(e['reason'] == 'entry_fill' for e in events)
+
+
 def test_full_exposure_entry_fills_with_commission(tmp_path):
     # BUG REPRO (first v2 run): raw=1.0 with commission due was
     # margin-rejected silently -> zero-trade arm
