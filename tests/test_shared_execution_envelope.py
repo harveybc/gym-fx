@@ -5,6 +5,7 @@ invariance, no lookahead, leverage cap). Real env + real backtrader."""
 from __future__ import annotations
 
 import numpy as np
+import pytest
 import pandas as pd
 
 from app.env import GymFxEnv
@@ -182,14 +183,17 @@ def test_leverage_cap_binds(tmp_path):
     assert units <= 10000.0 / 100.0 * 1.0001   # capped at equity/price
 
 
-def test_balance_budget_real_bracket_has_both_protections(tmp_path):
-    env = _env(tmp_path, [100.0] * 20, leverage=10,
+@pytest.mark.parametrize('leverage', [10, 50, 100])
+def test_balance_budget_real_bracket_has_both_protections(tmp_path, leverage):
+    env = _env(tmp_path, [100.0] * 20, leverage=leverage,
                execution_envelope=dict(envelope_mode="fixed_fraction",
                    sl_fraction=.05, tp_fraction=.1, sizing_mode="balance_budget",
-                   rel_volume=.1, leverage_cap=10, entry_cost_headroom=0,
+                   rel_volume=.1, leverage_cap=leverage, entry_cost_headroom=0,
                    min_order_volume=1, max_order_volume=1e12, volume_step=1))
     _drive(env, [.2] + [0.] * 6)
-    assert abs(env.bridge.position_units) == 20
+    assert abs(env.bridge.position_units) == 2 * leverage
+    broker = env._cerebro.broker
+    assert broker.getcommissioninfo(env._cerebro.datas[0]).get_leverage() == leverage
     children = env.strategy._children if hasattr(env, 'strategy') else env.strategy_plugin._children
     assert len(children) == 2
     assert sorted(float(o.created.price) for o in children) == [95, 110]

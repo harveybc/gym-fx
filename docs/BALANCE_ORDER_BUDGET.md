@@ -15,7 +15,7 @@ units round down to `volume_step`, then obey `max_order_volume`. Below
 `min_order_volume` the entry abstains: the minimum never increases allocation.
 Entry sizing is fixed at submission, not silently rebalanced every bar.
 
-The initial comparator keeps leverage 1:1, rel_volume 0.1 and an illustrative
+The owner revised the initial comparator to leverage 1:50, rel_volume 0.1 and an illustrative
 one-base-unit minimum/step. These are simulation settings, not verified Alpaca,
 Oanda or MT5 contract sizes. A broker adapter must provide account-currency
 conversion, contract multiplier, minimum and step for other instruments.
@@ -37,3 +37,6 @@ current completed bar. Closed-market hours are not fabricated as bars.
 
 Design and tests precede implementation. No claims of profitability, guaranteed
 stop fill or broker certification follow from these engineering checks.
+
+Real Backtrader tests exercise leverage10/50/100 with protected entries and
+verify the actual broker commission-info leverage, not only calculated units.
