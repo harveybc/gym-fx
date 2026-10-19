@@ -131,6 +131,8 @@ class GymFxEnv(gym.Env):
     ):
         super().__init__()
         self.config = dict(config)
+        from app.bar_clock import completed_bar_mode
+        self.completed_bar_available_at = completed_bar_mode(self.config)
         self.execution_transition = self.config.get('execution_transition', 'legacy_delayed_v1')
         if self.execution_transition not in ('legacy_delayed_v1', 'next_open_v2'):
             raise ValueError('UNKNOWN_EXECUTION_TRANSITION')
@@ -387,6 +389,8 @@ class GymFxEnv(gym.Env):
         # can change what reaches the broker. Disabled by default so every
         # pre-existing config keeps its exact observation space and behaviour.
         self._session_exposure_init()
+        if self.completed_bar_available_at:
+            self._validate_completed_bar_intervals()
 
         # --- runtime handles -------------------------------------------------
         self.bridge: Optional[BTBridge] = None
@@ -469,6 +473,9 @@ class GymFxEnv(gym.Env):
         self._last_event_context_info = event_context_info
         a, session_info = self._apply_session_exposure_overlay(
             a, raw_action)
+        if self.completed_bar_available_at:
+            a = self._completed_bar_dispatch_guard(a)
+            action_time = self._session_now(max(0, self.bridge.bar_index - 1))
         self._record_action(raw_action, a)
 
         if self.bridge.terminated:
@@ -521,6 +528,8 @@ class GymFxEnv(gym.Env):
 
         obs = self._make_observation()
         info = self._make_info()
+        if self.completed_bar_available_at:
+            info['action_time'] = action_time.isoformat()
         info.update(
             reward=reward,
             base_reward=base_reward,
@@ -896,8 +905,10 @@ class GymFxEnv(gym.Env):
         return stamp.to_pydatetime().astimezone(timezone.utc)
 
     def _session_now(self, step_idx: int):
-        """UTC timestamp of the current bar. Naive stamps are read as
-        UTC, matching oanda_calendar._to_ny."""
+        """Row clock, i.e. availability/action time in completed-H1 mode.
+
+        It is NOT the OPEN time of this row. Naive stamps are UTC.
+        """
         try:
             raw = self._bar_timestamp(step_idx)
             if raw is None:
@@ -908,6 +919,42 @@ class GymFxEnv(gym.Env):
         if ts is None or pd.isna(ts):
             return None
         return self._session_utc(ts)
+
+    def _validate_completed_bar_intervals(self):
+        from datetime import timedelta
+        from app.session_exposure import SessionDataContradictionError
+        previous = None
+        calendar = self._session_calendar
+        for idx in range(self.total_bars):
+            end = self._session_now(idx)
+            if (end is None or end.minute or end.second or end.microsecond
+                    or (previous is not None and end <= previous)):
+                raise ValueError('COMPLETED_BAR_REQUIRES_ORDERED_UTC_H1_LABELS')
+            start = end - timedelta(hours=1)
+            if calendar is not None and any(start < r and end > c
+                                            for c, r in calendar.intervals):
+                raise SessionDataContradictionError(
+                    f'completed bar {idx} interval [{start}, {end}) overlaps closure')
+            previous = end
+
+    def _completed_bar_dispatch_guard(self, action):
+        """No order or position may bridge a known closure, even a data gap."""
+        from datetime import timedelta
+        from app.session_exposure import SessionEvidenceError
+        calendar = self._session_calendar
+        bar = self.bridge.bar_index
+        if calendar is None or bar >= self.total_bars:
+            return action
+        now = self._session_now(bar - 1)
+        next_open = self._session_now(bar) - timedelta(hours=1)
+        crosses = any(now < r and next_open >= c for c, r in calendar.intervals)
+        if crosses:
+            if (abs(self.bridge.position_units) > 1e-12
+                    or self.bridge.open_order_count
+                    or self.bridge.open_order_inventory):
+                raise SessionEvidenceError('CROSS_CLOSURE_EXPOSURE_OR_ORDER: refusing advance')
+            return 0
+        return action
 
     def _session_order_inventory(self):
         """G4: typed pending-entry / protective split derived from
@@ -1215,7 +1262,7 @@ class GymFxEnv(gym.Env):
                     state_block = future
 
         state = state_block["state"]
-        if state == "EXPECTED_MARKET_CLOSED":
+        if state == "EXPECTED_MARKET_CLOSED" and not self.completed_bar_available_at:
             # G3: a tradable bar inside a declared closure is a
             # contradiction between the data and the bound calendar.
             # Real historical data has a TIMESTAMP GAP there and the
@@ -1252,7 +1299,7 @@ class GymFxEnv(gym.Env):
             after = CLOSE_COMMAND
         elif overlay in ("masked_risk_increase",
                          "masked_entry_during_blackout",
-                         "blocked_by_flatten_recovery"):
+                         "blocked_by_flatten_recovery", "no_actionable_step"):
             # HOLD is the safe command in this domain: it preserves
             # the current position and adds no risk. Submitting the
             # original command would execute the masked entry or
@@ -2086,6 +2133,11 @@ class GymFxEnv(gym.Env):
             "action_diagnostics": dict(self._action_diagnostics),
             "execution_diagnostics": dict(getattr(self.bridge, "execution_diagnostics", {}) or {}),
         }
+        if self.completed_bar_available_at:
+            available = self._session_now(max(0, self.bridge.bar_index - 1))
+            info.update(timestamp_semantics='completed_bar_available_at',
+                        engine_bar_time=available.isoformat(),
+                        observation_available_at=available.isoformat())
         info.update(dict(getattr(self, "_last_event_context_info", {}) or {}))
         if getattr(self, "session_exposure_enabled", False):
             info.update(dict(getattr(self, "_last_session_info", {}) or {}))

@@ -78,3 +78,76 @@ python -m tools.verify_rl_static_engineering \
 
 The runner forces CPU, bounds each stage, keeps logs/JUnit and updates status.
 It does not start an RL campaign, change services or grant data admission.
+
+## Completed H1 availability labels
+
+Explicit opt-in for admitted raw H1 data (legacy behavior is unchanged):
+
+```json
+{
+  "execution_transition": "next_open_v2",
+  "timestamp_semantics": "completed_bar_available_at",
+  "timeframe": "1h",
+  "execution_max_delay_hours": 1
+}
+```
+
+`DATE_TIME` is the completed bar END / availability time. OHLC belongs to
+`[DATE_TIME - 1h, DATE_TIME)`. Action time is this availability time, while a
+Market order fills at the next row's OPEN, whose physical time is that next
+row's label minus one hour. Neither prices, row labels nor features are shifted.
+Unsupported timeframes/transitions, unordered or unaligned labels refuse.
+
+Bind `session_calendar_intervals` to the admitted **CLOSURE** export, not the
+open-session export. Closures are `[close, reopen)`: a bar ending exactly at
+close is valid; a bar starting exactly at reopen is valid. A bar overlapping
+a closure refuses before reset. At the last completed bar ending at close,
+`EXPECTED_MARKET_CLOSED` masks every action to HOLD. Advancing across a known
+closure requires zero positions and zero orders; otherwise a typed
+`CROSS_CLOSURE_EXPOSURE_OR_ORDER` refusal prevents the next broker cycle.
+The existing calendar-only delay projection and 12-hour flatten/reopen
+policy remain in force. Missing spread/stability evidence still fails closed.
+
+Step info separates `action_time`, `engine_bar_time` and
+`observation_available_at`. `bridge.fill_events` records executed price,
+order role, row label and fill interval. Market `fill_time` is exact OPEN;
+intrabar stop/limit time is unknown and is explicitly null, not fabricated.
+Both quota-enabled strategies charge entries using the fill's containing H1
+interval, whose NY date is unambiguous on the required UTC-hour grid.
+Submission quota remains conservatively charged on action day as before.
+
+### Bounded Acceptance
+
+`tests/test_completed_bar_clock.py` first reproduced the Friday 22Z exception
+and next-END-label midnight quota bug. It covers both quota strategies, long
+and short, NY winter/DST dates, invalid intervals, and surviving order/position
+refusals. Its optional real-data tests read admitted parquet without changing
+OHLC, replay an actual January 2024 week/month through GymFxEnv + Backtrader,
+and bind the published v3 closure export (including the preceding holiday).
+
+```bash
+CUDA_VISIBLE_DEVICES="" PYTHONPATH=. \
+GYM_FX_ADMITTED_EURUSD_PARQUET=<admitted-v3-directory>/eurusd.parquet \
+python -m pytest tests/test_completed_bar_clock.py -q
+```
+
+`GYM_FX_CLOSURE_INTERVALS` may override the sibling `CLOSURE_INTERVALS.json`.
+Without the parquet environment variable only real-data tests skip. Two
+separate scenarios cover absent spread (reopening remains blocked) and
+`ASSUMED_SPREAD=0.00010` with nonzero assumed commission `0.00005`. The latter
+is explicitly an analytical assumption, **not observed or broker-verified**.
+Checks cover untouched OHLC, exact next-OPEN prices/times, real closure gaps,
+12-hour flat/reopen restrictions and at most one filled entry per NY day.
+This certifies bounded clock behavior, not broker costs or financial fitness.
+
+The source-fidelity regression also renders all 37,309 admitted v3 rows using
+`%.17g` and compares each OHLC float64 byte string after the real feed loads
+it with `require_curated_rl_input=true`. It passed on pandas 3.0.3; a direct
+feed check on pandas 2.2.2 also found zero changed values. Accordingly no CSV
+parser change was necessary for this source. The regression is exact, not
+`allclose`, and will expose precision loss on another runtime.
+
+Verified 2026-10-19 on CPU: 295 passed, zero skips in 55.76 seconds across
+the new clock/fidelity tests and existing next-open, session, quota, protected
+execution, reconciliation, financing, strided observation, foundation,
+solvency and execution-cost-context suites. No service or training was started.

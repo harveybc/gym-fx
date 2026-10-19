@@ -76,6 +76,7 @@ class BTBridge:
         # stream, so the per-step counter and the summary total can
         # never disagree by construction.
         self.closed_trade_stream: list = []
+        self.fill_events: list = []
         self._close_event_index: dict = {}
         self.episode_seq: int = 0
         self.commission_paid: float = 0.0
@@ -269,6 +270,7 @@ class BTBridge:
         # protective leg, and calling it protection would let it
         # survive a wind-down cancellation.
         self.order_roles = {}
+        self.fill_events = []
         # C2: executing cancellation channel and its observed outcomes
         self.cancel_entry_request = ()
         self.cancel_outcomes = {}
@@ -467,6 +469,25 @@ class BTBridgeStrategy(bt.Strategy):
                 "bar_index": int(len(self.data)) if self._transition == 'next_open_v2' else int(self.bridge.bar_index),
             })
             del self._completed_fills[:-8]  # bounded evidence window
+            from app.bar_clock import completed_bar_mode, entry_fill_clock
+            if completed_bar_mode(self._plugin_config):
+                from datetime import timezone
+                label = bt.num2date(order.executed.dt)
+                if label.tzinfo is None:
+                    label = label.replace(tzinfo=timezone.utc)
+                start = entry_fill_clock(label, self._plugin_config)
+                market = order.exectype == bt.Order.Market
+                self.bridge.fill_events.append({
+                    'order_ref': int(order.ref),
+                    'role': self.bridge.role_of(order.ref),
+                    'bar_index': int(len(self.data)),
+                    'price': float(order.executed.price),
+                    'engine_bar_time': label.isoformat(),
+                    'fill_time': start.isoformat() if market else None,
+                    'fill_time_precision': 'bar_open' if market else 'bar_interval',
+                    'fill_interval_start': start.isoformat(),
+                    'fill_interval_end': label.isoformat(),
+                })
         plugin_notify = (
             getattr(self._strategy_plugin, "notify_order", None)
             if self._strategy_plugin

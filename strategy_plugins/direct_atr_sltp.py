@@ -39,6 +39,7 @@ from typing import Any, Deque, Dict
 
 import backtrader as bt
 from app.daily_entry_quota import DailyEntryQuota
+from app.bar_clock import entry_fill_clock
 
 
 _AUDIT_PATH = os.environ.get("GYMFX_BRACKET_AUDIT")
@@ -164,7 +165,7 @@ class Plugin:
         if (self._daily_quota.limit is not None
                 and order.status in (order.Partial, order.Completed)
                 and order.executed.size):
-            self._daily_quota.filled(bt.num2date(order.executed.dt), order.ref)
+            self._daily_quota.filled(entry_fill_clock(bt.num2date(order.executed.dt), config), order.ref)
         if self._bracket_orders and not any(
             bool(getattr(item, "alive", lambda: False)())
             for item in self._bracket_orders

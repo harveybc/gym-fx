@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 from app.daily_entry_quota import DailyEntryQuota
+from app.bar_clock import entry_fill_clock
 
 
 class Plugin:
@@ -455,7 +456,7 @@ class Plugin:
         if (self._daily_quota.limit is not None
                 and order.status in (order.Partial, order.Completed)
                 and order.executed.size):
-            self._daily_quota.filled(bt.num2date(order.executed.dt), int(order.ref))
+            self._daily_quota.filled(entry_fill_clock(bt.num2date(order.executed.dt), config), int(order.ref))
         if (self._daily_quota.limit is not None
                 and order.status in (order.Margin, order.Rejected, order.Canceled, order.Expired)
                 and int(order.ref) == self._parent):
