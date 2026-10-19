@@ -26,6 +26,20 @@ verify bar timestamps, calendar and the execution-delay bound.
 | Net economics | Entry-bar stop: net PnL equals equity change; entry/exit commissions included; leverage 1 and 5 |
 | Financing debit | `tests/test_financing_debit.py`: long/short two-day hand ledger; malformed/absent enabled contract rejected |
 | Compatibility | Existing quota, windows, protection, session, reconciliation, solvency, foundation and cost-context suites |
+| Submitted protection cancellation | `tests/test_submitted_order_cancellation.py`: native bracket/OCO cancellation before acceptance, entry-bar policy close in both directions |
+
+## Submitted-order cancellation repair
+
+A real TRAIN replay exposed protective orders surviving an immediate policy
+close. Native BackBroker.cancel searches only its pending queue, not newly
+submitted orders. Re-leveled SL/TP could therefore execute after the position
+was closed, eventually tripping the unchanged cross-closure exposure guard.
+The broker adapter now honors cancellation from the submitted queue using
+native cancellation notifications and bracket/OCO propagation. This does not
+advance the broker, accept or execute orders early, move prices or relax any
+session guard. PRE: both immediate bracket/OCO cancellation probes filled
+orders despite cancellation. Failed campaigns remain failed; new training
+requires a new engine pin and campaign identity.
 
 PRE: financing tests 7 failed; entry-bar net-cost tests 4 failed. POST: focused
 suite 247 passed, no skips. These are synthetic engine tests, not financial

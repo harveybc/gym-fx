@@ -464,10 +464,11 @@ class TestG4OrderInventoryAndReconciliation:
         env.reset(seed=7)
         env.step([1.0])
         env.step([1.0])
-        env.bridge.register_order_role(701, "entry")
+        ref = max(env.bridge.order_roles, default=0) + 1
+        env.bridge.register_order_role(ref, "entry")
         env.bridge.open_order_inventory = (
-            _order(701, None, "sell", 99.8, role="entry"),
-            _order(702, None, "sell", 99.8,
+            _order(ref, None, "sell", 99.8, role="entry"),
+            _order(ref + 1, None, "sell", 99.8,
                    role="protective_stop"),
         )
         facts = env._session_exposure_facts()

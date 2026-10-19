@@ -17,6 +17,53 @@ import math
 import backtrader as bt
 
 
+class CancellableSubmittedBroker(bt.brokers.BackBroker):
+    """Honor cancellation before acceptance, without executing an extra bar.
+
+    BackBroker.cancel only searches pending, not submitted. Re-leveled
+    protection can still be submitted when a same-bar policy close arrives.
+    Keep the native notification/bracket lifecycle, including OCO siblings.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._cleaning_brackets = set()
+
+    def _bracketize(self, order, cancel=False):
+        parentref = getattr(order.parent, 'ref', order.ref)
+        if parentref in self._cleaning_brackets:
+            return
+        self._cleaning_brackets.add(parentref)
+        try:
+            super()._bracketize(order, cancel=cancel)
+        finally:
+            self._cleaning_brackets.remove(parentref)
+
+    def cancel(self, order, bracket=False):
+        try:
+            self.submitted.remove(order)
+        except ValueError:
+            return super().cancel(order, bracket=bracket)
+        order.cancel()
+        self.notify(order)
+        self._ococheck(order)
+        if not bracket:
+            self._bracketize(order, cancel=True)
+        return True
+
+    def _ococheck(self, order):
+        parentref = self._ocos[order.ref]
+        ocoref = self._ocos.get(parentref)
+        siblings = set(self._ocol.get(ocoref, ()))
+        super()._ococheck(order)
+        for sibling in list(self.submitted):
+            if sibling.ref in siblings and sibling in self.submitted:
+                self.submitted.remove(sibling)
+                sibling.cancel()
+                self.notify(sibling)
+                self._bracketize(sibling, cancel=True)
+
+
 class Plugin:
     plugin_params = {
         "initial_cash": 10000.0,
@@ -58,7 +105,7 @@ class Plugin:
             if not math.isfinite(interest) or interest < 0:
                 raise ValueError("FINANCING_ANNUAL_RATE_INVALID")
 
-        broker = bt.brokers.BackBroker()
+        broker = CancellableSubmittedBroker()
         broker.setcash(cash)
         # Commission scaled by notional (price * size) since commtype=PERC
         # Explicit analytical scenario, not a broker-specific FX swap model.
