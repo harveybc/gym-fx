@@ -44,6 +44,7 @@ setup(
     ],
     extras_require={
         "nautilus": ["nautilus_trader==1.230.0"],
+        "scaling": ["scikit-learn"],
     },
     author="Harvey Bastidas",
     author_email="your.email@example.com",

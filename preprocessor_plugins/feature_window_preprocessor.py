@@ -10,6 +10,7 @@ Scaling policy (leakage-safe by construction):
   - "rolling_zscore":  z-score using ONLY rows in [step - window, step)
                        (no future data; no train/test split required)
   - "expanding_zscore":z-score over rows [0, step)
+  - "train_zscore":    frozen statistics loaded from an explicit TRAIN artifact
 
 Binary columns (configured via `feature_binary_columns`) are passed through
 without scaling, preserving 0/1 or signed semantics.
@@ -25,7 +26,7 @@ import numpy as np
 import pandas as pd
 
 
-_VALID_SCALINGS = ("none", "rolling_zscore", "expanding_zscore")
+_VALID_SCALINGS = ("none", "rolling_zscore", "expanding_zscore", "train_zscore")
 
 
 class Plugin:
@@ -185,6 +186,20 @@ class Plugin:
             )
             pad = np.tile(pad_row, (window_size - win.shape[0], 1))
             win = np.concatenate([pad, win], axis=0)
+
+        if scale_mode == "train_zscore":
+            from .train_fitted_scaler import load, transform
+            if (config.get("require_full_observation_window") is not True
+                    or "feature_clip" not in config):
+                raise ValueError("FIXED_SCALER_EXPLICIT_OBSERVATION_POLICY_REQUIRED")
+            try:
+                fitted = load(config["feature_scaler_file"],config["feature_scaler_sha256"],
+                    cols,config["feature_scaler_train_sha256"])
+            except KeyError as exc:
+                raise ValueError("FIXED_SCALER_BINDING_REQUIRED") from exc
+            if any(binary_mask[i] and c not in fitted['passthrough'] for i,c in enumerate(cols)):
+                raise ValueError("FIXED_SCALER_BINARY_POLICY_MISMATCH")
+            return transform(win,fitted,clip=config["feature_clip"])
 
         # History for scaler fit — strictly past rows only.
         if scale_mode == "rolling_zscore":
