@@ -10,7 +10,8 @@ data lines (no backtrader indicator needed; avoids minperiod coupling with
 BTBridgeStrategy). Until the ATR buffer is warmed, entries are skipped so the
 environment never emits a naked order without SL/TP brackets.
 
-Action semantics: {0=hold, 1=long, 2=short} — same as direct_fixed_sltp.
+Action semantics: {0=hold, 1=long, 2=short, 3=close}. Action 3 is the
+model-visible risk-reducing close used by the v2 target-exposure contract.
 
     Config keys:
     atr_period: int   — ATR window (default 14), GA-tunable
@@ -37,6 +38,8 @@ from collections import deque
 from typing import Any, Deque, Dict
 
 import backtrader as bt
+from app.daily_entry_quota import DailyEntryQuota
+from app.bar_clock import entry_fill_clock
 
 
 _AUDIT_PATH = os.environ.get("GYMFX_BRACKET_AUDIT")
@@ -121,6 +124,8 @@ class Plugin:
         "stop_offset_spread_multiple": 0.5,
         "stop_offset_atr_multiple": 0.05,
         "breakout_lookback": 12,
+        "max_entries_per_day": None,
+        "entry_day_timezone": "America/New_York",
     }
 
     def __init__(self, config: Dict[str, Any] | None = None):
@@ -133,6 +138,8 @@ class Plugin:
         self._low_buffer: Deque[float] = deque()
         self._bracket_orders: list[Any] = []
         self._pending_side: int = 0
+        self._daily_quota = DailyEntryQuota(
+            self.params["max_entries_per_day"], self.params["entry_day_timezone"])
 
     def set_params(self, **kwargs: Any) -> None:
         for k, v in kwargs.items():
@@ -143,6 +150,9 @@ class Plugin:
         return 0
 
     def on_reset(self, bt_strategy, config: Dict[str, Any]) -> None:
+        p = self._resolve(config)
+        self._daily_quota = DailyEntryQuota(
+            p["max_entries_per_day"], p["entry_day_timezone"])
         self._tr_buffer = deque(maxlen=int(self._resolve(config)["atr_period"]))
         self._prev_close = None
         lookback = max(2, int(self._resolve(config)["breakout_lookback"]))
@@ -152,7 +162,10 @@ class Plugin:
         self._pending_side = 0
 
     def notify_order(self, bt_strategy, order, config: Dict[str, Any]) -> None:
-        del bt_strategy, order, config
+        if (self._daily_quota.limit is not None
+                and order.status in (order.Partial, order.Completed)
+                and order.executed.size):
+            self._daily_quota.filled(entry_fill_clock(bt.num2date(order.executed.dt), config), order.ref)
         if self._bracket_orders and not any(
             bool(getattr(item, "alive", lambda: False)())
             for item in self._bracket_orders
@@ -196,7 +209,11 @@ class Plugin:
         self._low_buffer.append(low)
 
         if action == 3:
-            self._flatten(bt_strategy, inc, reason="forced_flat")
+            forced = bool(getattr(bt_strategy, "force_flat_request", False))
+            reason = "forced_flat" if forced else "model_early_close"
+            self._flatten(bt_strategy, inc, reason=reason)
+            if not forced:
+                inc("model_early_close_actions")
             return
 
         # ---- Session/weekend filter -------------------------------------
@@ -239,6 +256,11 @@ class Plugin:
                 inc("blocked_existing_protected_position")
                 return
             self._flatten(bt_strategy, inc, reason="position_reversal")
+            return
+
+        if (self._daily_quota.limit is not None
+                and not self._daily_quota.allows(bt_strategy.data.datetime.datetime(0))):
+            inc("blocked_daily_entry_limit")
             return
 
         ready = len(self._tr_buffer) >= period
@@ -337,6 +359,9 @@ class Plugin:
             kwargs["price"] = entry_price
         orders = submit(**kwargs)
         self._bracket_orders = list(orders or [])
+        if self._daily_quota.limit is not None and self._bracket_orders:
+            self._daily_quota.submitted(
+                bt_strategy.data.datetime.datetime(0), self._bracket_orders[0].ref)
         self._pending_side = requested_side
         inc("entry_orders_submitted")
         inc(f"protected_{order_type}_entries")
@@ -371,6 +396,8 @@ class Plugin:
             inc("risk_reducing_close_orders")
             if reason == "forced_flat":
                 inc("event_context_forced_flat_orders")
+            if reason == "model_early_close":
+                inc("model_early_close_orders")
 
     @staticmethod
     def _breakout_score(

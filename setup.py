@@ -19,6 +19,7 @@ setup(
             "default_strategy=strategy_plugins.default_strategy:Plugin",
             "direct_fixed_sltp=strategy_plugins.direct_fixed_sltp:Plugin",
             "direct_atr_sltp=strategy_plugins.direct_atr_sltp:Plugin",
+            "shared_execution_envelope=strategy_plugins.shared_execution_envelope:Plugin",
         ],
         "preprocessor.plugins": [
             "default_preprocessor=preprocessor_plugins.default_preprocessor:Plugin",
@@ -43,6 +44,7 @@ setup(
     ],
     extras_require={
         "nautilus": ["nautilus_trader==1.230.0"],
+        "scaling": ["scikit-learn"],
     },
     author="Harvey Bastidas",
     author_email="your.email@example.com",

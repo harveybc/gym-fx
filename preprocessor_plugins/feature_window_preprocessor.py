@@ -10,6 +10,7 @@ Scaling policy (leakage-safe by construction):
   - "rolling_zscore":  z-score using ONLY rows in [step - window, step)
                        (no future data; no train/test split required)
   - "expanding_zscore":z-score over rows [0, step)
+  - "train_zscore":    frozen statistics loaded from an explicit TRAIN artifact
 
 Binary columns (configured via `feature_binary_columns`) are passed through
 without scaling, preserving 0/1 or signed semantics.
@@ -25,12 +26,14 @@ import numpy as np
 import pandas as pd
 
 
-_VALID_SCALINGS = ("none", "rolling_zscore", "expanding_zscore")
+_VALID_SCALINGS = ("none", "rolling_zscore", "expanding_zscore", "train_zscore")
 
 
 class Plugin:
     plugin_params: Dict[str, Any] = {
         "window_size": 32,
+        "observation_stride_bars": 1,
+        "require_full_observation_window": False,
         "price_column": "CLOSE",
         "feature_columns": [],
         "feature_binary_columns": [],
@@ -38,6 +41,8 @@ class Plugin:
         "feature_scaling_window": 256,
         "include_price_window": True,
         "include_agent_state": True,
+        "agent_state_contract": "legacy_episode_v1",
+        "holding_duration_scale_bars": 42,
         "feature_clip": 10.0,
     }
 
@@ -48,6 +53,7 @@ class Plugin:
         "feature_scaling_window",
         "include_price_window",
         "include_agent_state",
+        "agent_state_contract",
     ]
 
     def __init__(self, config: Dict[str, Any] | None = None):
@@ -169,15 +175,31 @@ class Plugin:
             self._cached_matrix = values
         n_rows, n_features = values.shape
 
-        # Slice [step - window_size, step)
-        left = max(0, step - window_size)
-        win = values[left:step] if step > 0 else values[:0]
+        indices = self._observation_indices(step, window_size, config)
+        win = values[indices]
+        if config.get("require_full_observation_window", self.params["require_full_observation_window"]):
+            if not np.isfinite(win).all():
+                raise ValueError("NONFINITE_OBSERVATION_INPUT")
         if win.shape[0] < window_size:
             pad_row = win[0] if win.shape[0] else (
                 values[0] if n_rows else np.zeros(n_features, dtype=np.float64)
             )
             pad = np.tile(pad_row, (window_size - win.shape[0], 1))
             win = np.concatenate([pad, win], axis=0)
+
+        if scale_mode == "train_zscore":
+            from .train_fitted_scaler import load, transform
+            if (config.get("require_full_observation_window") is not True
+                    or "feature_clip" not in config):
+                raise ValueError("FIXED_SCALER_EXPLICIT_OBSERVATION_POLICY_REQUIRED")
+            try:
+                fitted = load(config["feature_scaler_file"],config["feature_scaler_sha256"],
+                    cols,config["feature_scaler_train_sha256"])
+            except KeyError as exc:
+                raise ValueError("FIXED_SCALER_BINDING_REQUIRED") from exc
+            if any(binary_mask[i] and c not in fitted['passthrough'] for i,c in enumerate(cols)):
+                raise ValueError("FIXED_SCALER_BINARY_POLICY_MISMATCH")
+            return transform(win,fitted,clip=config["feature_clip"])
 
         # History for scaler fit — strictly past rows only.
         if scale_mode == "rolling_zscore":
@@ -188,7 +210,21 @@ class Plugin:
         else:
             history = np.empty((0, n_features), dtype=np.float64)
 
+        if (config.get("require_full_observation_window", self.params["require_full_observation_window"])
+                and not np.isfinite(history).all()):
+            raise ValueError("NONFINITE_OBSERVATION_SCALING_HISTORY")
+
         return self._scale_window(win, history, binary_mask, scale_mode, clip)
+
+    def _observation_indices(self, step, window_size, config):
+        stride = config.get("observation_stride_bars", self.params["observation_stride_bars"])
+        if type(stride) is not int or stride < 1:
+            raise ValueError("OBSERVATION_STRIDE_POSITIVE_INTEGER_REQUIRED")
+        indices = step - 1 - np.arange(window_size - 1, -1, -1) * stride
+        if (indices[0] < 0 and config.get(
+                "require_full_observation_window", self.params["require_full_observation_window"])):
+            raise ValueError("INSUFFICIENT_OBSERVED_WINDOW")
+        return indices[indices >= 0]
 
     # ------------------------------------------------------------------
     def make_observation(
@@ -214,8 +250,11 @@ class Plugin:
         )
         if include_price:
             prices_full = data[price_col].astype(float).to_numpy()
-            left = max(0, step - window_size)
-            window = prices_full[left:step] if step > 0 else prices_full[:0]
+            indices = self._observation_indices(step, window_size, config)
+            window = prices_full[indices]
+            if config.get("require_full_observation_window", self.params["require_full_observation_window"]):
+                if not np.isfinite(window).all():
+                    raise ValueError("NONFINITE_OBSERVATION_INPUT")
             if len(window) < window_size:
                 fill = float(window[0]) if len(window) else float(
                     prices_full[0] if len(prices_full) else 0.0
@@ -234,21 +273,60 @@ class Plugin:
             bar_index = int(bridge_state.get("bar_index", 0))
             total_bars = int(bridge_state.get("total_bars", 1) or 1)
 
-            pos_size = float(config.get("position_size", 1.0))
-            ref_price = (
-                float(obs["prices"][-1])
-                if include_price and obs["prices"].size
-                else price
-            )
-            unrealized_pnl = position * (price - ref_price) * pos_size
+            state_contract = str(config.get(
+                "agent_state_contract",
+                self.params["agent_state_contract"],
+            )).strip().lower()
+            if state_contract not in {
+                "legacy_episode_v1", "live_stationary_v2"
+            }:
+                raise ValueError(
+                    "agent_state_contract must be legacy_episode_v1 or "
+                    f"live_stationary_v2; got {state_contract!r}"
+                )
+
+            if state_contract == "live_stationary_v2":
+                position_units = float(bridge_state.get(
+                    "position_units",
+                    position * float(config.get("position_size", 1.0)),
+                ) or 0.0)
+                entry_price = float(bridge_state.get("entry_price", 0.0) or 0.0)
+                unrealized_pnl = (
+                    position_units * (price - entry_price)
+                    if position and entry_price > 0.0
+                    else 0.0
+                )
+            else:
+                pos_size = float(config.get("position_size", 1.0))
+                ref_price = (
+                    float(obs["prices"][-1])
+                    if include_price and obs["prices"].size
+                    else price
+                )
+                unrealized_pnl = position * (price - ref_price) * pos_size
 
             equity_norm = (equity - initial_cash) / initial_cash if initial_cash else 0.0
             pnl_norm = unrealized_pnl / initial_cash if initial_cash else 0.0
-            remaining = max(0, total_bars - bar_index) / max(1, total_bars)
 
             obs["position"] = np.array([float(position)], dtype=np.float32)
             obs["equity_norm"] = np.array([float(equity_norm)], dtype=np.float32)
             obs["unrealized_pnl_norm"] = np.array([float(pnl_norm)], dtype=np.float32)
-            obs["steps_remaining_norm"] = np.array([float(remaining)], dtype=np.float32)
+            if state_contract == "live_stationary_v2":
+                scale = int(config.get(
+                    "holding_duration_scale_bars",
+                    self.params["holding_duration_scale_bars"],
+                ))
+                if scale < 1:
+                    raise ValueError("holding_duration_scale_bars must be >= 1")
+                holding_bars = max(0, int(bridge_state.get("holding_bars", 0) or 0))
+                duration = min(1.0, holding_bars / scale)
+                obs["holding_duration_norm"] = np.array(
+                    [float(duration)], dtype=np.float32
+                )
+            else:
+                remaining = max(0, total_bars - bar_index) / max(1, total_bars)
+                obs["steps_remaining_norm"] = np.array(
+                    [float(remaining)], dtype=np.float32
+                )
 
         return obs

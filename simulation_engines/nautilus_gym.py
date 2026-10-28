@@ -32,6 +32,28 @@ def _timeframe_minutes(value: str) -> int:
     raise ValueError(f"unsupported Nautilus timeframe {value!r}")
 
 
+# F-D: nautilus_adapter._to_nautilus_data hardcodes MINUTE aggregation
+# and BarType.from_str refuses a step of 60 or more, so H1 and H4 --
+# the timeframes this platform actually trades -- cannot run on this
+# engine at all. Refuse them EXPLICITLY at construction instead of
+# failing deep inside the adapter with a BarType parse error. Lift
+# this once a real aggregation mapping exists and is tested.
+MAX_SUPPORTED_TIMEFRAME_MINUTES = 15
+
+
+def require_supported_timeframe(value: str) -> int:
+    minutes = _timeframe_minutes(value)
+    if minutes > MAX_SUPPORTED_TIMEFRAME_MINUTES:
+        raise ValueError(
+            f"unsupported Nautilus timeframe {value!r} "
+            f"({minutes} minutes): this engine emits MINUTE-aggregated "
+            f"bar types and only steps up to "
+            f"{MAX_SUPPORTED_TIMEFRAME_MINUTES} minutes are accepted "
+            "by BarType. H1 and H4 are NOT supported and no Nautilus "
+            "result at those timeframes carries authority.")
+    return minutes
+
+
 def _instrument_spec(config: dict[str, Any]) -> InstrumentSpec:
     raw = str(config.get("instrument", "EUR_USD")).replace("_", "/")
     if "/" not in raw:
@@ -55,7 +77,8 @@ def _instrument_spec(config: dict[str, Any]) -> InstrumentSpec:
 def _frames(dataframe: pd.DataFrame, config: dict[str, Any], spec: InstrumentSpec):
     date_column = str(config.get("date_column", "DATE_TIME"))
     price_column = str(config.get("price_column", "CLOSE"))
-    timeframe = _timeframe_minutes(str(config.get("timeframe", "M1")))
+    timeframe = require_supported_timeframe(
+        str(config.get("timeframe", "M1")))
     frames = []
     for row_index, row in dataframe.iterrows():
         raw_timestamp = row.get(date_column, row_index)
@@ -218,7 +241,19 @@ def _build_bridge_strategy(bridge, spec, bar_type, position_size, profile):
                 )
             elif equity is not None:
                 bridge.equity = float(equity.as_decimal())
+            # F-E: position_units was NEVER published on this path,
+            # so it stayed at its reset 0.0 while `position` said long
+            # or short. bridge_state feeds position_units straight into
+            # the preprocessor, so every Nautilus observation reported
+            # a flat account no matter the real exposure.
+            bridge.position_units = float(self.current_units)
             bridge.position = 1 if self.current_units > 0 else (-1 if self.current_units < 0 else 0)
+            # this engine holds no resting orders: market orders fill
+            # on the bar. State it EXPLICITLY rather than leaving the
+            # reset value standing, so an empty inventory is a fact and
+            # not a leftover.
+            bridge.open_order_inventory = ()
+            bridge.open_order_count = 0
             bridge.price = float(bar.close)
             bridge.bar_index += 1
             bridge.last_trade_cost = 0.0
@@ -232,6 +267,10 @@ class NautilusGymFxEnv(GymFxEnv):
 
     def __init__(self, *args, **kwargs):
         require_nautilus()
+        raw_config = kwargs.get("config") if "config" in kwargs else (
+            args[0] if args else {})
+        require_supported_timeframe(
+            str((raw_config or {}).get("timeframe", "M1")))
         super().__init__(*args, **kwargs)
         profile_path = self.config.get("execution_cost_profile")
         if not profile_path:

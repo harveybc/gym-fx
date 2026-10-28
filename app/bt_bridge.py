@@ -6,12 +6,16 @@ Gymnasium-style environment. The BTBridgeStrategy runs inside a background
 thread driven by cerebro.run(); the GymFxEnv on the main thread submits
 actions and waits for observations using two threading.Event primitives.
 
-Flow per step:
+Flow per step in the explicit next_open_v2 contract:
   1. env.step(action) -> writes action into bridge.action_slot,
                          sets action_ready.
-  2. BTBridgeStrategy.next() wakes, applies the action (buy/sell/close),
-     updates bridge.state, sets obs_ready, and waits for the next action.
+  2. BTBridgeStrategy.next() wakes at completed bar t and submits the action.
+     Backtrader advances and fills at the next open. At the next completed
+     bar, protection settles before bridge.state and obs_ready are published.
   3. env.step returns (obs, reward, terminated, truncated, info).
+
+The legacy_delayed_v1 default is retained for older configurations; curated
+RL inputs require next_open_v2 at the agent/environment boundary.
 
 Termination / close semantics:
   - env.close() sets bridge.stop_requested = True and releases action_ready
@@ -22,9 +26,20 @@ Termination / close semantics:
 from __future__ import annotations
 
 import threading
+import copy
+import itertools
+import math
 from typing import Any, Dict, Optional
 
 import backtrader as bt
+
+
+class TradeCloseValidationError(ValueError):
+    """A close event with missing/malformed economics REFUSES."""
+
+
+class TradeCloseConflictError(RuntimeError):
+    """Same event identity, different economics — fail closed."""
 
 
 class BTBridge:
@@ -38,18 +53,41 @@ class BTBridge:
         self.raw_action_slot: float = 0.0
         self.stop_requested: bool = False
         self.terminated: bool = False
+        self.execution_error: Optional[Exception] = None
 
         # populated by the strategy on each bar
         self.equity: float = float(initial_cash)
         self.prev_equity: float = float(initial_cash)
         self.position: int = 0  # -1/0/1
+        self.position_units: float = 0.0
+        self.entry_price: float = 0.0
+        self.holding_bars: int = 0
+        self.position_open_bar_index: Optional[int] = None
         self.price: float = 0.0
         self.bar_index: int = 0
         self.total_bars: int = 0
         self.trade_count: int = 0
+        # Runtime order 2026-08-28 §2 (fleet reconciliation defect):
+        # the ONE authoritative closed-trade event stream. EVERY path
+        # that closes a position appends here — backtrader trade-cycle
+        # closes AND the envelope's direct settlements — and
+        # trade_count is DERIVED as len(stream), never incremented
+        # independently. summary trades_total derives from the same
+        # stream, so the per-step counter and the summary total can
+        # never disagree by construction.
+        self.closed_trade_stream: list = []
+        self.fill_events: list = []
+        self._close_event_index: dict = {}
+        self.episode_seq: int = 0
         self.commission_paid: float = 0.0
         self.last_trade_cost: float = 0.0
         self.execution_diagnostics: Dict[str, int] = {}
+        self.open_order_count: int = 0
+        self.open_order_inventory = ()
+        self.order_roles: Dict[int, str] = {}
+        self.cancel_entry_request: tuple = ()
+        self.cancel_outcomes: Dict[int, str] = {}
+        self.order_terminal_status: Dict[int, str] = {}
         # Solvency continuation ledgers (owner curriculum order, WP-C):
         # operational equity is the broker value above; economic equity is
         # operational equity MINUS accumulated recapitalization debt, so a
@@ -58,6 +96,153 @@ class BTBridge:
         self.recapitalization_count: int = 0
         self.would_margin_call_events: list = []
         self.termination_cause: Optional[str] = None
+
+    ORDER_ROLES = ("entry", "protective_stop",
+                   "protective_take_profit", "close")
+
+    def register_order_role(self, ref, role: str) -> int:
+        """C1: bind a broker order identity to its role, once.
+
+        A second registration with a DIFFERENT role is a typed
+        conflict: an order cannot change from an entry into
+        protection, and silently accepting that would be exactly the
+        misclassification this registry exists to prevent."""
+        # R1: a broker order identity is an INT. Accepting a float
+        # and applying int() truncated 1.5 to 1 and 2.9 to 2, which
+        # are real identities belonging to other orders -- a silent
+        # collision that would attach the wrong role to a live order.
+        # No coercion: bools, floats, strings, NaN and infinities all
+        # refuse.
+        if isinstance(ref, bool) or not isinstance(ref, int):
+            raise TradeCloseValidationError(
+                f"order ref must be a non-boolean int identity, got "
+                f"{type(ref).__name__} {ref!r} — no coercion")
+        if ref < 0:
+            raise TradeCloseValidationError(
+                f"order ref must be nonnegative, got {ref}")
+        if role not in self.ORDER_ROLES:
+            raise TradeCloseValidationError(
+                f"unknown order role {role!r}; allowed "
+                f"{list(self.ORDER_ROLES)}")
+        existing = self.order_roles.get(ref)
+        if existing is not None and existing != role:
+            raise TradeCloseConflictError(
+                f"order {ref} is already registered as {existing!r} "
+                f"and cannot be re-registered as {role!r}")
+        self.order_roles[ref] = role
+        return ref
+
+    def role_of(self, ref):
+        """The registered role, or None when the order is UNKNOWN to
+        the registry. None is ambiguity, never 'not protective'."""
+        try:
+            return self.order_roles.get(int(ref))
+        except Exception:
+            return None
+
+    def record_trade_close(self, *, source: str, event_id: str,
+                           bar_index=None, reason=None, side=None,
+                           size=None, entry_price=None,
+                           exit_price=None, gross_pnl=None,
+                           costs=None, net_pnl=None,
+                           order_ref=None) -> int:
+        """Append ONE STRICTLY VALIDATED, economically complete
+        closure event (final hardening order 2026-08-28):
+
+        * every field validated BEFORE appending — missing, boolean,
+          string, NaN or infinite economics REFUSE (never normalized);
+        * size and prices strictly positive; costs nonnegative;
+        * the PnL identity net == gross - costs holds within an
+          explicit tolerance;
+        * EXACT canonical replay of an existing event id is
+          idempotent WITHIN ONE UNINTERRUPTED SIMULATION EPISODE (the
+          index is in-memory and episode-scoped; durable cross-process
+          attempt identity is the OUTER runner's custody
+          responsibility — audit 2026-08-28 finding 6); the same id
+          with ANY payload difference raises a typed conflict — an
+          identity collision or a corrected callback can never
+          silently preserve false economics;
+        * the event map is indexed (no O(n) scan)."""
+        import math
+
+        def _finite(name, value, *, positive=False,
+                    nonnegative=False):
+            if isinstance(value, bool) or not isinstance(
+                    value, (int, float)):
+                raise TradeCloseValidationError(
+                    f"{name}: {value!r} is not a finite real number")
+            value = float(value)
+            if not math.isfinite(value):
+                raise TradeCloseValidationError(
+                    f"{name}: non-finite value {value!r}")
+            if positive and value <= 0.0:
+                raise TradeCloseValidationError(
+                    f"{name}: must be strictly positive, got {value}")
+            if nonnegative and value < 0.0:
+                raise TradeCloseValidationError(
+                    f"{name}: must be nonnegative, got {value}")
+            return value
+
+        def _typed_str(name, value, allowed=None):
+            if not isinstance(value, str) or not value.strip():
+                raise TradeCloseValidationError(
+                    f"{name}: nonempty string required, got {value!r}")
+            if allowed and value not in allowed:
+                raise TradeCloseValidationError(
+                    f"{name}: {value!r} not in {sorted(allowed)}")
+            return value
+
+        event = {
+            "event_id": _typed_str("event_id", event_id),
+            "source": _typed_str("source", source),
+            "bar_index": int(_finite("bar_index", bar_index,
+                                     nonnegative=True)),
+            "reason": _typed_str("reason", reason),
+            "side": _typed_str("side", side,
+                               allowed={"long", "short"}),
+            "size": _finite("size", size, positive=True),
+            "entry_price": _finite("entry_price", entry_price,
+                                   positive=True),
+            "exit_price": _finite("exit_price", exit_price,
+                                  positive=True),
+            "gross_pnl": _finite("gross_pnl", gross_pnl),
+            "costs": _finite("costs", costs, nonnegative=True),
+            "net_pnl": _finite("net_pnl", net_pnl),
+            # fill-lineage order 2026-08-28: the closing ORDER ref is
+            # a typed first-class field (None only for closures that
+            # never traverse the order path, e.g. direct settlements)
+            "order_ref": (int(order_ref) if order_ref is not None
+                          else None),
+        }
+        if event["order_ref"] is not None and event["order_ref"] < 0:
+            raise TradeCloseValidationError(
+                f"order_ref must be a nonnegative int, got "
+                f"{order_ref!r}")
+        tolerance = 1e-6 + 1e-9 * abs(event["gross_pnl"])
+        if abs(event["net_pnl"]
+               - (event["gross_pnl"] - event["costs"])) > tolerance:
+            raise TradeCloseValidationError(
+                f"PnL identity violated: net {event['net_pnl']} != "
+                f"gross {event['gross_pnl']} - costs "
+                f"{event['costs']} (tolerance {tolerance})")
+        existing = self._close_event_index.get(event["event_id"])
+        if existing is not None:
+            if existing == event:
+                diag = self.execution_diagnostics
+                diag["duplicate_close_events_ignored"] = diag.get(
+                    "duplicate_close_events_ignored", 0) + 1
+                return self.trade_count
+            differing = sorted(
+                k for k in event if existing.get(k) != event[k])
+            raise TradeCloseConflictError(
+                f"conflicting replay of close event "
+                f"{event['event_id']!r}: fields {differing} differ "
+                "from the recorded economics — fail closed, never "
+                "silently keep either version")
+        self._close_event_index[event["event_id"]] = event
+        self.closed_trade_stream.append(event)
+        self.trade_count = len(self.closed_trade_stream)
+        return self.trade_count
 
     def reset(self, initial_cash: float, total_bars: int) -> None:
         self.action_ready.clear()
@@ -72,12 +257,32 @@ class BTBridge:
         # Signed position QUANTITY and live-order count (152). `position`
         # above stays a direction for backwards compatibility.
         self.position_units = 0.0
+        self.entry_price = 0.0
+        self.holding_bars = 0
+        self.position_open_bar_index = None
         self.open_order_count = 0
+        self.open_order_inventory = ()
+        # C1: the AUTHORITATIVE role of every order, recorded at
+        # creation against the broker's own stable identity. The role
+        # is never reconstructed from side, size or price: an
+        # independent reversal opposite the position and of exactly
+        # its size is geometrically indistinguishable from a
+        # protective leg, and calling it protection would let it
+        # survive a wind-down cancellation.
+        self.order_roles = {}
+        self.fill_events = []
+        # C2: executing cancellation channel and its observed outcomes
+        self.cancel_entry_request = ()
+        self.cancel_outcomes = {}
+        self.order_terminal_status = {}
         self.force_flat_request = False
         self.price = 0.0
         self.bar_index = 0
         self.total_bars = int(total_bars)
         self.trade_count = 0
+        self.closed_trade_stream = []
+        self._close_event_index = {}
+        self.episode_seq += 1
         self.commission_paid = 0.0
         self.last_trade_cost = 0.0
         self.recapitalization_debt = 0.0
@@ -108,6 +313,51 @@ class BTBridge:
         }
 
 
+def _describe_order(order, roles=None) -> dict:
+    """C1: one open order as typed facts, with its role taken from
+    the AUTHORITATIVE registry written when the order was created.
+
+    The previous version inferred ``reduce_only`` from side and size
+    because backtrader does not keep ``.parent`` populated on live
+    child orders. That heuristic called an independent reversal
+    opposite the position, of exactly the position size, a protective
+    bracket leg -- so the wind-down cancellation would have skipped
+    the very order it had to cancel. Geometry is now recorded for
+    diagnosis only and never decides the role.
+
+    An order absent from the registry has role ``None``: that is
+    AMBIGUITY and must produce a typed incident upstream, never a
+    default of 'not an entry'."""
+    roles = {} if roles is None else roles
+    ref = int(getattr(order, "ref", 0) or 0)
+    parent = getattr(order, "parent", None)
+    parent_ref = None if parent is None else int(
+        getattr(parent, "ref", 0) or 0)
+    try:
+        is_buy = bool(order.isbuy())
+    except Exception:
+        is_buy = None
+    size = getattr(order, "size", None)
+    exectype = getattr(order, "exectype", None)
+    try:
+        exectype_name = order.ExecTypes[int(exectype)] \
+            if exectype is not None else None
+    except Exception:
+        exectype_name = None
+    role = roles.get(ref)
+    return {
+        "ref": ref,
+        "parent_ref": parent_ref,
+        "side": None if is_buy is None else (
+            "buy" if is_buy else "sell"),
+        "size": None if size is None else abs(float(size)),
+        "exectype": exectype_name,
+        "role": role,
+        "reduce_only": None if role is None else role in (
+            "protective_stop", "protective_take_profit", "close"),
+    }
+
+
 class BTBridgeStrategy(bt.Strategy):
     """backtrader Strategy that yields control to the env on each bar.
 
@@ -124,6 +374,11 @@ class BTBridgeStrategy(bt.Strategy):
     params = (
         ("bridge", None),
         ("position_size", 1.0),
+        # Screen B / doc 40 B3 (2026-08-25): when true, the ORDER SIZE is
+        # position_size * min(1, |raw_action|) and same-direction targets
+        # rebalance to the new fraction. Default False preserves the
+        # historical fixed-size path bit-for-bit.
+        ("fractional_position_sizing", False),
         ("min_equity", 100.0),
         ("strategy_plugin", None),
         ("config", None),
@@ -143,6 +398,9 @@ class BTBridgeStrategy(bt.Strategy):
         self._strategy_plugin = self.p.strategy_plugin
         self._plugin_apply = getattr(self._strategy_plugin, "apply_action", None) if self._strategy_plugin else None
         self._plugin_config = self.p.config or {}
+        self._transition = self._plugin_config.get('execution_transition', 'legacy_delayed_v1')
+        if self._transition not in ('legacy_delayed_v1', 'next_open_v2'):
+            raise ValueError('UNKNOWN_EXECUTION_TRANSITION')
         self._require_protected_entries = bool(
             self._plugin_config.get("require_protected_entries", False)
         )
@@ -161,14 +419,75 @@ class BTBridgeStrategy(bt.Strategy):
 
     # --- backtrader lifecycle --------------------------------------------------
     def start(self) -> None:
+        # fill-lineage order 2026-08-28: trade history carries the
+        # closing ORDER identity — the PRIMARY join key
+        self.set_tradehistory(True)
         self.bridge.commission_paid = 0.0
+        self.bridge.closed_trade_stream = []
         self.bridge.trade_count = 0
 
     def notify_order(self, order: bt.Order) -> None:
+        # C2: record every TERMINAL broker verdict by order identity,
+        # so a cancellation outcome is OBSERVED rather than assumed.
+        try:
+            ref = int(getattr(order, "ref", -1))
+            name = order.Status[order.status]
+            if name in ("Completed", "Canceled", "Cancelled",
+                        "Rejected", "Margin", "Expired"):
+                self.bridge.order_terminal_status[ref] = name
+        except Exception:  # pragma: no cover
+            pass
         if order.status in (order.Completed,):
             comm = float(getattr(order.executed, "comm", 0.0) or 0.0)
             self._order_cost_accum += comm
             self.bridge.commission_paid += comm
+            # Fill-truth order 2026-08-28 (finding 5): the COMPLETED
+            # order's execution facts are the immutable fill evidence
+            # a close event must join — never a possibly-stale
+            # observation price. FIFO of recent completed fills; the
+            # trade-close callback consumes the ones from ITS bar.
+            executed = order.executed
+            # partial-fill semantics (audit finding 5): this broker
+            # model emits ONLY terminal aggregate fills — a Completed
+            # order with residual size is undefined here and refuses
+            remaining = float(getattr(executed, "remsize", 0.0)
+                              or 0.0)
+            if abs(remaining) > 1e-12:
+                raise TradeCloseValidationError(
+                    f"order {getattr(order, 'ref', '?')} Completed "
+                    f"with residual size {remaining} — partial fills "
+                    "are not defined in this simulator (fill-lineage "
+                    "order 2026-08-28)")
+            if not hasattr(self, "_completed_fills"):
+                self._completed_fills = []
+            self._completed_fills.append({
+                "order_ref": int(getattr(order, "ref", -1)),
+                "price": float(getattr(executed, "price", 0.0)
+                               or 0.0),
+                "size": float(getattr(executed, "size", 0.0) or 0.0),
+                "commission": comm,
+                "bar_index": int(len(self.data)) if self._transition == 'next_open_v2' else int(self.bridge.bar_index),
+            })
+            del self._completed_fills[:-8]  # bounded evidence window
+            from app.bar_clock import completed_bar_mode, entry_fill_clock
+            if completed_bar_mode(self._plugin_config):
+                from datetime import timezone
+                label = bt.num2date(order.executed.dt)
+                if label.tzinfo is None:
+                    label = label.replace(tzinfo=timezone.utc)
+                start = entry_fill_clock(label, self._plugin_config)
+                market = order.exectype == bt.Order.Market
+                self.bridge.fill_events.append({
+                    'order_ref': int(order.ref),
+                    'role': self.bridge.role_of(order.ref),
+                    'bar_index': int(len(self.data)),
+                    'price': float(order.executed.price),
+                    'engine_bar_time': label.isoformat(),
+                    'fill_time': start.isoformat() if market else None,
+                    'fill_time_precision': 'bar_open' if market else 'bar_interval',
+                    'fill_interval_start': start.isoformat(),
+                    'fill_interval_end': label.isoformat(),
+                })
         plugin_notify = (
             getattr(self._strategy_plugin, "notify_order", None)
             if self._strategy_plugin
@@ -177,11 +496,130 @@ class BTBridgeStrategy(bt.Strategy):
         if callable(plugin_notify):
             plugin_notify(self, order, self._plugin_config)
 
+    def reconcile_direct_settlement(self, size: float, price: float, commission: float) -> None:
+        """Close Backtrader's trade state after the declared synthetic entry-bar fill.
+
+        Cash and the authoritative close event are owned by the envelope. Use
+        Backtrader's Trade.update for its lifecycle; otherwise the next entry
+        gets merged into the already closed trade and disappears from metrics.
+        """
+        trades = self._trades[self.data][0]
+        trade = trades[-1] if trades else None
+        if (trade is None or not trade.isopen
+                or not math.isclose(trade.size, size, rel_tol=1e-12, abs_tol=1e-12)):
+            raise TradeCloseValidationError('DIRECT_SETTLEMENT_NATIVE_TRADE_MISMATCH')
+        order_type = bt.SellOrder if size > 0 else bt.BuyOrder
+        marker = order_type(owner=self, data=self.data, size=abs(size),
+                            exectype=bt.Order.Market)
+        marker.addinfo(execution_path='envelope_direct_settlement_not_broker_order')
+        trade.update(marker, -size, price, 0.0, commission, 0.0,
+                     comminfo=self.broker.getcommissioninfo(self.data))
+        if not trade.isclosed:
+            raise TradeCloseValidationError('DIRECT_SETTLEMENT_NATIVE_TRADE_NOT_CLOSED')
+        # This close already has its own authoritative event. Notify analyzers,
+        # not notify_trade(), which would duplicate that event as a broker fill.
+        for analyzer in itertools.chain(self.analyzers, self._slave_analyzers):
+            analyzer._notify_trade(copy.copy(trade))
+
     def notify_trade(self, trade: bt.Trade) -> None:
         if trade.isclosed:
-            self.bridge.trade_count += 1
+            gross = float(getattr(trade, "pnl", 0.0) or 0.0)
+            net = float(getattr(trade, "pnlcomm", gross))
+            entry = float(getattr(trade, "price", 0.0) or 0.0)
+            long_side = bool(getattr(trade, "long", True))
+            # Fill-lineage order 2026-08-28: the PRIMARY join key is
+            # the EXPLICIT closing-order identity from the trade's own
+            # history (set_tradehistory); reconciliation of derived
+            # gross vs Backtrader PnL is a CONSISTENCY CHECK, never
+            # the identity. Without lineage, more than one unconsumed
+            # reconciling ORDER identity refuses — even when price and
+            # size are economically identical.
+            bar = int(len(self.data)) if self._transition == 'next_open_v2' else int(self.bridge.bar_index)
+            direction = 1.0 if long_side else -1.0
+            pool = getattr(self, "_completed_fills", [])
+            lineage_ref = None
+            history = list(getattr(trade, "history", []) or [])
+            if history:
+                closing_event = history[-1]
+                event_order = getattr(
+                    getattr(closing_event, "event", None), "order",
+                    None)
+                if event_order is not None:
+                    lineage_ref = int(getattr(event_order, "ref",
+                                              -1))
+
+            def reconciles(fill):
+                fill_gross = direction * abs(fill["size"]) * (
+                    float(fill["price"]) - entry)
+                tolerance = 1e-6 + 1e-6 * max(abs(gross),
+                                              abs(fill_gross))
+                return abs(fill_gross - gross) <= tolerance
+
+            candidates = [
+                (position_index, fill)
+                for position_index, fill in enumerate(pool)
+                if abs(fill["size"]) > 0.0
+                and fill["bar_index"] in (bar - 1, bar, bar + 1)]
+            if lineage_ref is not None:
+                joined = [(i, f) for i, f in candidates
+                          if f["order_ref"] == lineage_ref]
+                if not joined:
+                    raise TradeCloseValidationError(
+                        f"bt trade close at bar {bar}: the trade's "
+                        f"own closing order ref {lineage_ref} has no "
+                        "unconsumed completed fill — stale or missing "
+                        "fill evidence refuses")
+                position_index, fill = joined[-1]
+                if not reconciles(fill):
+                    raise TradeCloseValidationError(
+                        f"bt trade close at bar {bar}: the "
+                        f"lineage-joined fill (order "
+                        f"{lineage_ref}) does not reconcile with "
+                        f"Backtrader pnl {gross:.8f} — inconsistent "
+                        "evidence refuses")
+            else:
+                reconciling = [(i, f) for i, f in candidates
+                               if reconciles(f)]
+                if not reconciling:
+                    raise TradeCloseValidationError(
+                        f"bt trade close at bar {bar} has NO "
+                        "completed closing fill whose derived gross "
+                        f"reconciles with Backtrader pnl {gross:.8f} "
+                        "— stale or missing fill evidence refuses")
+                order_identities = {f["order_ref"]
+                                    for _i, f in reconciling}
+                if len(order_identities) > 1:
+                    raise TradeCloseValidationError(
+                        f"bt trade close at bar {bar}: "
+                        f"{len(order_identities)} distinct ORDER "
+                        "identities reconcile and no explicit trade "
+                        "lineage proves the join — ambiguous order "
+                        "lineage refuses (fill-lineage order "
+                        "2026-08-28)")
+                position_index, fill = reconciling[-1]
+            del pool[position_index]  # consumed: never joined twice
+            exit_price = float(fill["price"])
+            size = abs(float(fill["size"]))
+            closing_order_ref = int(fill["order_ref"])
+            self.bridge.record_trade_close(
+                source="bt_trade_closed",
+                event_id=(f"bt_ep{self.bridge.episode_seq}"
+                          f"_ref{getattr(trade, 'ref', id(trade))}"),
+                bar_index=bar,
+                reason="backtrader trade lifecycle close",
+                order_ref=closing_order_ref,
+                side="long" if long_side else "short",
+                size=size,
+                entry_price=entry,
+                exit_price=exit_price,
+                gross_pnl=gross,
+                costs=round(gross - net, 10),
+                net_pnl=net)
 
     def next(self) -> None:
+        if self._transition == 'next_open_v2':
+            self._next_open_transition()
+            return
         # If the env requested stop, exit the run as quickly as possible.
         if self.bridge.stop_requested:
             self.env.runstop()
@@ -197,6 +635,11 @@ class BTBridgeStrategy(bt.Strategy):
             if self.bridge.stop_requested:
                 self.env.runstop()
                 return
+
+        # C2: cancellation is EXECUTED against the broker, before the
+        # action is applied, so a pending entry cannot fill inside the
+        # forbidden window. Protective legs are never touched here.
+        self._process_cancel_requests()
 
         action = int(self.bridge.action_slot)
         self._apply_action(action)
@@ -228,6 +671,79 @@ class BTBridgeStrategy(bt.Strategy):
         if self.bridge.stop_requested:
             self.env.runstop()
             return
+
+    def _next_open_transition(self) -> None:
+        if self.bridge.stop_requested:
+            self.env.runstop()
+            return
+        # Broker fills for this bar have occurred. Finish protective accounting
+        # before exposing the resulting state, then wait for its next action.
+        on_bar_close = getattr(self._strategy_plugin, 'on_bar_close', None)
+        if callable(on_bar_close):
+            on_bar_close(self, self._plugin_config)
+        self._publish_obs(signal=False)
+        if self._is_broke():
+            if self.p.solvency_mode == 'easy_chronological_continuation':
+                self._continue_after_would_margin_call()
+            else:
+                self.bridge.termination_cause = 'min_equity'
+                self.bridge.terminated = True
+        if not self.bridge.terminated and self.bridge.bar_index >= self.bridge.total_bars:
+            self.bridge.termination_cause = 'data_end'
+            self.bridge.terminated = True
+        self.bridge.obs_ready.set()
+        if self.bridge.terminated:
+            self.env.runstop()
+            return
+        self.bridge.action_ready.wait()
+        self.bridge.action_ready.clear()
+        if self.bridge.stop_requested:
+            self.env.runstop()
+            return
+        self._process_cancel_requests()
+        self._apply_action(int(self.bridge.action_slot))
+        # Returning from next lets Backtrader execute orders at the next open.
+        # Only that bar's publication releases env.step; no duplicate t state.
+
+    def _process_cancel_requests(self) -> None:
+        """C2: cancel exactly the refs the overlay identified from the
+        ROLE REGISTRY, observe what the broker does with each, and
+        never assume success. A ref that cannot be found among the
+        open orders is reported as such rather than counted cancelled."""
+        requested = tuple(getattr(self.bridge, "cancel_entry_request",
+                                  ()) or ())
+        if not requested:
+            return
+        self.bridge.cancel_entry_request = ()
+        try:
+            open_orders = list(self.broker.get_orders_open() or [])
+        except Exception:
+            open_orders = []
+        by_ref = {int(getattr(o, "ref", -1)): o for o in open_orders}
+        outcomes = dict(getattr(self.bridge, "cancel_outcomes", {})
+                        or {})
+        for ref in requested:
+            ref = int(ref)
+            role = self.bridge.role_of(ref)
+            if role != "entry":
+                # refuse to cancel anything that is not a registered
+                # entry: protective legs must survive until the
+                # position is closed
+                outcomes[ref] = f"refused_role_{role}"
+                continue
+            order = by_ref.get(ref)
+            if order is None:
+                outcomes[ref] = "not_open"
+                continue
+            try:
+                self.cancel(order)
+                outcomes[ref] = "cancel_submitted"
+            except Exception as exc:  # pragma: no cover
+                outcomes[ref] = f"cancel_raised_{type(exc).__name__}"
+            diag = self.bridge.execution_diagnostics
+            diag["session_entry_cancels_submitted"] = (
+                diag.get("session_entry_cancels_submitted", 0) + 1)
+        self.bridge.cancel_outcomes = outcomes
 
     def stop(self) -> None:
         # Data exhausted: mark terminated and signal the env so it stops waiting.
@@ -311,6 +827,8 @@ class BTBridgeStrategy(bt.Strategy):
                 self._plugin_apply(self, int(action), self._plugin_config)
                 return
             except Exception:
+                if getattr(self, '_transition', 'legacy_delayed_v1') == 'next_open_v2':
+                    raise
                 self.bridge.execution_diagnostics["plugin_apply_errors"] = (
                     self.bridge.execution_diagnostics.get("plugin_apply_errors", 0) + 1
                 )
@@ -343,6 +861,10 @@ class BTBridgeStrategy(bt.Strategy):
 
         current_size = self.position.size  # backtrader position size
         size = float(self.p.position_size)
+        fractional = bool(self.p.fractional_position_sizing)
+        if fractional:
+            frac = min(1.0, abs(float(self.bridge.raw_action_slot)))
+            size = float(self.p.position_size) * frac
 
         target_dir = {0: None, 1: +1, 2: -1}.get(action)
         if target_dir is None:
@@ -360,6 +882,30 @@ class BTBridgeStrategy(bt.Strategy):
             self.bridge.execution_diagnostics.get("entry_actions_seen", 0) + 1
         )
 
+        if fractional and size <= 0.0:
+            # fraction 0 with a directional signal = target flat
+            if current_size != 0:
+                self.close()
+                self.bridge.execution_diagnostics["fractional_flat_orders"] = (
+                    self.bridge.execution_diagnostics.get(
+                        "fractional_flat_orders", 0) + 1)
+            return
+        if fractional and current_size != 0 and (
+                (target_dir == +1) == (current_size > 0)):
+            # same direction: rebalance to the new SIGNED target size.
+            # (The first Screen B run exposed that branch-on-|size|
+            # logic inverted the orders for SHORT positions.)
+            target_signed = size * (1.0 if current_size > 0 else -1.0)
+            delta_signed = target_signed - current_size
+            if abs(delta_signed) > 1e-12:
+                if delta_signed > 0:
+                    self.buy(size=delta_signed)
+                else:
+                    self.sell(size=-delta_signed)
+                self.bridge.execution_diagnostics["fractional_rebalance_orders"] = (
+                    self.bridge.execution_diagnostics.get(
+                        "fractional_rebalance_orders", 0) + 1)
+            return
         if target_dir == +1:
             if current_size < 0:
                 self.close()
@@ -388,20 +934,48 @@ class BTBridgeStrategy(bt.Strategy):
     def _publish_obs(self, *, signal: bool = True) -> None:
         broker = self.broker
         pos = self.position.size
+        bar_index = int(len(self.data))
+        previous_direction = int(self.bridge.position)
+        current_direction = int(1 if pos > 0 else (-1 if pos < 0 else 0))
         self.bridge.prev_equity = self.bridge.equity
         self.bridge.equity = float(broker.getvalue())
-        self.bridge.position = int(1 if pos > 0 else (-1 if pos < 0 else 0))
+        self.bridge.position = current_direction
         # AUD-F1-20260806-152: `position` is a DIRECTION. Downstream
         # accounting (handover close costs) needs the signed QUANTITY
         # and the live-order count, so publish both explicitly.
         self.bridge.position_units = float(pos)
+        if current_direction == 0:
+            self.bridge.entry_price = 0.0
+            self.bridge.holding_bars = 0
+            self.bridge.position_open_bar_index = None
+        else:
+            if (
+                previous_direction != current_direction
+                or self.bridge.position_open_bar_index is None
+            ):
+                self.bridge.position_open_bar_index = bar_index
+            self.bridge.entry_price = float(self.position.price)
+            self.bridge.holding_bars = max(
+                0, bar_index - int(self.bridge.position_open_bar_index)
+            )
         try:
-            self.bridge.open_order_count = len(
-                self.broker.get_orders_open() or [])
+            open_orders = list(self.broker.get_orders_open() or [])
+            self.bridge.open_order_count = len(open_orders)
+            # G4: publish the ORDER IDENTITIES, not just a count. A
+            # session overlay cannot tell a pending entry from a
+            # protective reduce-only bracket child from a number, and
+            # guessing "everything is protective while a position is
+            # open" hides a simultaneous pending entry.
+            self.bridge.open_order_inventory = tuple(
+                _describe_order(order, self.bridge.order_roles)
+                for order in open_orders)
         except Exception:
             self.bridge.open_order_count = None
+            # unavailable inventory is UNAVAILABLE, never an empty
+            # tuple that would read as "no pending entries"
+            self.bridge.open_order_inventory = None
         self.bridge.price = float(self.data.close[0])
-        self.bridge.bar_index = int(len(self.data))
+        self.bridge.bar_index = bar_index
         self.bridge.last_trade_cost = float(self._order_cost_accum)
         if signal:
             self.bridge.obs_ready.set()
@@ -434,6 +1008,8 @@ def build_cerebro(
         config=config or {},
         solvency_mode=(config or {}).get("solvency_mode",
                                          "normal_realistic"),
+        fractional_position_sizing=bool(
+            (config or {}).get("fractional_position_sizing", False)),
         recap_target_equity=(config or {}).get("recap_target_equity"),
     )
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
